@@ -14,9 +14,10 @@ header ethernet_h {
     mac_addr_t src_addr;
     bit<16>    ether_type;
 }
-const ether_type_t ETHERTYPE_IPV4   = 16w0x0800;
-const ether_type_t ETHERTYPE_ARP    = 16w0x0806;
-const ether_type_t ETHERTYPE_ROCEv1 = 16w0x8915;
+const ether_type_t ETHERTYPE_IPV4     = 16w0x0800;
+const ether_type_t ETHERTYPE_ARP      = 16w0x0806;
+const ether_type_t ETHERTYPE_ROCEv1   = 16w0x8915;
+const ether_type_t ETHERTYPE_SWITCHML = 16w0xbee0;
 
 header ipv4_h {
     bit<4>       version;
@@ -42,7 +43,15 @@ header udp_h {
     bit<16> length;
     bit<16> checksum;
 }
-const udp_port_t UDP_PORT_ROCEV2 = 4791;
+const udp_port_t UDP_PORT_ROCEV2   = 4791;
+const udp_port_t UDP_PORT_SWITCHML = 0xbee0;
+
+// SwitchML header for use in non-RDMA mode
+header switchml_h {
+    bit<32> tsi;
+    bit<16> pool_index;
+}
+
 
 // InfiniBand-RoCE Global Routing Header
 header ib_grh_h {
@@ -73,12 +82,16 @@ header ib_bth_h {
     bit<24> psn;
 }
 
-// 128-byte data header
-header data_h {
+// 4-byte exponent header
+header exponent_h {
     exponent_t e0;
     exponent_t e1;
     exponent_t e2;
     exponent_t e3;
+}
+
+// 128-byte data header
+header data_h {
     data_t d00;
     data_t d01;
     data_t d02;
@@ -118,10 +131,14 @@ struct header_t {
     ethernet_h ethernet;
     ipv4_h     ipv4;
     udp_h      udp;
+    switchml_h switchml;
     ib_grh_h   ib_grh;
     ib_bth_h   ib_bth;
     // two 128-byte data headers to support harvesting 256 bytes with recirculation.
+    // (plus two expoonent headers)
+    exponent_h e0;
     data_h     d0;
+    exponent_h e1;
     data_h     d1;
 }
 

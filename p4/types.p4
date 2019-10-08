@@ -45,7 +45,13 @@ struct exponent_pair_t {
 struct metadata_t {
     opcode_t opcode;
     index_t address;
-    // Nothing yet
+
+    // checksum stuff
+    bit<16> checksum_ipv4_tmp;
+    bit<16> checksum_udp_tmp;
+    bool checksum_upd_ipv4;
+    bool checksum_upd_udp;
+    bool checksum_err_ipv4;
 }
 
 #endif /* _TYPES_ */
