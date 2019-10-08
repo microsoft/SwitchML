@@ -12,29 +12,33 @@
 #include <tna.p4>
 #endif
 
+// define constants and sizes
+#include "configuration.p4"
+
 #include "types.p4"
 #include "headers.p4"
 #include "parsers.p4"
 #include "registers.p4"
-#include "swap_bytes.p4"
 
-// constants
-const index_t register_size = 16384;  // 20480 is max?
-const bit<32> max_num_workers = 32;   // currently limited to the width of a register
+#ifdef INCLUDE_SWAP_BYTES
+#include "swap_bytes.p4"
+#endif
 
 control SwitchMLIngress(
     inout header_t hdr,
-    inout metadata_t ig_md,
+    inout ingress_metadata_t ig_md,
     in ingress_intrinsic_metadata_t ig_intr_md,
     in ingress_intrinsic_metadata_from_parser_t ig_prsr_md,
     inout ingress_intrinsic_metadata_for_deparser_t ig_dprsr_md,
     inout ingress_intrinsic_metadata_for_tm_t ig_tm_md) {
 
-
     
     
+    
+#ifdef INCLUDE_SWAP_BYTES
     // define swap_bytes tables
     DEFINE_SWAP_BYTES(ingress)
+#endif
     
     //
     // instantiate data/exponent registers
@@ -77,13 +81,14 @@ control SwitchMLIngress(
         if (hdr.ib_bth.isValid()) {
             extract_opcode_and_address();
 
+#ifdef INCLUDE_SWAP_BYTES
             // try doing hton() for the first 24 elements of each header
             //swap_bytes1_tbl.apply();
             APPLY_SWAP_BYTES1(ingress);
 
             // this is the rest of the hton(); it fails with a compiler bug right now
             //swap_bytes2_tbl.apply();
-
+#endif
             
             // get bitmask for this job
             // get set for this job
@@ -97,8 +102,9 @@ control SwitchMLIngress(
             // count workers
 
             // aggregate data
-            // apply data register tables (8 stages)
+            // apply data register tables (8 stages + 1 stage for exponents)
             APPLY_STAGE(exponent_reg, 0, 1, 2, 3);
+
             APPLY_STAGE(data_reg, 00, 01, 02, 03);
             APPLY_STAGE(data_reg, 04, 05, 06, 07);
             APPLY_STAGE(data_reg, 08, 09, 10, 11);
@@ -118,18 +124,22 @@ control SwitchMLIngress(
 
 control SwitchMLEgress(
     inout header_t hdr,
-    inout metadata_t eg_md,
+    inout egress_metadata_t eg_md,
     in egress_intrinsic_metadata_t eg_intr_md,
     in egress_intrinsic_metadata_from_parser_t eg_intr_md_from_prsr,
     inout egress_intrinsic_metadata_for_deparser_t eg_intr_dprs_md,
     inout egress_intrinsic_metadata_for_output_port_t eg_intr_oport_md) {
 
+#ifdef INCLUDE_SWAP_BYTES
     DEFINE_SWAP_BYTES(egress)
-
+#endif
+    
     apply {
         if (hdr.ib_bth.isValid()) {
+#ifdef INCLUDE_SWAP_BYTES
             APPLY_SWAP_BYTES1(egress);
-            APPLY_SWAP_BYTES2(egress);
+            //APPLY_SWAP_BYTES2(egress);
+#endif
         }
     }
 }

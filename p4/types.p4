@@ -42,10 +42,21 @@ struct exponent_pair_t {
 }
 
 // Metadata for ingress stage
-struct metadata_t {
+struct ingress_metadata_t {
     opcode_t opcode;
     index_t address;
 
+    // checksum stuff
+    bit<16> checksum_ipv4_tmp;
+    bit<16> checksum_udp_tmp;
+    bool checksum_upd_ipv4;
+    bool checksum_upd_udp;
+    bool checksum_err_ipv4;
+}
+
+// Metadata for egress stage
+struct egress_metadata_t {
+        
     // checksum stuff
     bit<16> checksum_ipv4_tmp;
     bit<16> checksum_udp_tmp;
