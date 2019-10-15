@@ -142,15 +142,6 @@ header data_h {
     data_t d29;
     data_t d30;
     data_t d31;
-
-    data_t d32;
-    data_t d33;
-    data_t d34;
-    data_t d35;
-    data_t d36;
-    data_t d37;
-    data_t d38;
-    data_t d39;
 }
 
 // Full header stack
