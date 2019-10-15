@@ -106,6 +106,11 @@ parser SwitchMLIngressParser(
 
     state parse_switchml {
         pkt.extract(hdr.switchml);
+        transition parse_exponents;
+    }
+
+    state parse_exponents {
+        pkt.extract(hdr.exponents);
         transition parse_data0;
     }
 
