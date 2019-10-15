@@ -10,9 +10,9 @@ pool:
   vmImage: 'vs2017-win2016'
 
 steps:
-- task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
-  displayName: 'Component Detection'
-  continueOnError: true
+#- task: ms.vss-governance-buildtask.governance-build-task-component-detection.ComponentGovernanceComponentDetection@0
+#  displayName: 'Component Detection'
+#  continueOnError: true
 - task: securedevelopmentteam.vss-secure-development-tools.build-task-credscan.CredScan@2
   displayName: 'Run CredScan'
   inputs:
