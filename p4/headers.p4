@@ -46,12 +46,33 @@ header udp_h {
 const udp_port_t UDP_PORT_ROCEV2   = 4791;
 const udp_port_t UDP_PORT_SWITCHML = 0xbee0;
 
-// SwitchML header for use in non-RDMA mode
+// SwitchML header
+//@pa_container_size("ingress", "hdr.switchml.pool_index", 32)
 header switchml_h {
     bit<32> tsi;
     bit<16> pool_index;
 }
 
+// SwitchML metadata header; bridged for recirculation (and not exposed outside the switch)
+//@pa_container_size("ingress", "hdr.switchml_md.pool_index", 32)
+header switchml_md_h {
+    MulticastGroupId_t mgid;
+
+    bit<3>  padding;
+
+    bit<1> multicast;
+
+    // what should we do with this packet?
+    packet_type_t packet_type;
+    opcode_t opcode;
+
+    // which pool element are we talking about?
+    bit<7> pad2;
+    pool_index_t pool_index; // Index of pool element, including both sets.
+
+    // random number used to simulated packet drops
+    drop_random_value_t drop_random_value;
+}
 
 // InfiniBand-RoCE Global Routing Header
 header ib_grh_h {
@@ -82,12 +103,9 @@ header ib_bth_h {
     bit<24> psn;
 }
 
-// 4-byte exponent header
-header exponent_h {
+// 2-byte exponent header (assuming exponent_t is bit<16>)
+header exponents_h {
     exponent_t e0;
-    exponent_t e1;
-    exponent_t e2;
-    exponent_t e3;
 }
 
 // 128-byte data header
@@ -124,22 +142,30 @@ header data_h {
     data_t d29;
     data_t d30;
     data_t d31;
+
+    data_t d32;
+    data_t d33;
+    data_t d34;
+    data_t d35;
+    data_t d36;
+    data_t d37;
+    data_t d38;
+    data_t d39;
 }
 
 // Full header stack
 struct header_t {
-    ethernet_h ethernet;
-    ipv4_h     ipv4;
-    udp_h      udp;
-    switchml_h switchml;
-    ib_grh_h   ib_grh;
-    ib_bth_h   ib_bth;
+    switchml_md_h switchml_md;
+    ethernet_h  ethernet;
+    ipv4_h      ipv4;
+    udp_h       udp;
+    switchml_h  switchml;
+    ib_grh_h    ib_grh;
+    ib_bth_h    ib_bth;
+    exponents_h exponents;
     // two 128-byte data headers to support harvesting 256 bytes with recirculation.
-    // (plus two expoonent headers)
-    exponent_h e0;
-    data_h     d0;
-    exponent_h e1;
-    data_h     d1;
+    data_h      d0;
+    data_h      d1;
 }
 
 #endif /* _HEADERS_ */

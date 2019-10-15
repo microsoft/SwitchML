@@ -21,13 +21,14 @@ parser SwitchMLIngressParser(
     state start {
         pkt.extract(ig_intr_md);
         transition select(ig_intr_md.resubmit_flag) {
-            1       : parse_resubmit;
+            1 : parse_resubmit;
             default : parse_port_metadata;
         }
     }
 
     state parse_resubmit {
-        // Not currently used; just skip
+        // Resubmission not currently used; just skip header
+        // assume recirculated packets will never be resubmitted for now
         #if __TARGET_TOFINO__ == 2
         pkt.advance(192);
         #else
@@ -37,14 +38,30 @@ parser SwitchMLIngressParser(
     }
 
     state parse_port_metadata {
+        // skip port metadata header
         #if __TARGET_TOFINO__ == 2
         pkt.advance(192);
         #else
         pkt.advance(64);
         #endif
-        transition parse_ethernet;
+        // decide what to do with recirculated packets now
+        transition select(ig_intr_md.ingress_port) {
+            // handle non-resubmitted packets coming in on recirculation port in this pipeline
+            68 &&& 0x7f: parse_recirculate;
+            // handle non-resubmitted, non-recirculated packets
+            default:  parse_ethernet;
+        }
     }
 
+    state parse_recirculate {
+        // parse switchml metadata and mark as recirculated
+        pkt.extract(hdr.switchml_md);
+        hdr.switchml_md.packet_type = packet_type_t.HARVEST;
+        hdr.switchml_md.opcode      = opcode_t.READ1;
+        // now parse the rest of the packet
+        transition parse_ethernet;
+    }
+    
     state parse_ethernet {
         pkt.extract(hdr.ethernet);
         transition select(hdr.ethernet.ether_type) {
@@ -152,6 +169,16 @@ parser SwitchMLEgressParser(
 
     state start {
         pkt.extract(eg_intr_md);
+        // all egress packets in this design have a SwitchML metadata header.
+        transition parse_switchml_md;
+    }
+
+    state parse_switchml_md {
+        // parse switchml metadata and mark as egress
+        pkt.extract(hdr.switchml_md);
+        hdr.switchml_md.packet_type = packet_type_t.EGRESS;
+        hdr.switchml_md.opcode      = opcode_t.NOP;
+        // now parse the rest of the packet
         transition parse_ethernet;
     }
 
@@ -194,28 +221,14 @@ parser SwitchMLEgressParser(
 
     state parse_ib_bth {
         pkt.extract(hdr.ib_bth);
-        transition parse_data0;
+        transition accept;
     }
 
     state parse_switchml {
         pkt.extract(hdr.switchml);
-        transition parse_data0;
-    }
-
-    // mark as @critical to ensure minimum cycles for extraction
-    @critical
-    state parse_data0 {
-        pkt.extract(hdr.d0);
-        transition parse_data1;
-    }
-
-    // mark as @critical to ensure minimum cycles for extraction
-    @critical
-    state parse_data1 {
-        pkt.extract(hdr.d1);
+        // don't parse data in egress to save on PHV space
         transition accept;
     }
-
 }
 
 control SwitchMLEgressDeparser(
