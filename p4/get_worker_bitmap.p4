@@ -48,6 +48,7 @@ control GetWorkerBitmap(
         packet_type_t packet_type,
         num_workers_t num_workers,
         worker_bitmap_t worker_bitmap,
+        worker_bitmap_t complete_bitmap,
         pool_index_t pool_base,
         worker_pool_index_t pool_size_minus_1) {
 
@@ -59,8 +60,9 @@ control GetWorkerBitmap(
         hdr.switchml_md.opcode = opcode_t.OP_READ0;
         
         // bitmap representation for this worker
-        ig_md.worker_bitmap = worker_bitmap;
-        ig_md.num_workers   = num_workers;
+        ig_md.worker_bitmap   = worker_bitmap;
+        ig_md.num_workers     = num_workers;
+        ig_md.complete_bitmap = complete_bitmap;
 
         // group ID for this job
         hdr.switchml_md.mgid = mgid;
@@ -87,16 +89,19 @@ control GetWorkerBitmap(
         key = {
             // use ternary matches to support matching on:
             // * ingress port only like the original design
-            // * source IP and UDP destination port for the SwitchML protocol
-            // * source IP and destination QP number for the RoCE protocol
+            // * source IP and UDP destination port for the SwitchML Eth protocol
+            // * source IP and UDP destination port for the SwitchML UDP protocol
+            // * source IP and destination QP number for the RoCE protocols
             // * also, parser error values so we can drop bad packets
             ig_intr_md.ingress_port  : ternary;
+            hdr.ethernet.src_addr    : ternary;
+            hdr.ethernet.dst_addr    : ternary;
             hdr.ipv4.src_addr        : ternary;
             hdr.ipv4.dst_addr        : ternary;
             hdr.udp.dst_port         : ternary;
             hdr.ib_bth.partition_key : ternary;
             hdr.ib_bth.dst_qp        : ternary;
-            ig_prsr_md.parser_err    : exact;
+            ig_prsr_md.parser_err    : ternary;
         }
         
         actions = {

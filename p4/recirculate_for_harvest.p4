@@ -17,6 +17,9 @@ control RecirculateForHarvest(
     inout ingress_intrinsic_metadata_for_tm_t ig_tm_md) {
 
     apply {
+        // drop second data header, since first header has data we read out
+        hdr.d1.setInvalid();
+        
         // recirculate for harvest
         ig_tm_md.ucast_egress_port = ig_intr_md.ingress_port[8:7] ++ 7w68;
         ig_tm_md.bypass_egress = 1w1;

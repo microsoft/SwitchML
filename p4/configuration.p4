@@ -10,7 +10,8 @@
 #include "types.p4"
 
 // constants
-const int register_size = 22528;  // 22528 is theoretical max.
+//const int register_size = 22528;  // 22528 is theoretical max.
+const int register_size = 4;  // Smaller register size for speedier model setup.
 const int max_num_workers = 32;  // currently limited to the width of a register
 
 const int num_pools = register_size;

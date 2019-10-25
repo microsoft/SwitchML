@@ -1,2 +1,4 @@
 # ignore compiler output
 out
+*~
+*.pyc

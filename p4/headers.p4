@@ -14,10 +14,11 @@ header ethernet_h {
     mac_addr_t src_addr;
     bit<16>    ether_type;
 }
-const ether_type_t ETHERTYPE_IPV4     = 16w0x0800;
-const ether_type_t ETHERTYPE_ARP      = 16w0x0806;
-const ether_type_t ETHERTYPE_ROCEv1   = 16w0x8915;
-const ether_type_t ETHERTYPE_SWITCHML = 16w0xbee0;
+const ether_type_t ETHERTYPE_IPV4          = 16w0x0800;
+const ether_type_t ETHERTYPE_ARP           = 16w0x0806;
+const ether_type_t ETHERTYPE_ROCEv1        = 16w0x8915;
+const ether_type_t ETHERTYPE_SWITCHML_BASE = 16w0xbee0;
+const ether_type_t ETHERTYPE_SWITCHML_MASK = 16w0xfff0;
 
 header ipv4_h {
     bit<4>       version;
@@ -34,8 +35,8 @@ header ipv4_h {
     ipv4_addr_t  dst_addr;
 }
 const ip_protocol_t IP_PROTOCOL_ICMP = 1;
-const ip_protocol_t IP_PROTOCOL_TCP = 6;
-const ip_protocol_t IP_PROTOCOL_UDP = 17;
+const ip_protocol_t IP_PROTOCOL_TCP  = 6;
+const ip_protocol_t IP_PROTOCOL_UDP  = 17;
 
 header udp_h {
     bit<16> src_port;
@@ -43,8 +44,9 @@ header udp_h {
     bit<16> length;
     bit<16> checksum;
 }
-const udp_port_t UDP_PORT_ROCEV2   = 4791;
-const udp_port_t UDP_PORT_SWITCHML = 0xbee0;
+const udp_port_t UDP_PORT_ROCEV2        =   4791;
+const udp_port_t UDP_PORT_SWITCHML_BASE = 0xbee0;
+const udp_port_t UDP_PORT_SWITCHML_MASK = 0xfff0;
 
 // SwitchML header
 //@pa_container_size("ingress", "hdr.switchml.pool_index", 32)

@@ -55,17 +55,20 @@ control UpdateAndCheckWorkerBitmap(
 
     table update_and_check_worker_bitmap {
         key = {
-            ig_md.pool_set : exact;
-            hdr.switchml_md.packet_type : exact;  // only act on packets of type CONSUME
+            ig_md.pool_set : ternary;
+            hdr.switchml_md.packet_type : ternary;  // only act on packets of type CONSUME
             ig_md.pool_remaining : ternary; // if sign bit is set, pool index was too large, so drop
-            hdr.switchml_md.drop_random_value : range; // use to simulate drops
+            // TODO: disable for now
+            //hdr.switchml_md.drop_random_value : range; // use to simulate drops
         }
         actions = {
             update_worker_bitmap_set0_action;
             update_worker_bitmap_set1_action;
             drop;
+            NoAction;
         }
-        size = 4;
+        size = 3;
+        const default_action = NoAction;
     }
 
     apply {

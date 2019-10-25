@@ -83,9 +83,8 @@ control SetDestinationAddress(
     
     table set_dst_addr {
         key = {
-            //hdr.switchml_md.isValid() : ternary;  // ensure SwitchML metadata header exists to take action
             eg_intr_md.egress_port : ternary; // output port
-            eg_intr_md.egress_rid  : ternary; // replication ID for ourput
+            eg_intr_md.egress_rid  : ternary; // replication ID: indicates which worker we're sending to
         }
         actions = {
             set_dst_addr_for_RoCEv1;
@@ -94,7 +93,8 @@ control SetDestinationAddress(
             set_dst_addr_for_SwitchML_Eth;
             NoAction;
         }
-        size = max_num_workers + 1; // one extra for no-op
+        size = max_num_workers;
+        const default_action = NoAction;
     }
 
     apply {

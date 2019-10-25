@@ -65,9 +65,9 @@ parser SwitchMLIngressParser(
     state parse_ethernet {
         pkt.extract(hdr.ethernet);
         transition select(hdr.ethernet.ether_type) {
-            ETHERTYPE_ROCEv1     : parse_ib_grh;
-            ETHERTYPE_IPV4       : parse_ipv4;
-            ETHERTYPE_SWITCHML   : parse_switchml;
+            ETHERTYPE_ROCEv1                                    : parse_ib_grh;
+            ETHERTYPE_IPV4                                      : parse_ipv4;
+            ETHERTYPE_SWITCHML_BASE &&& ETHERTYPE_SWITCHML_MASK : parse_switchml;
             default : accept;
         }
     }
@@ -89,8 +89,9 @@ parser SwitchMLIngressParser(
         udp_checksum.subtract({hdr.udp.src_port});
         ig_md.checksum_udp_tmp = udp_checksum.get();
         transition select(hdr.udp.dst_port) {
-            UDP_PORT_ROCEV2 : parse_ib_bth;
-            default : accept;
+            UDP_PORT_ROCEV2                                   : parse_ib_bth;
+            UDP_PORT_SWITCHML_BASE &&& UDP_PORT_SWITCHML_MASK : parse_switchml;
+            default                                           : accept;
         }
     }
 
@@ -101,7 +102,7 @@ parser SwitchMLIngressParser(
 
     state parse_ib_bth {
         pkt.extract(hdr.ib_bth);
-        transition parse_data0;
+        transition parse_switchml;
     }
 
     state parse_switchml {
@@ -190,10 +191,10 @@ parser SwitchMLEgressParser(
     state parse_ethernet {
         pkt.extract(hdr.ethernet);
         transition select(hdr.ethernet.ether_type) {
-            ETHERTYPE_ROCEv1     : parse_ib_grh;
-            ETHERTYPE_IPV4       : parse_ipv4;
-            ETHERTYPE_SWITCHML   : parse_switchml;
-            default : accept;
+            ETHERTYPE_ROCEv1                                    : parse_ib_grh;
+            ETHERTYPE_IPV4                                      : parse_ipv4;
+            ETHERTYPE_SWITCHML_BASE &&& ETHERTYPE_SWITCHML_MASK : parse_switchml;
+            default                                             : accept;
         }
     }
 
@@ -214,8 +215,9 @@ parser SwitchMLEgressParser(
         udp_checksum.subtract({hdr.udp.src_port});
         eg_md.checksum_udp_tmp = udp_checksum.get();
         transition select(hdr.udp.dst_port) {
-            UDP_PORT_ROCEV2 : parse_ib_bth;
-            default : accept;
+            UDP_PORT_ROCEV2                                   : parse_ib_bth;
+            UDP_PORT_SWITCHML_BASE &&& UDP_PORT_SWITCHML_MASK : parse_switchml;
+            default                                           : accept;
         }
     }
 
@@ -226,7 +228,7 @@ parser SwitchMLEgressParser(
 
     state parse_ib_bth {
         pkt.extract(hdr.ib_bth);
-        transition accept;
+        transition parse_switchml;
     }
 
     state parse_switchml {

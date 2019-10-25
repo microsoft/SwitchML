@@ -46,13 +46,15 @@ control CountWorkers(
     table count_workers {
         key = {
             ig_md.map_result : ternary;
-            hdr.switchml_md.packet_type: exact;
+            hdr.switchml_md.packet_type: ternary;
         }
         actions = {
             count_workers_action;
             read_count_workers_action;
+            NoAction;
         }
-        size = 4;
+        const default_action = NoAction;
+        size = 2;
     }
 
     apply {

@@ -17,12 +17,13 @@
 #include "types.p4"
 #include "headers.p4"
 #include "parsers.p4"
-#include "registers.p4"
+//#include "registers.p4"
 
 #include "get_worker_bitmap.p4"
 #include "drop_simulator.p4"
 #include "update_and_check_worker_bitmap.p4"
 #include "exponent_max.p4"
+#include "mantissa_stage.p4"
 #include "count_workers.p4"
 #include "set_dst_addr.p4"
 #include "forward.p4"
@@ -47,41 +48,6 @@ control SwitchMLIngress(
     // define swap_bytes tables
     //DEFINE_SWAP_BYTES(ingress)
 #endif
-    
-    //
-    // instantiate data/exponent registers
-    //
-    
-    // create macro to instantate data registers for one pipe stage
-    #define DEFSTAGE(AA, BB, CC, DD) \
-    STAGE(data_pair_t, pool_index_t, data_t, data_reg, register_size, \
-        hdr.d0.d, hdr.d1.d, hdr.switchml_md.pool_index, \
-        AA, BB, CC, DD)
-
-    // instantiate data registers (8 stages, or 32 2x32b registers, for 256B)
-    DEFSTAGE(00, 01, 02, 03)
-    DEFSTAGE(04, 05, 06, 07)
-    DEFSTAGE(08, 09, 10, 11)
-    DEFSTAGE(12, 13, 14, 15)
-    DEFSTAGE(16, 17, 18, 19)
-    DEFSTAGE(20, 21, 22, 23)
-    DEFSTAGE(24, 25, 26, 27)
-    DEFSTAGE(28, 29, 30, 31)
-    //DEFSTAGE(32, 33, 34, 35)
-    //DEFSTAGE(36, 37, 38, 39)
-    
-    // // define exponent registers
-    // STAGE(exponent_pair_t, index_t, exponent_t, exponent_reg, register_size, \
-    //     hdr.e0.e, hdr.e1.e, ig_md.address, ig_md.opcode, \
-    //     0, 1, 2, 3)
-
-
-    action invalidate_second_header() {
-        hdr.d1.setInvalid();
-        // recirculate
-        //        ig_intr_md_for_tm.ucast_egress_port =
-        //        ig_intr_md.ingress_port[8:7] ++ port[6:0];
-    }
 
 #ifdef INCLUDE_SWAP_BYTES
     // convert from little- to big-endian, first half
@@ -121,10 +87,8 @@ control SwitchMLIngress(
 #endif
 
     //
-    // include definitions of tables and actions
+    // instantiate controls for  of tables and actions
     //
-
-    // include worker bitmap tables/registers
 
     GetWorkerBitmap() get_worker_bitmap;
     DropRNG() drop_rng;
@@ -132,6 +96,15 @@ control SwitchMLIngress(
 
     ExponentMax() exponent_max;
 
+    MantissaStage() mantissas_00_01_02_03;
+    MantissaStage() mantissas_04_05_06_07;
+    MantissaStage() mantissas_08_09_10_11;
+    MantissaStage() mantissas_12_13_14_15;
+    MantissaStage() mantissas_16_17_18_19;
+    MantissaStage() mantissas_20_21_22_23;
+    MantissaStage() mantissas_24_25_26_27;
+    MantissaStage() mantissas_28_29_30_31;
+    
     CountWorkers() count_workers;
     Forward() forward;
 
@@ -153,75 +126,38 @@ control SwitchMLIngress(
             update_and_check_worker_bitmap.apply(hdr, ig_md, ig_dprsr_md);
         }
 
-        // update max exponents
-        // for now, we'll stick with the original SwitchML design and use 1 16-bit exponent.
-        exponent_max.apply(hdr.exponents.e0, hdr.exponents.e0, _, _, hdr, ig_md);
-
         // detect when we have received all the packets for a slot
         count_workers.apply(hdr, ig_md, ig_dprsr_md);
 
-        // if we've received all the packets for a slot, transmit
+        // update max exponents
+        // for now, we'll stick with the original SwitchML design and use 1 16-bit exponent (half of the register unit). 
+        exponent_max.apply(hdr.exponents.e0, hdr.exponents.e0, hdr.exponents.e0, _, hdr, ig_md);
 
-
-        #ifdef INCLUDE_SWAP_BYTES
-        // do on consume pass
-        hton1();
-        hton2();
-        #endif
+        // aggregate mantissas
+        // use a macro to reduce a little typing.
+#define APPLY_MANTISSA_STAGE(AA, BB, CC, DD)       \
+        mantissas_##AA##_##BB##_##CC##_##DD.apply( \
+            hdr.d0.d##AA, hdr.d1.d##AA,            \
+            hdr.d0.d##BB, hdr.d1.d##BB,            \
+            hdr.d0.d##CC, hdr.d1.d##CC,            \
+            hdr.d0.d##DD, hdr.d1.d##DD,            \
+            hdr, ig_md)
         
+        APPLY_MANTISSA_STAGE(00, 01, 02, 03);
+        APPLY_MANTISSA_STAGE(04, 05, 06, 07);
+        APPLY_MANTISSA_STAGE(08, 09, 10, 11);
+        APPLY_MANTISSA_STAGE(12, 13, 14, 15);
+        APPLY_MANTISSA_STAGE(16, 17, 18, 19);
+        APPLY_MANTISSA_STAGE(20, 21, 22, 23);
+        APPLY_MANTISSA_STAGE(24, 25, 26, 27);
+        APPLY_MANTISSA_STAGE(28, 29, 30, 31);
 
-
-
-        // aggregate data
-        // apply data register tables (8 stages)
         
-        //APPLY_HTON(00, 01, 02, 03);
-        APPLY_STAGE(data_reg, 00, 01, 02, 03);
-        //APPLY_NTOH(00, 01, 02, 03);
-
-        //APPLY_HTON(04, 05, 06, 07);
-        APPLY_STAGE(data_reg, 04, 05, 06, 07);
-        //APPLY_NTOH(04, 05, 06, 07);
-
-        //APPLY_HTON(08, 09, 10, 11);
-        APPLY_STAGE(data_reg, 08, 09, 10, 11);
-        //APPLY_NTOH(08, 09, 10, 11);
-
-        //APPLY_HTON(12, 13, 14, 15);
-        APPLY_STAGE(data_reg, 12, 13, 14, 15);
-        //APPLY_NTOH(12, 13, 14, 15);
-
-        //APPLY_HTON(16, 17, 18, 19);
-        APPLY_STAGE(data_reg, 16, 17, 18, 19);
-        //APPLY_NTOH(16, 17, 18, 19);
-
-        //APPLY_HTON(20, 21, 22, 23);
-        APPLY_STAGE(data_reg, 20, 21, 22, 23);
-        //APPLY_NTOH(20, 21, 22, 23);
-
-        //APPLY_HTON(24, 25, 26, 27);
-        APPLY_STAGE(data_reg, 24, 25, 26, 27);
-        //APPLY_NTOH(24, 25, 26, 27);
-
-        //APPLY_HTON(28, 29, 30, 31);
-        APPLY_STAGE(data_reg, 28, 29, 30, 31);
-        //APPLY_NTOH(28, 29, 30, 31);
-
-        //APPLY_STAGE(data_reg, 32, 33, 34, 35);
-        //APPLY_STAGE(data_reg, 36, 37, 38, 39);
-
-        // do on harvest pass
-        // hton1();
-        // hton2();
-
-        // // We have consumed both the d0 and d1 headers, and filled the d0 headers with the values we read out.
-        // // Now drop the d1 header and (if this is the last packet) recirculate.
-        // invalidate_second_header();
-
-        // Finished consuming SwitchML packet; now recirculate to finish harvesting values
         if (hdr.switchml_md.packet_type == packet_type_t.CONSUME) {
+            // Finished consuming SwitchML packet; now recirculate to finish harvesting values
             recirculate_for_harvest.apply(hdr, ig_intr_md, ig_tm_md);
         } else if (hdr.switchml_md.packet_type == packet_type_t.HARVEST) {
+            // Finished harvesting SwitchML packet; now either broadcast or forward
             if (ig_md.map_result != 0) { // retransmission
                 if (ig_md.first_last_flag == 0) {
                     if (hdr.ib_bth.isValid()) {
@@ -277,7 +213,7 @@ control SwitchMLEgress(
             egress_drop_sim.apply(hdr.switchml_md, eg_intr_dprs_md);
         }
 
-        // fill in correct destination address
+        // for multicast packets, fill in correct destination address based on 
         if (hdr.switchml_md.isValid()) {
             set_dst_addr.apply(eg_intr_md, hdr);
             // get rid of SwitchML metadata header before packet leaves the switch

@@ -13,7 +13,6 @@
 // Exponent max value calculator
 //
 // Each control handles two exponents.
-// Since the same max operation can be repeated with the same result, we don't check for retransmissions here.
 control ExponentMax(
     in exponent_t exponent0,
     in exponent_t exponent1,
@@ -73,7 +72,7 @@ control ExponentMax(
     }
 
     /* If bitmap_before is 0 and type is CONSUME, just write values. */
-    /* If bitmap_before is not zero and type is CONSUME, add values and read first value. */
+    /* If bitmap_before is not zero and type is CONSUME, compute max of values and read first value. */
     /* If map_result is not zero and type is CONSUME, just read first value. */
     /* If type is HARVEST, read second value. */
     table exponent_max {
@@ -87,8 +86,21 @@ control ExponentMax(
             exponent_max_read0_action;
             exponent_read0_action;
             exponent_read1_action;
+            NoAction;
         }
         size = 4;
+        const entries = {
+            // if bitmap_before is all 0's and type is CONSUME, this is the first packet for slot, so just write values and read first value
+            (32w0,    _, packet_type_t.CONSUME) : exponent_write_read0_action();
+            // if bitmap_before is nonzero, map_result is all 0's,  and type is CONSUME, compute max of values and read first value
+            (   _, 32w0, packet_type_t.CONSUME) : exponent_max_read0_action();
+            // if bitmap_before is nonzero, map_result is nonzero, and type is CONSUME, this is a retransmission, so just read first value
+            (   _,    _, packet_type_t.CONSUME) : exponent_read0_action();
+            // if type is HARVEST, read second value
+            (   _,    _, packet_type_t.HARVEST) : exponent_read1_action();
+        }
+        // if none of the above are true, do nothing.
+        const default_action = NoAction;
     }
 
     apply {
