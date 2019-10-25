@@ -1,4 +1,7 @@
 #!/usr/bin/python
+######################################################
+#   Copyright (C) Microsoft. All rights reserved.    #
+######################################################
 
 import os
 import sys

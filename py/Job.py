@@ -1,3 +1,7 @@
+######################################################
+#   Copyright (C) Microsoft. All rights reserved.    #
+######################################################
+
 import logging
 from pprint import pprint, pformat
 import bfrt_grpc.bfruntime_pb2 as bfruntime_pb2

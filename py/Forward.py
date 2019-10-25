@@ -1,3 +1,6 @@
+######################################################
+#   Copyright (C) Microsoft. All rights reserved.    #
+######################################################
 
 import logging
 from pprint import pprint, pformat
