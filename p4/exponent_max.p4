@@ -33,7 +33,7 @@ control ExponentMax(
     };
 
     action exponent_write_read0_action() {
-        max_exponent0 = exponent_write_read0_register_action.execute(hdr.switchml_md.pool_index);
+        max_exponent0 = exponent_write_read0_register_action.execute(ig_md.switchml_md.pool_index);
     }
 
     // compute max of both exponents and read first one
@@ -46,7 +46,7 @@ control ExponentMax(
     };
 
     action exponent_max_read0_action() {
-        max_exponent0 = exponent_max_read0_register_action.execute(hdr.switchml_md.pool_index);
+        max_exponent0 = exponent_max_read0_register_action.execute(ig_md.switchml_md.pool_index);
     }
 
     // read first max register
@@ -57,7 +57,7 @@ control ExponentMax(
     };
 
     action exponent_read0_action() {
-        max_exponent0 = exponent_read0_register_action.execute(hdr.switchml_md.pool_index);
+        max_exponent0 = exponent_read0_register_action.execute(ig_md.switchml_md.pool_index);
     }
 
     // read second max register
@@ -68,7 +68,7 @@ control ExponentMax(
     };
 
     action exponent_read1_action() {
-        max_exponent1 = exponent_read1_register_action.execute(hdr.switchml_md.pool_index);
+        max_exponent1 = exponent_read1_register_action.execute(ig_md.switchml_md.pool_index);
     }
 
     /* If bitmap_before is 0 and type is CONSUME, just write values. */
@@ -77,9 +77,9 @@ control ExponentMax(
     /* If type is HARVEST, read second value. */
     table exponent_max {
         key = {
-            ig_md.worker_bitmap_before : ternary;
-            ig_md.map_result : ternary;
-            hdr.switchml_md.packet_type: ternary;
+            ig_md.switchml_md.worker_bitmap_before : ternary;
+            ig_md.switchml_md.map_result : ternary;
+            ig_md.switchml_md.packet_type: ternary;
         }
         actions = {
             exponent_write_read0_action;

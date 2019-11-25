@@ -15,8 +15,9 @@ parser SwitchMLIngressParser(
     out header_t hdr,
     out ingress_metadata_t ig_md,
     out ingress_intrinsic_metadata_t ig_intr_md) {
+
     Checksum() ipv4_checksum;
-    Checksum() udp_checksum;
+    ParserCounter() counter;
 
     state start {
         pkt.extract(ig_intr_md);
@@ -45,6 +46,7 @@ parser SwitchMLIngressParser(
         pkt.advance(64);
         #endif
         // decide what to do with recirculated packets now
+        counter.set(8w0);
         transition select(ig_intr_md.ingress_port) {
             // handle non-resubmitted packets coming in on recirculation port in this pipeline
             68 &&& 0x7f: parse_recirculate;
@@ -55,9 +57,9 @@ parser SwitchMLIngressParser(
 
     state parse_recirculate {
         // parse switchml metadata and mark as recirculated
-        pkt.extract(hdr.switchml_md);
-        hdr.switchml_md.packet_type = packet_type_t.HARVEST;
-        hdr.switchml_md.opcode      = opcode_t.READ1;
+        pkt.extract(ig_md.switchml_md); // overwrite switchml header if this was recirculated
+        //ig_md.switchml_md.packet_type = packet_type_t.HARVEST; // already set before recirculation
+        counter.set(8w1);
         // now parse the rest of the packet
         transition parse_ethernet;
     }
@@ -68,7 +70,7 @@ parser SwitchMLIngressParser(
             ETHERTYPE_ROCEv1                                    : parse_ib_grh;
             ETHERTYPE_IPV4                                      : parse_ipv4;
             ETHERTYPE_SWITCHML_BASE &&& ETHERTYPE_SWITCHML_MASK : parse_switchml;
-            default : accept;
+            default : accept_non_switchml;
         }
     }
 
@@ -76,22 +78,18 @@ parser SwitchMLIngressParser(
         pkt.extract(hdr.ipv4);
         ipv4_checksum.add(hdr.ipv4);
         ig_md.checksum_err_ipv4 = ipv4_checksum.verify();
-        udp_checksum.subtract({hdr.ipv4.src_addr});
         transition select(hdr.ipv4.protocol) {
             IP_PROTOCOL_UDP : parse_udp;
-            default         : accept;
+            default         : accept_non_switchml;
         }
     }
 
     state parse_udp {
         pkt.extract(hdr.udp);
-        udp_checksum.subtract({hdr.udp.checksum});
-        udp_checksum.subtract({hdr.udp.src_port});
-        ig_md.checksum_udp_tmp = udp_checksum.get();
         transition select(hdr.udp.dst_port) {
             UDP_PORT_ROCEV2                                   : parse_ib_bth;
             UDP_PORT_SWITCHML_BASE &&& UDP_PORT_SWITCHML_MASK : parse_switchml;
-            default                                           : accept;
+            default                                           : accept_non_switchml;
         }
     }
 
@@ -119,16 +117,29 @@ parser SwitchMLIngressParser(
     @critical
     state parse_data0 {
         pkt.extract(hdr.d0);
-        transition parse_data1;
+        // was this packet recirculated?
+        transition select(counter.is_zero()) { // 0 ==> not recirculated
+            true  : parse_data1; // not recirculated; continue parsing and set packet type
+            false : accept;      // recirculated; SwitchML packet type already set
+        }
     }
 
     // mark as @critical to ensure minimum cycles for extraction
     @critical
     state parse_data1 {
         pkt.extract(hdr.d1);
+        // at this point we know this is a SwitchML packet that wasn't recirculated, so mark it for consumption.
+        ig_md.switchml_md.setValid();
+        ig_md.switchml_md.packet_type = packet_type_t.CONSUME;
         transition accept;
     }
 
+    state accept_non_switchml {
+        ig_md.switchml_md.setValid();
+        ig_md.switchml_md.packet_type = packet_type_t.IGNORE; // assume non-SwitchML packet
+        transition accept;
+    }
+    
 }
 
 control SwitchMLIngressDeparser(
@@ -138,7 +149,6 @@ control SwitchMLIngressDeparser(
     in ingress_intrinsic_metadata_for_deparser_t ig_dprsr_md) {
 
     Checksum() ipv4_checksum;
-    //Checksum() udp_checksum;
 
     apply {
         hdr.ipv4.hdr_checksum = ipv4_checksum.update({
@@ -153,13 +163,10 @@ control SwitchMLIngressDeparser(
                 hdr.ipv4.protocol,
                 hdr.ipv4.src_addr,
                 hdr.ipv4.dst_addr});
-        // skip UDP checksum until we can ensure it's correct
+        // TODO: skip UDP checksum for now. Fix if needed and cost reasonable.
         hdr.udp.checksum = 0; 
-        // hdr.udp.checksum = udp_checksum.update(data = {
-        //         hdr.ipv4.src_addr,
-        //         hdr.udp.src_port,
-        //         ig_md.checksum_udp_tmp
-        //     }, zeros_as_ones = true);
+
+        pkt.emit(ig_md.switchml_md);
         pkt.emit(hdr);
     }
 }
@@ -171,7 +178,6 @@ parser SwitchMLEgressParser(
     out egress_intrinsic_metadata_t eg_intr_md) {
 
     Checksum() ipv4_checksum;
-    Checksum() udp_checksum;
 
     state start {
         pkt.extract(eg_intr_md);
@@ -181,9 +187,8 @@ parser SwitchMLEgressParser(
 
     state parse_switchml_md {
         // parse switchml metadata and mark as egress
-        pkt.extract(hdr.switchml_md);
-        hdr.switchml_md.packet_type = packet_type_t.EGRESS;
-        hdr.switchml_md.opcode      = opcode_t.NOP;
+        pkt.extract(eg_md.switchml_md);
+        eg_md.switchml_md.packet_type = packet_type_t.EGRESS;
         // now parse the rest of the packet
         transition parse_ethernet;
     }
@@ -202,7 +207,6 @@ parser SwitchMLEgressParser(
         pkt.extract(hdr.ipv4);
         ipv4_checksum.add(hdr.ipv4);
         eg_md.checksum_err_ipv4 = ipv4_checksum.verify();
-        udp_checksum.subtract({hdr.ipv4.src_addr});
         transition select(hdr.ipv4.protocol) {
             IP_PROTOCOL_UDP : parse_udp;
             default         : accept;
@@ -211,9 +215,6 @@ parser SwitchMLEgressParser(
 
     state parse_udp {
         pkt.extract(hdr.udp);
-        udp_checksum.subtract({hdr.udp.checksum});
-        udp_checksum.subtract({hdr.udp.src_port});
-        eg_md.checksum_udp_tmp = udp_checksum.get();
         transition select(hdr.udp.dst_port) {
             UDP_PORT_ROCEV2                                   : parse_ib_bth;
             UDP_PORT_SWITCHML_BASE &&& UDP_PORT_SWITCHML_MASK : parse_switchml;
@@ -245,7 +246,6 @@ control SwitchMLEgressDeparser(
     in egress_intrinsic_metadata_for_deparser_t eg_intr_dprs_md) {
 
     Checksum() ipv4_checksum;
-    //Checksum() udp_checksum;
 
     apply {
         hdr.ipv4.hdr_checksum = ipv4_checksum.update({
@@ -260,13 +260,9 @@ control SwitchMLEgressDeparser(
                 hdr.ipv4.protocol,
                 hdr.ipv4.src_addr,
                 hdr.ipv4.dst_addr});
-        // skip UDP checksum until we can ensure it's correct
+        // TODO: skip UDP checksum for now.
         hdr.udp.checksum = 0; 
-        // hdr.udp.checksum = udp_checksum.update(data = {
-        //         hdr.ipv4.src_addr,
-        //         hdr.udp.src_port,
-        //         ig_md.checksum_udp_tmp
-        //     }, zeros_as_ones = true);
+
         pkt.emit(hdr);
     }
 }

@@ -24,7 +24,7 @@ class MantissaStage(Table):
         self.control_name = "SwitchMLIngress.mantissas_{:02d}_{:02d}_{:02d}_{:02d}".format(aa, bb, cc, dd)
 
         # no table entries to clear or set defaults for
-        self.clear()
+        ###self.clear() # Don't clear table; it's programmed in the P4 code, and self.table is not set.
         self.add_default_entries()
         
         # clear registers

@@ -25,7 +25,7 @@ class ExponentMax(Table):
         self.register = self.bfrt_info.table_get("pipe.SwitchMLIngress.exponent_max.exponents")
 
         # clear and add defaults
-        self.clear()
+        ###self.clear() # Don't clear table; it's programmed in the P4 code
         self.clear_registers()
         self.add_default_entries()
 

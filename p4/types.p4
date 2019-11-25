@@ -40,14 +40,6 @@ typedef bit<17> pool_index_t;
 typedef bit<16> worker_pool_index_t;
 //typedef bit<32> pool_index_t;
 
-// types related to registers
-enum bit<2> opcode_t {
-    NOP         = 0x0,
-    WRITE_READ0 = 0x1,
-    OP_READ0    = 0x2,
-    READ1       = 0x3
-}
-
 typedef bit<32> data_t;
 struct data_pair_t {
     data_t first;
@@ -76,47 +68,67 @@ enum bit<2> packet_type_t {
     EGRESS  = 0x3
 }
 
-// Metadata for ingress stage
-struct ingress_metadata_t {
-    
-    // is this a consume or harvest packet?
-    bool harvest;
+// SwitchML metadata header; bridged for recirculation (and not exposed outside the switch)
+//@pa_container_size("ingress", "ig_md.switchml_md.pool_index", 32)
+//@pa_container_size("egress", "eg_md.switchml_md.pool_index", 32)
+header switchml_md_h {
+    MulticastGroupId_t mgid;
 
-    // what type type should the return packet be?
-    packet_type_t packet_type;
-    opcode_t opcode;
+    @padding
+    bit<5> pad;
     
-    // variables for detecting aggregation completion
-    worker_bitmap_t worker_bitmap;
+    // what should we do with this packet?
+    packet_type_t packet_type;
+
+    // which pool element are we talking about?
+    pool_index_t pool_index; // Index of pool element, including both sets.
+
+    // random number used to simulated packet drops
+    drop_random_value_t drop_random_value;
+
+    // 0 if packet is first packet; non-zero if retransmission
+    worker_bitmap_t map_result;
+
+    // 0 if first packet, 1 if last packet
+    num_workers_t first_last_flag;
+
+    // bitmaps before and after the current worker is ORed in
     worker_bitmap_t worker_bitmap_before;
     worker_bitmap_t worker_bitmap_after;
-    worker_bitmap_t map_result;
+}
+
+// Metadata for ingress stage
+struct ingress_metadata_t {
+    switchml_md_h switchml_md;
+    
+    // this bitmap has one bit set for the current packet's worker
+    // communication between get_worker_bitmap and update_and_check_worker_bitmap; not used in harvest
+    worker_bitmap_t worker_bitmap;
+    
+    // this bitmap shows the way the bitmap should look when complete
+    // communication between get_worker_bitmap and update_and_check_worker_bitmap; not used in harvest
     worker_bitmap_t complete_bitmap;
 
+    // how many workers in job?
+    // communication between get_worker_bitmap and count_workers; not used in harvest
     num_workers_t num_workers;
-    
-    bit<1> pool_set;  // set if index is in set1
-    //bit<1> set_offset;
-    worker_pool_index_t pool_remaining;
-    pool_index_t pool_index;
 
-    num_workers_t first_last_flag;
-    
+    // set if index is in set1
+    // communication between get_worker_bitmap and update_and_check_worker_bitmap; not used in harvest
+    bit<1> pool_set;
+
+    // check how many slots remain in this job's pool
+    worker_pool_index_t pool_remaining;
+
     // checksum stuff
-    bit<16> checksum_ipv4_tmp;
-    bit<16> checksum_udp_tmp;
-    bool checksum_upd_ipv4;
-    bool checksum_upd_udp;
     bool checksum_err_ipv4;
 }
 
 // Metadata for egress stage
 struct egress_metadata_t {
+    switchml_md_h switchml_md;
+    
     // checksum stuff
-    bit<16> checksum_ipv4_tmp;
-    bit<16> checksum_udp_tmp;
-    bool checksum_upd_ipv4;
-    bool checksum_upd_udp;
     bool checksum_err_ipv4;
 }
 

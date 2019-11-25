@@ -33,33 +33,33 @@ control UpdateAndCheckWorkerBitmap(
     action drop() {
         // mark for drop; mark as IGNORE so we don't further process this packet
         ig_dprsr_md.drop_ctl = ig_dprsr_md.drop_ctl | 0x1;
-        hdr.switchml_md.packet_type = packet_type_t.IGNORE;
+        ig_md.switchml_md.packet_type = packet_type_t.IGNORE;
     }
 
     action check_worker_bitmap_action() {
         // set map result to nonzero if this packet is a retransmission
-        ig_md.map_result          = ig_md.worker_bitmap_before & ig_md.worker_bitmap;
+        ig_md.switchml_md.map_result = ig_md.switchml_md.worker_bitmap_before & ig_md.worker_bitmap;
         // compute same updated bitmap that was stored in the register
-        ig_md.worker_bitmap_after = ig_md.worker_bitmap_before | ig_md.worker_bitmap;
+        ig_md.switchml_md.worker_bitmap_after = ig_md.switchml_md.worker_bitmap_before | ig_md.worker_bitmap;
     }    
 
     action update_worker_bitmap_set0_action() {
-        ig_md.worker_bitmap_before = worker_bitmap_update_set0.execute(hdr.switchml_md.pool_index);
+        ig_md.switchml_md.worker_bitmap_before = worker_bitmap_update_set0.execute(ig_md.switchml_md.pool_index);
         check_worker_bitmap_action();
     }
 
     action update_worker_bitmap_set1_action() {
-        ig_md.worker_bitmap_before = worker_bitmap_update_set1.execute(hdr.switchml_md.pool_index);
+        ig_md.switchml_md.worker_bitmap_before = worker_bitmap_update_set1.execute(ig_md.switchml_md.pool_index);
         check_worker_bitmap_action();
     }
 
     table update_and_check_worker_bitmap {
         key = {
             ig_md.pool_set : ternary;
-            hdr.switchml_md.packet_type : ternary;  // only act on packets of type CONSUME
+            ig_md.switchml_md.packet_type : ternary;  // only act on packets of type CONSUME
             ig_md.pool_remaining : ternary; // if sign bit is set, pool index was too large, so drop
             // TODO: disable for now
-            //hdr.switchml_md.drop_random_value : range; // use to simulate drops
+            //ig_md.switchml_md.drop_random_value : range; // use to simulate drops
         }
         actions = {
             update_worker_bitmap_set0_action;
@@ -68,6 +68,13 @@ control UpdateAndCheckWorkerBitmap(
             NoAction;
         }
         size = 3;
+        const entries = {
+            // direct updates to the correct set
+            (1w0, packet_type_t.CONSUME, 0x0000 &&& 0x8000) : update_worker_bitmap_set0_action();
+            (1w1, packet_type_t.CONSUME, 0x0000 &&& 0x8000) : update_worker_bitmap_set1_action();
+            // drop packets that have indices that extend beyond what's allowed
+            (  _, packet_type_t.CONSUME, 0x8000 &&& 0x8000) : drop();
+        }
         const default_action = NoAction;
     }
 

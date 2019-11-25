@@ -31,7 +31,7 @@ control MantissaSum(
     };
 
     action mantissa_write_read0_action() {
-        mantissa0 = mantissa_write_read0_register_action.execute(hdr.switchml_md.pool_index);
+        mantissa0 = mantissa_write_read0_register_action.execute(ig_md.switchml_md.pool_index);
     }
 
     // compute sum of both mantissas and read first one
@@ -44,7 +44,7 @@ control MantissaSum(
     };
 
     action mantissa_sum_read0_action() {
-        mantissa0 = mantissa_sum_read0_register_action.execute(hdr.switchml_md.pool_index);
+        mantissa0 = mantissa_sum_read0_register_action.execute(ig_md.switchml_md.pool_index);
     }
 
     // read first sum register
@@ -55,7 +55,7 @@ control MantissaSum(
     };
 
     action mantissa_read0_action() {
-        mantissa0 = mantissa_read0_register_action.execute(hdr.switchml_md.pool_index);
+        mantissa0 = mantissa_read0_register_action.execute(ig_md.switchml_md.pool_index);
     }
 
     // read second sum register
@@ -66,7 +66,7 @@ control MantissaSum(
     };
 
     action mantissa_read1_action() {
-        mantissa1 = mantissa_read1_register_action.execute(hdr.switchml_md.pool_index);
+        mantissa1 = mantissa_read1_register_action.execute(ig_md.switchml_md.pool_index);
     }
 
     /* If bitmap_before is 0 and type is CONSUME, just write values. */
@@ -75,9 +75,9 @@ control MantissaSum(
     /* If type is HARVEST, read second value. */
     table mantissa_sum {
         key = {
-            ig_md.worker_bitmap_before : ternary;
-            ig_md.map_result : ternary;
-            hdr.switchml_md.packet_type: ternary;
+            ig_md.switchml_md.worker_bitmap_before : ternary;
+            ig_md.switchml_md.map_result : ternary;
+            ig_md.switchml_md.packet_type: ternary;
         }
         actions = {
             mantissa_write_read0_action;

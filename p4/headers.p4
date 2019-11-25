@@ -55,27 +55,6 @@ header switchml_h {
     bit<16> pool_index;
 }
 
-// SwitchML metadata header; bridged for recirculation (and not exposed outside the switch)
-//@pa_container_size("ingress", "hdr.switchml_md.pool_index", 32)
-header switchml_md_h {
-    MulticastGroupId_t mgid;
-
-    bit<3>  padding;
-
-    bit<1> multicast;
-
-    // what should we do with this packet?
-    packet_type_t packet_type;
-    opcode_t opcode;
-
-    // which pool element are we talking about?
-    bit<7> pad2;
-    pool_index_t pool_index; // Index of pool element, including both sets.
-
-    // random number used to simulated packet drops
-    drop_random_value_t drop_random_value;
-}
-
 // InfiniBand-RoCE Global Routing Header
 header ib_grh_h {
     bit<4>   ipver;
@@ -148,7 +127,6 @@ header data_h {
 
 // Full header stack
 struct header_t {
-    switchml_md_h switchml_md;
     ethernet_h  ethernet;
     ipv4_h      ipv4;
     udp_h       udp;

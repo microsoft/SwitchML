@@ -84,39 +84,8 @@ job = Job(gc, bfrt_info,
 logger.info("Switch configured successfully!")
 
 
-# start run loop
+# start CLI
 job.run()
-
-def make_completer(vocabulary):
-    def custom_complete(text, state):
-        results = [x for x in vocabulary if x.startswith(text)] + [None]
-        return results[state] + " "
-    return custom_complete
-
-readline.parse_and_bind('tab: complete')
-readline.parse_and_bind('set editing-mode emacs')
-
-vocabulary = {'exit', 'quit', 'clear'}
-#readline.set_completer(make_completer(vocabulary))
-    
-while True:
-    try:
-        command = input('--> ').strip()
-    except KeyboardInterrupt:
-        print "<KeyboardInterrupt>"
-        continue
-    except EOFError:
-        break
-    except Exception as e:
-        print "Hmm. Got {}. Continuing...".format(e)
-        continue
-    
-    if command == 'clear':
-        logger.info("Clearing registers...")
-    elif command == 'exit' or command == 'quit':
-        break
-    else:
-        logger.info('Unrecognized command. Type "clear" to clear registers. Type "exit" or hit Ctrl-\ to exit.')
 
 # exit (bug workaround)
 logger.info("Exiting!")

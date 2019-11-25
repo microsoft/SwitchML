@@ -29,11 +29,6 @@
 #include "forward.p4"
 #include "recirculate_for_harvest.p4"
 
-#ifdef INCLUDE_SWAP_BYTES
-#include "swap_bytes.p4"
-#endif
-
-
 control SwitchMLIngress(
     inout header_t hdr,
     inout ingress_metadata_t ig_md,
@@ -42,50 +37,6 @@ control SwitchMLIngress(
     inout ingress_intrinsic_metadata_for_deparser_t ig_dprsr_md,
     inout ingress_intrinsic_metadata_for_tm_t ig_tm_md) {
     
-    
-    
-#ifdef INCLUDE_SWAP_BYTES
-    // define swap_bytes tables
-    //DEFINE_SWAP_BYTES(ingress)
-#endif
-
-#ifdef INCLUDE_SWAP_BYTES
-    // convert from little- to big-endian, first half
-    // WARNING: swaps each pair of values (0 & 1, 2 & 3, etc.)
-    action hton1() {
-        HTONNTOH(hdr.d0, 00, 01, 02, 03);
-        HTONNTOH(hdr.d0, 04, 05, 06, 07);
-        HTONNTOH(hdr.d0, 08, 09, 10, 11);
-        HTONNTOH(hdr.d0, 12, 13, 14, 15);
-        HTONNTOH(hdr.d1, 00, 01, 02, 03);
-        HTONNTOH(hdr.d1, 04, 05, 06, 07);
-        HTONNTOH(hdr.d1, 08, 09, 10, 11);
-        HTONNTOH(hdr.d1, 12, 13, 14, 15);
-    }
-
-    // convert from little- to big-endian, second half
-    // WARNING: swaps each pair of values (0 & 1, 2 & 3, etc.)
-    action hton2() {
-        HTONNTOH(hdr.d0, 16, 17, 18, 19);
-        HTONNTOH(hdr.d0, 20, 21, 22, 23);
-        HTONNTOH(hdr.d0, 24, 25, 26, 27);
-        HTONNTOH(hdr.d0, 28, 29, 30, 31);
-        HTONNTOH(hdr.d1, 16, 17, 18, 19);
-        HTONNTOH(hdr.d1, 20, 21, 22, 23);
-        HTONNTOH(hdr.d1, 24, 25, 26, 27);
-        HTONNTOH(hdr.d1, 28, 29, 30, 31);
-    }
-
-    // convert back from big to little-endian
-    // TODO: currently fails with more than a few swaps
-    action ntoh() {
-        HTONNTOH(hdr.d0, 00, 01, 02, 03);
-        HTONNTOH(hdr.d0, 04, 05, 06, 07);
-        HTONNTOH(hdr.d0, 08, 09, 10, 11);
-        //HTONNTOH(hdr.d0, 12, 13, 14, 15);
-    }
-#endif
-
     //
     // instantiate controls for  of tables and actions
     //
@@ -112,25 +63,23 @@ control SwitchMLIngress(
 
     apply {
 
-        // if switchml_md header isn't valid, this packet came from outside the switch
-        if (! hdr.switchml_md.isValid()) { // skip if recirculated with metadata header
-            // get worker masks, pool base index, other parameters for this packet
-            // add switchml_md header
-            get_worker_bitmap.apply(hdr, ig_md, ig_intr_md, ig_prsr_md, ig_dprsr_md, ig_tm_md);
+        // see if this is a SwitchML packet
+        // get worker masks, pool base index, other parameters for this packet
+        // add switchml_md header if it isn't already added
+        get_worker_bitmap.apply(hdr, ig_md, ig_intr_md, ig_prsr_md, ig_dprsr_md, ig_tm_md);
 
-            // support dropping packets with some probability by commputing random number here
-            drop_rng.apply(hdr.switchml_md.drop_random_value);
+        // support dropping packets with some probability by commputing random number here
+        drop_rng.apply(ig_md.switchml_md.drop_random_value);
         
-            // record packet reception and check if this packet is a retransmission.
-            // If drop simulation says to, drop packet and clear switchml_md valid bit
-            update_and_check_worker_bitmap.apply(hdr, ig_md, ig_dprsr_md);
-        }
+        // for CONSUME packets, record packet reception and check if this packet is a retransmission.
+        update_and_check_worker_bitmap.apply(hdr, ig_md, ig_dprsr_md);
 
         // detect when we have received all the packets for a slot
         count_workers.apply(hdr, ig_md, ig_dprsr_md);
 
         // update max exponents
-        // for now, we'll stick with the original SwitchML design and use 1 16-bit exponent (half of the register unit). 
+        // for now, we'll stick with the original SwitchML design and use 1 16-bit exponent
+        // (using just half of the register unit). 
         exponent_max.apply(hdr.exponents.e0, hdr.exponents.e0, hdr.exponents.e0, _, hdr, ig_md);
 
         // aggregate mantissas
@@ -152,14 +101,21 @@ control SwitchMLIngress(
         APPLY_MANTISSA_STAGE(24, 25, 26, 27);
         APPLY_MANTISSA_STAGE(28, 29, 30, 31);
 
-        
-        if (hdr.switchml_md.packet_type == packet_type_t.CONSUME) {
-            // Finished consuming SwitchML packet; now recirculate to finish harvesting values
-            recirculate_for_harvest.apply(hdr, ig_intr_md, ig_tm_md);
-        } else if (hdr.switchml_md.packet_type == packet_type_t.HARVEST) {
+
+        // now decide what to do next with this packet. 
+        if (ig_md.switchml_md.packet_type == packet_type_t.CONSUME) {
+            // Finished consuming SwitchML packet
+            if (ig_md.switchml_md.first_last_flag == 1) { // last packet
+                // if this is last packet, recirculate to finish harvesting values
+                recirculate_for_harvest.apply(hdr, ig_md, ig_intr_md, ig_tm_md);
+            } else {
+                ig_dprsr_md.drop_ctl = ig_dprsr_md.drop_ctl | 0x1;
+                ig_md.switchml_md.packet_type = packet_type_t.IGNORE;
+            }
+        } else if (ig_md.switchml_md.packet_type == packet_type_t.HARVEST) {
             // Finished harvesting SwitchML packet; now either broadcast or forward
-            if (ig_md.map_result != 0) { // retransmission
-                if (ig_md.first_last_flag == 0) {
+            if (ig_md.switchml_md.map_result != 0) { // retransmission
+                if (ig_md.switchml_md.first_last_flag == 0) { // first packet ???
                     if (hdr.ib_bth.isValid()) {
                         // do nothing for either RoCE type for  now
                         ig_dprsr_md.drop_ctl = 0x1;
@@ -171,8 +127,8 @@ control SwitchMLIngress(
                         hdr.ethernet.dst_addr = hdr.ethernet.src_addr;
                     }
                 }
-            } else {
-                if (ig_md.first_last_flag == 1) {
+            } else { // not a retransmission
+                if (ig_md.switchml_md.first_last_flag == 1) { // last packet
                     if (hdr.ib_bth.isValid()) {
                         // do nothing for either RoCE type for  now
                         ig_dprsr_md.drop_ctl = 0x1;
@@ -185,8 +141,8 @@ control SwitchMLIngress(
                     }
                 }
             }
-        } else {
-            // not SwitchML packet for us, so just forward
+        } else { // not a CONSUME or HARVEST packet
+            // not SwitchML packet for us, so just forward, if we can
             if (ig_dprsr_md.drop_ctl[0:0] == 1w0) {
                 forward.apply(hdr, ig_md, ig_dprsr_md, ig_tm_md);
             }
@@ -209,15 +165,15 @@ control SwitchMLEgress(
     apply {
         // simulate packet drops
         // (will clear switchml_md valid bit if packet is dropped)
-        if (hdr.switchml_md.isValid()) {
-            egress_drop_sim.apply(hdr.switchml_md, eg_intr_dprs_md);
+        if (eg_md.switchml_md.isValid()) {
+            egress_drop_sim.apply(eg_md.switchml_md, eg_intr_dprs_md);
         }
 
         // for multicast packets, fill in correct destination address based on 
-        if (hdr.switchml_md.isValid()) {
+        if (eg_md.switchml_md.isValid()) {
             set_dst_addr.apply(eg_intr_md, hdr);
             // get rid of SwitchML metadata header before packet leaves the switch
-            hdr.switchml_md.setInvalid();
+            eg_md.switchml_md.setInvalid();
         }
 
     }
