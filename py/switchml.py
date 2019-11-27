@@ -10,9 +10,6 @@ import argparse
 import logging
 from pprint import pprint, pformat
 
-import rlcompleter
-import readline
-
 # add BF Python to search path
 sys.path.append(os.environ['SDE_INSTALL'] + "/lib/python2.7/site-packages/tofino")
 #sys.path.append("/u/jacob/arista/python/tofino-9.0.0")
@@ -55,7 +52,7 @@ bfrt_info = c.bfrt_info_get(args.program)
 # configure job
 #
 
- # Print overall list of tables
+# Print overall list of tables
 logger.info(pformat(bfrt_info.table_dict))
 
 
@@ -98,3 +95,6 @@ sys.stderr.flush()
 # exit (bug workaround)
 os.kill(os.getpid(), signal.SIGTERM)
 
+
+#if __name__ == "__main__":
+#    main()

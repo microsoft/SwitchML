@@ -68,11 +68,11 @@ class SwitchMLData(Packet):
     ]
 
 
-def send_udp(src_mac, src_ip, dst_mac, dst_ip, dest_port):
+def send_udp(src_mac, src_ip, dst_mac, dst_ip, dest_port, pool_index):
     p = (Ether(dst=dst_mac, src=src_mac) /
          IP(dst=dst_ip, src=src_ip)/
          UDP(dport=dest_port)/
-         SwitchML() /
+         SwitchML(pool_index=pool_index) /
          SwitchMLExponent() /
          SwitchMLData() /
          SwitchMLData())
@@ -81,5 +81,9 @@ def send_udp(src_mac, src_ip, dst_mac, dst_ip, dest_port):
 
 
 random.seed()
-send_udp("b8:83:03:74:01:8c", "198.19.200.50", "06:00:00:00:00:01", "198.19.200.200", 0xbee0)
-#send_udp("b8:83:03:73:a6:a0", "198.19.200.49", "06:00:00:00:00:01", "198.19.200.200", 0xbee0)
+
+send_udp("b8:83:03:74:01:8c", "198.19.200.50", "06:00:00:00:00:01", "198.19.200.200", 0xbee0, 0)
+send_udp("b8:83:03:73:a6:a0", "198.19.200.49", "06:00:00:00:00:01", "198.19.200.200", 0xbee0, 0)
+
+send_udp("b8:83:03:74:01:8c", "198.19.200.50", "06:00:00:00:00:01", "198.19.200.200", 0xbee0, 1)
+send_udp("b8:83:03:73:a6:a0", "198.19.200.49", "06:00:00:00:00:01", "198.19.200.200", 0xbee0, 1)

@@ -38,7 +38,6 @@ struct num_workers_pair_t {
 // type used to index into register array
 typedef bit<17> pool_index_t;
 typedef bit<16> worker_pool_index_t;
-//typedef bit<32> pool_index_t;
 
 typedef bit<32> data_t;
 struct data_pair_t {
@@ -75,6 +74,11 @@ header switchml_md_h {
     MulticastGroupId_t mgid;
 
     @padding
+    bit<7> pad2;
+    
+    PortId_t ingress_port;
+
+    @padding
     bit<5> pad;
     
     // what should we do with this packet?
@@ -82,6 +86,7 @@ header switchml_md_h {
 
     // which pool element are we talking about?
     pool_index_t pool_index; // Index of pool element, including both sets.
+
 
     // random number used to simulated packet drops
     drop_random_value_t drop_random_value;

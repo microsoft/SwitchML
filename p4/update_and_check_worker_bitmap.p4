@@ -10,6 +10,7 @@
 control UpdateAndCheckWorkerBitmap(
     inout header_t hdr,
     inout ingress_metadata_t ig_md,
+    in ingress_intrinsic_metadata_t ig_intr_md,
     inout ingress_intrinsic_metadata_for_deparser_t ig_dprsr_md) {
 
     Register<worker_bitmap_pair_t, pool_index_t>(num_pools) worker_bitmap;
@@ -18,14 +19,16 @@ control UpdateAndCheckWorkerBitmap(
         void apply(inout worker_bitmap_pair_t value, out worker_bitmap_t return_value) {
             return_value = value.first; // return first set
             value.first  = value.first  | ig_md.worker_bitmap;    // add bit to first set
-            value.second = value.second & (~ig_md.worker_bitmap); // remove bit from second set
+            // TODO: this works around a compiler bug; remove outer ~ after it's fixed
+            value.second = ~(value.second & (~ig_md.worker_bitmap)); // remove bit from second set
         }
     };
 
     RegisterAction<worker_bitmap_pair_t, pool_index_t, worker_bitmap_t>(worker_bitmap) worker_bitmap_update_set1 = {
         void apply(inout worker_bitmap_pair_t value, out worker_bitmap_t return_value) {
             return_value = value.second; // return second set
-            value.first  = value.first  & (~ig_md.worker_bitmap); // remove bit from first set
+            // TODO: this works around a compiler bug; remove outer ~ after it's fixed
+            value.first  = ~(value.first  & (~ig_md.worker_bitmap)); // remove bit from first set
             value.second = value.second | ig_md.worker_bitmap;    // add bit to second set
         }
     };
@@ -41,15 +44,16 @@ control UpdateAndCheckWorkerBitmap(
         ig_md.switchml_md.map_result = ig_md.switchml_md.worker_bitmap_before & ig_md.worker_bitmap;
         // compute same updated bitmap that was stored in the register
         ig_md.switchml_md.worker_bitmap_after = ig_md.switchml_md.worker_bitmap_before | ig_md.worker_bitmap;
+        ig_md.switchml_md.ingress_port = ig_intr_md.ingress_port;
     }    
 
     action update_worker_bitmap_set0_action() {
-        ig_md.switchml_md.worker_bitmap_before = worker_bitmap_update_set0.execute(ig_md.switchml_md.pool_index);
+        ig_md.switchml_md.worker_bitmap_before = worker_bitmap_update_set0.execute(ig_md.switchml_md.pool_index[16:1]);
         check_worker_bitmap_action();
     }
 
     action update_worker_bitmap_set1_action() {
-        ig_md.switchml_md.worker_bitmap_before = worker_bitmap_update_set1.execute(ig_md.switchml_md.pool_index);
+        ig_md.switchml_md.worker_bitmap_before = worker_bitmap_update_set1.execute(ig_md.switchml_md.pool_index[16:1]);
         check_worker_bitmap_action();
     }
 

@@ -27,7 +27,7 @@
 #include "count_workers.p4"
 #include "set_dst_addr.p4"
 #include "forward.p4"
-#include "recirculate_for_harvest.p4"
+#include "NextStep.p4"
 
 control SwitchMLIngress(
     inout header_t hdr,
@@ -57,9 +57,9 @@ control SwitchMLIngress(
     MantissaStage() mantissas_28_29_30_31;
     
     CountWorkers() count_workers;
-    Forward() forward;
 
-    RecirculateForHarvest() recirculate_for_harvest;
+    NextStep() switchml_next_step;
+    Forward() non_switchml_forward;
 
     apply {
 
@@ -72,7 +72,7 @@ control SwitchMLIngress(
         drop_rng.apply(ig_md.switchml_md.drop_random_value);
         
         // for CONSUME packets, record packet reception and check if this packet is a retransmission.
-        update_and_check_worker_bitmap.apply(hdr, ig_md, ig_dprsr_md);
+        update_and_check_worker_bitmap.apply(hdr, ig_md, ig_intr_md, ig_dprsr_md);
 
         // detect when we have received all the packets for a slot
         count_workers.apply(hdr, ig_md, ig_dprsr_md);
@@ -102,51 +102,55 @@ control SwitchMLIngress(
         APPLY_MANTISSA_STAGE(28, 29, 30, 31);
 
 
-        // now decide what to do next with this packet. 
-        if (ig_md.switchml_md.packet_type == packet_type_t.CONSUME) {
-            // Finished consuming SwitchML packet
-            if (ig_md.switchml_md.first_last_flag == 1) { // last packet
-                // if this is last packet, recirculate to finish harvesting values
-                recirculate_for_harvest.apply(hdr, ig_md, ig_intr_md, ig_tm_md);
-            } else {
-                ig_dprsr_md.drop_ctl = ig_dprsr_md.drop_ctl | 0x1;
-                ig_md.switchml_md.packet_type = packet_type_t.IGNORE;
-            }
-        } else if (ig_md.switchml_md.packet_type == packet_type_t.HARVEST) {
-            // Finished harvesting SwitchML packet; now either broadcast or forward
-            if (ig_md.switchml_md.map_result != 0) { // retransmission
-                if (ig_md.switchml_md.first_last_flag == 0) { // first packet ???
-                    if (hdr.ib_bth.isValid()) {
-                        // do nothing for either RoCE type for  now
-                        ig_dprsr_md.drop_ctl = 0x1;
-                    } else {
-                        if (hdr.udp.isValid()) {
-                            hdr.ipv4.dst_addr = hdr.ipv4.src_addr;
-                        } 
-                        ig_tm_md.ucast_egress_port = ig_intr_md.ingress_port;
-                        hdr.ethernet.dst_addr = hdr.ethernet.src_addr;
-                    }
-                }
-            } else { // not a retransmission
-                if (ig_md.switchml_md.first_last_flag == 1) { // last packet
-                    if (hdr.ib_bth.isValid()) {
-                        // do nothing for either RoCE type for  now
-                        ig_dprsr_md.drop_ctl = 0x1;
-                    } else {
-                        if (hdr.udp.isValid()) {
-                            hdr.ipv4.dst_addr = hdr.ipv4.src_addr;
-                        } 
-                        ig_tm_md.mcast_grp_a = 1;
-                        hdr.ethernet.dst_addr = hdr.ethernet.src_addr;
-                    }
-                }
-            }
-        } else { // not a CONSUME or HARVEST packet
-            // not SwitchML packet for us, so just forward, if we can
-            if (ig_dprsr_md.drop_ctl[0:0] == 1w0) {
-                forward.apply(hdr, ig_md, ig_dprsr_md, ig_tm_md);
-            }
-        }
+        switchml_next_step.apply(hdr, ig_md, ig_intr_md, ig_dprsr_md, ig_tm_md);
+        non_switchml_forward.apply(hdr, ig_md, ig_dprsr_md, ig_tm_md);
+        
+
+        // // now decide what to do next with this packet. 
+        // if (ig_md.switchml_md.packet_type == packet_type_t.CONSUME) {
+        //     // Finished consuming SwitchML packet
+        //     if (ig_md.switchml_md.first_last_flag == 1) { // last packet
+        //         // if this is last packet, recirculate to finish harvesting values
+        //         recirculate_for_harvest.apply(hdr, ig_md, ig_intr_md, ig_tm_md);
+        //     } else {
+        //         ig_dprsr_md.drop_ctl = ig_dprsr_md.drop_ctl | 0x1;
+        //         ig_md.switchml_md.packet_type = packet_type_t.IGNORE;
+        //     }
+        // } else if (ig_md.switchml_md.packet_type == packet_type_t.HARVEST) {
+        //     // Finished harvesting SwitchML packet; now either broadcast or forward
+        //     if (ig_md.switchml_md.map_result == 0) { // not a retransmission
+        //         if (ig_md.switchml_md.first_last_flag == 1) { // last packet
+        //             if (hdr.ib_bth.isValid()) {
+        //                 // do nothing for either RoCE type for  now
+        //                 ig_dprsr_md.drop_ctl = 0x1;
+        //             } else {
+        //                 if (hdr.udp.isValid()) {
+        //                     hdr.ipv4.dst_addr = hdr.ipv4.src_addr;
+        //                 } 
+        //                 ig_tm_md.mcast_grp_a = 1;
+        //                 hdr.ethernet.dst_addr = hdr.ethernet.src_addr;
+        //             }
+        //         }
+        //     } else { // retransmission
+        //         if (ig_md.switchml_md.first_last_flag == 0) { // first packet ???
+        //             if (hdr.ib_bth.isValid()) {
+        //                 // do nothing for either RoCE type for  now
+        //                 ig_dprsr_md.drop_ctl = 0x1;
+        //             } else {
+        //                 if (hdr.udp.isValid()) {
+        //                     hdr.ipv4.dst_addr = hdr.ipv4.src_addr;
+        //                 } 
+        //                 ig_tm_md.ucast_egress_port = ig_intr_md.ingress_port;
+        //                 hdr.ethernet.dst_addr = hdr.ethernet.src_addr;
+        //             }
+        //         }
+        //     }
+        // } else { // not a CONSUME or HARVEST packet
+        //     // not SwitchML packet for us, so just forward, if we can
+        //     if (ig_dprsr_md.drop_ctl[0:0] == 1w0) {
+        //         forward.apply(hdr, ig_md, ig_dprsr_md, ig_tm_md);
+        //     }
+        // }
     }
 }
 

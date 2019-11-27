@@ -144,7 +144,7 @@ class Job(Cmd, object):
             rid = rid + 1
             
         # add workers to multicast group   
-        self.pre = PRE(self.gc, self.bfrt_info)
+        self.pre = PRE(self.gc, self.bfrt_info, self.ports)
         self.pre.add_workers(self.switch_mgid, self.workers)
             
         # now add workers to set_dst_addr table in egress
