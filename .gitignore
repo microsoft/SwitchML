@@ -2,3 +2,5 @@
 out
 *~
 *.pyc
+tofino*/*
+logs/*

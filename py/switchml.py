@@ -11,13 +11,16 @@ import logging
 from pprint import pprint, pformat
 
 # add BF Python to search path
-sys.path.append(os.environ['SDE_INSTALL'] + "/lib/python2.7/site-packages/tofino")
-#sys.path.append("/u/jacob/arista/python/tofino-9.0.0")
-
-# Import BFRT GRPC stuff
-import bfrt_grpc.bfruntime_pb2 as bfruntime_pb2
-import bfrt_grpc.client as gc
-import grpc
+try:
+    # Import BFRT GRPC stuff
+    import bfrt_grpc.bfruntime_pb2 as bfruntime_pb2
+    import bfrt_grpc.client as gc
+    import grpc
+except:
+    sys.path.append(os.environ['SDE_INSTALL'] + "/lib/python2.7/site-packages/tofino")
+    import bfrt_grpc.bfruntime_pb2 as bfruntime_pb2
+    import bfrt_grpc.client as gc
+    import grpc
 
 # set up options
 argparser = argparse.ArgumentParser(description="SwitchML controller.")

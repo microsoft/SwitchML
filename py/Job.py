@@ -150,10 +150,8 @@ class Job(Cmd, object):
         # now add workers to set_dst_addr table in egress
         self.set_dst_addr = SetDstAddr(self.gc, self.bfrt_info)
         for worker in self.workers:
-            worker.rid = 0 # TODO: set real rid
             self.set_dst_addr.add_udp_entry(worker.mac, worker.ip, worker.rid,
                                             self.ports.get_dev_port(worker.front_panel_port, worker.lane))
-
 
     
     def __init__(self, gc, bfrt_info,

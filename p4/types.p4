@@ -37,6 +37,7 @@ struct num_workers_pair_t {
 
 // type used to index into register array
 typedef bit<17> pool_index_t;
+typedef bit<16> pool_index_by2_t;
 typedef bit<16> worker_pool_index_t;
 
 typedef bit<32> data_t;
@@ -80,7 +81,7 @@ header switchml_md_h {
 
     @padding
     bit<5> pad;
-    
+
     // what should we do with this packet?
     packet_type_t packet_type;
 

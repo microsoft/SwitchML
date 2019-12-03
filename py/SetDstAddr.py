@@ -49,7 +49,10 @@ class SetDstAddr(Table):
         self.table.entry_add(
             target,
             [self.table.make_key([gc.KeyTuple('$MATCH_PRIORITY', 10),
-                                  # match on egress RID and port
+                                  # match on packet type, egress RID and port
+                                  gc.KeyTuple('hdr.switchml_md.packet_type',
+                                              0x3,  // only match on broadcast packets
+                                              0x3),
                                   gc.KeyTuple('eg_intr_md.egress_rid',
                                               worker_rid, # 16 bits
                                               0xffff),
