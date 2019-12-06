@@ -39,8 +39,7 @@ control NextStep(
         hdr.ethernet.src_addr = hdr.ethernet.dst_addr;
         // send to multicast group; egress will fill in destination IP and MAC address
         ig_tm_md.mcast_grp_a = ig_md.switchml_md.mgid;
-        ig_dprsr_md.drop_ctl = 3w0; // TODO: necessary?
-        //ig_tm_md.ucast_egress_port = 0;
+        ig_md.switchml_md.packet_type = packet_type_t.EGRESS;
     }
     
     action broadcast_udp() {
@@ -52,15 +51,16 @@ control NextStep(
     action retransmit_eth() {
         // swap source and destination MAC addresses
         hdr.ethernet.dst_addr = hdr.ethernet.src_addr;
-        hdr.ethernet.src_addr = hdr.ethernet.dst_addr;
+        //hdr.ethernet.src_addr = hdr.ethernet.dst_addr;
         // send back out ingress port
         ig_tm_md.ucast_egress_port = ig_md.switchml_md.ingress_port;
+        ig_md.switchml_md.packet_type = packet_type_t.IGNORE;
     }
     
     action retransmit_udp() {
         // swap source and destination IPs
         hdr.ipv4.dst_addr = hdr.ipv4.src_addr;
-        hdr.ipv4.src_addr = hdr.ipv4.dst_addr;
+        //hdr.ipv4.src_addr = hdr.ipv4.dst_addr;
         retransmit_eth();
     }
     
@@ -80,7 +80,7 @@ control NextStep(
             retransmit_udp;
             NoAction;
         }
-        size = 8;
+        size = 9;
         const entries = {
             //        packet type | last |map result|RoCE|  UDP
 

@@ -50,15 +50,12 @@ class SetDstAddr(Table):
             target,
             [self.table.make_key([gc.KeyTuple('$MATCH_PRIORITY', 10),
                                   # match on packet type, egress RID and port
-                                  gc.KeyTuple('hdr.switchml_md.packet_type',
-                                              0x3,  // only match on broadcast packets
+                                  gc.KeyTuple('eg_md.switchml_md.packet_type',
+                                              0x3,  # only match on broadcast packets
                                               0x3),
                                   gc.KeyTuple('eg_intr_md.egress_rid',
                                               worker_rid, # 16 bits
-                                              0xffff),
-                                  gc.KeyTuple('eg_intr_md.egress_port',
-                                              worker_dev_port, # 9 bits
-                                              0x1ff)])],
+                                              0xffff)])],
             [self.table.make_data([gc.DataTuple('eth_dst_addr', worker_mac),
                                    gc.DataTuple('ip_dst_addr', worker_ip)],
                                   'SwitchMLEgress.set_dst_addr.set_dst_addr_for_SwitchML_UDP')])

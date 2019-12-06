@@ -40,8 +40,6 @@ control EgressDropSimulator(
 
     action drop() {
         eg_dprsr_md.drop_ctl = eg_dprsr_md.drop_ctl | 0x1;
-        // get rid of SwitchML metadata header to indicate to later stages that packet should be ignored
-        switchml_md.setInvalid();
     }
 
     table egress_drop {

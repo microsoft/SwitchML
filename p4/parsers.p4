@@ -59,7 +59,8 @@ parser SwitchMLIngressParser(
         // parse switchml metadata and mark as recirculated
         pkt.extract(ig_md.switchml_md); // overwrite switchml header if this was recirculated
         //ig_md.switchml_md.packet_type = packet_type_t.HARVEST; // already set before recirculation
-        counter.set(8w1);
+        counter.set(8w1);  // remember we don't need to parse 
+        hdr.d1.setValid(); // this will be filled in by the pipeline
         // now parse the rest of the packet
         transition parse_ethernet;
     }
@@ -114,18 +115,20 @@ parser SwitchMLIngressParser(
     }
 
     // mark as @critical to ensure minimum cycles for extraction
-    @critical
+    // TODO: fix after compiler bug fix
+    //@critical
     state parse_data0 {
         pkt.extract(hdr.d0);
         // was this packet recirculated?
         transition select(counter.is_zero()) { // 0 ==> not recirculated
             true  : parse_data1; // not recirculated; continue parsing and set packet type
-            false : accept;      // recirculated; SwitchML packet type already set
+            _     : accept;      // recirculated; SwitchML packet type already set
         }
     }
 
     // mark as @critical to ensure minimum cycles for extraction
-    @critical
+    // TODO: fix after compiler bug fix
+    //@critical
     state parse_data1 {
         pkt.extract(hdr.d1);
         // at this point we know this is a SwitchML packet that wasn't recirculated, so mark it for consumption.
@@ -151,20 +154,22 @@ control SwitchMLIngressDeparser(
     Checksum() ipv4_checksum;
 
     apply {
-        hdr.ipv4.hdr_checksum = ipv4_checksum.update({
-                hdr.ipv4.version,
-                hdr.ipv4.ihl,
-                hdr.ipv4.diffserv,
-                hdr.ipv4.total_len,
-                hdr.ipv4.identification,
-                hdr.ipv4.flags,
-                hdr.ipv4.frag_offset,
-                hdr.ipv4.ttl,
-                hdr.ipv4.protocol,
-                hdr.ipv4.src_addr,
-                hdr.ipv4.dst_addr});
+        if (hdr.ipv4.isValid()) {
+            hdr.ipv4.hdr_checksum = ipv4_checksum.update({
+                    hdr.ipv4.version,
+                    hdr.ipv4.ihl,
+                    hdr.ipv4.diffserv,
+                    hdr.ipv4.total_len,
+                    hdr.ipv4.identification,
+                    hdr.ipv4.flags,
+                    hdr.ipv4.frag_offset,
+                    hdr.ipv4.ttl,
+                    hdr.ipv4.protocol,
+                    hdr.ipv4.src_addr,
+                    hdr.ipv4.dst_addr});
+        }
         // TODO: skip UDP checksum for now. Fix if needed and cost reasonable.
-        hdr.udp.checksum = 0; 
+        //hdr.udp.checksum = 0; 
 
         pkt.emit(ig_md.switchml_md);
         pkt.emit(hdr);
@@ -182,13 +187,17 @@ parser SwitchMLEgressParser(
     state start {
         pkt.extract(eg_intr_md);
         // all egress packets in this design have a SwitchML metadata header.
-        transition parse_switchml_md;
+        // TODO: compiler bug workaround; remove this when fixed
+        transition select(eg_intr_md.pkt_length) {
+            0 : parse_switchml_md;
+            _ : parse_switchml_md;
+        }
+        //transition parse_switchml_md;
     }
 
     state parse_switchml_md {
         // parse switchml metadata and mark as egress
         pkt.extract(eg_md.switchml_md);
-        eg_md.switchml_md.packet_type = packet_type_t.EGRESS;
         // now parse the rest of the packet
         transition parse_ethernet;
     }
@@ -248,20 +257,22 @@ control SwitchMLEgressDeparser(
     Checksum() ipv4_checksum;
 
     apply {
-        hdr.ipv4.hdr_checksum = ipv4_checksum.update({
-                hdr.ipv4.version,
-                hdr.ipv4.ihl,
-                hdr.ipv4.diffserv,
-                hdr.ipv4.total_len,
-                hdr.ipv4.identification,
-                hdr.ipv4.flags,
-                hdr.ipv4.frag_offset,
-                hdr.ipv4.ttl,
-                hdr.ipv4.protocol,
-                hdr.ipv4.src_addr,
-                hdr.ipv4.dst_addr});
+        if (hdr.ipv4.isValid()) {
+            hdr.ipv4.hdr_checksum = ipv4_checksum.update({
+                    hdr.ipv4.version,
+                    hdr.ipv4.ihl,
+                    hdr.ipv4.diffserv,
+                    hdr.ipv4.total_len,
+                    hdr.ipv4.identification,
+                    hdr.ipv4.flags,
+                    hdr.ipv4.frag_offset,
+                    hdr.ipv4.ttl,
+                    hdr.ipv4.protocol,
+                    hdr.ipv4.src_addr,
+                    hdr.ipv4.dst_addr});
+        }
         // TODO: skip UDP checksum for now.
-        hdr.udp.checksum = 0; 
+        //hdr.udp.checksum = 0; 
 
         pkt.emit(hdr);
     }

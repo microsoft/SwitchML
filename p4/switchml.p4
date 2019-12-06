@@ -169,17 +169,10 @@ control SwitchMLEgress(
     apply {
         // simulate packet drops
         // (will clear switchml_md valid bit if packet is dropped)
-        if (eg_md.switchml_md.isValid()) {
-            egress_drop_sim.apply(eg_md.switchml_md, eg_intr_dprs_md);
-        }
+        egress_drop_sim.apply(eg_md.switchml_md, eg_intr_dprs_md);
 
         // for multicast packets, fill in correct destination address based on 
-        if (eg_md.switchml_md.isValid()) {
-            set_dst_addr.apply(eg_intr_md, hdr);
-            // get rid of SwitchML metadata header before packet leaves the switch
-            eg_md.switchml_md.setInvalid();
-        }
-
+        set_dst_addr.apply(eg_md, eg_intr_md, hdr);
     }
 }
 

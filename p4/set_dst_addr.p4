@@ -8,6 +8,7 @@
 #define _SET_DST_ADDR_
 
 control SetDestinationAddress(
+    in egress_metadata_t eg_md,
     in egress_intrinsic_metadata_t eg_intr_md,
     inout header_t hdr) {
 
@@ -29,6 +30,9 @@ control SetDestinationAddress(
         udp_port_t tmp = hdr.udp.src_port;
         hdr.udp.dst_port = hdr.udp.src_port;
         hdr.udp.src_port = tmp;
+
+        // disable UDP checksum for now
+        hdr.udp.checksum = 0;
     }
 
 
@@ -83,7 +87,7 @@ control SetDestinationAddress(
     
     table set_dst_addr {
         key = {
-            eg_intr_md.egress_port : ternary; // output port
+            eg_md.switchml_md.packet_type : ternary;
             eg_intr_md.egress_rid  : ternary; // replication ID: indicates which worker we're sending to
         }
         actions = {
