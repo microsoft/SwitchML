@@ -40,8 +40,8 @@ class SetDstAddr(Table):
         pass
 
     # Add SwitchML UDP entry to table
-    def add_udp_entry(self, worker_mac, worker_ip, worker_rid, worker_dev_port):
-        self.logger.info("Adding worker {} {} at rid {} port {}".format(worker_mac, worker_ip, worker_rid, worker_dev_port))
+    def add_udp_entry(self, worker_mac, worker_ip, worker_udp_port, worker_rid, worker_dev_port):
+        self.logger.info("Adding worker {} {} {} at rid {} port {}".format(worker_mac, worker_ip, worker_udp_port, worker_rid, worker_dev_port))
 
         # target all pipes on device 0
         target = gc.Target(device_id=0, pipe_id=0xffff)
@@ -57,6 +57,7 @@ class SetDstAddr(Table):
                                               worker_rid, # 16 bits
                                               0xffff)])],
             [self.table.make_data([gc.DataTuple('eth_dst_addr', worker_mac),
-                                   gc.DataTuple('ip_dst_addr', worker_ip)],
+                                   gc.DataTuple('ip_dst_addr', worker_ip),
+                                   gc.DataTuple('udp_dst_port', worker_udp_port)],
                                   'SwitchMLEgress.set_dst_addr.set_dst_addr_for_SwitchML_UDP')])
 

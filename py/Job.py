@@ -66,8 +66,7 @@ class Job(Cmd, object):
     def do_clear(self, arg):
         'Clear all registers.'
         print "Clearing all registers..."
-        for x in self.registers_to_clear:
-            x.clear_registers()
+        self.clear_registers()
         print "Registers cleared."
 
 
@@ -79,7 +78,20 @@ class Job(Cmd, object):
     # state management for job
     #
 
+    def clear_registers(self):
+        for x in self.registers_to_clear:
+            if self.max_register_to_clear is not None:
+                x.clear_registers(max_index=self.max_register_to_clear)
+            else:
+                x.clear_registers()
+
+    def clear_all(self):
+        for x in self.tables_to_clear:
+            x.clear()
+    
     def configure_job(self):
+        self.clear_all()
+        
         # first, delete all old ports and add new ports for workers,
         self.ports = Ports(self.gc, self.bfrt_info)
         self.ports.delete_all_ports()
@@ -87,13 +99,23 @@ class Job(Cmd, object):
             self.ports.add_port(worker.front_panel_port, worker.lane, worker.speed, worker.fec)
         
 
+        self.tables_to_clear    = []
+        self.registers_to_clear = []
+        # set this to a postivie integer n to clear only registers 0 to n-1 for testing
+        self.max_register_to_clear = None
+            
         # add workers to worker bitmap table
         self.get_worker_bitmap = GetWorkerBitmap(self.gc, self.bfrt_info)
+        self.tables_to_clear.append(self.get_worker_bitmap)
         match_priority = 10       # not sure if this matters
         pool_base = 0             # TODO: for now, support only one pool at base index 0
         pool_size = 22528         # TODO: for now, use entire switch for single pool
         worker_mask = 0x00000001  # initial worker mask
         num_workers = len(self.workers)
+
+        if num_workers > 32:
+            log.error("Current design supports only 32 workers per job; you requested {}".format(num_workers))
+        
         for worker in self.workers:
             self.get_worker_bitmap.add_udp_entry(self.switch_mac, self.switch_ip, self.switch_udp_port, self.switch_udp_port_mask,
                                                  worker.mac, worker.ip, worker_mask, num_workers,
@@ -105,33 +127,44 @@ class Job(Cmd, object):
         
         # add update rules for bitmap and clear register
         self.update_and_check_worker_bitmap = UpdateAndCheckWorkerBitmap(self.gc, self.bfrt_info)
-        self.registers_to_clear = [self.update_and_check_worker_bitmap]
+        self.registers_to_clear.append(self.update_and_check_worker_bitmap)
+        self.tables_to_clear.append(self.update_and_check_worker_bitmap)
         
         # add rules for worker count and clear register
         self.count_workers = CountWorkers(self.gc, self.bfrt_info)
         self.registers_to_clear.append(self.count_workers)
+        self.tables_to_clear.append(self.count_workers)
         
         # add rules for exponent max calculation and clear register
         self.exponent_max = ExponentMax(self.gc, self.bfrt_info)
         self.registers_to_clear.append(self.exponent_max)
+        self.tables_to_clear.append(self.exponent_max)
         
         # add rules for data registers and clear registers
         self.mantissas_00_01_02_03 = MantissaStage(self.gc, self.bfrt_info,  0,  1,  2,  3)
         self.registers_to_clear.append(self.mantissas_00_01_02_03)
+        self.tables_to_clear.append(self.mantissas_00_01_02_03)
         self.mantissas_04_05_06_07 = MantissaStage(self.gc, self.bfrt_info,  4,  5,  6,  7)
         self.registers_to_clear.append(self.mantissas_04_05_06_07)
+        self.tables_to_clear.append(self.mantissas_04_05_06_07)
         self.mantissas_08_09_10_11 = MantissaStage(self.gc, self.bfrt_info,  8,  9, 10, 11)
         self.registers_to_clear.append(self.mantissas_08_09_10_11)
+        self.tables_to_clear.append(self.mantissas_08_09_10_11)
         self.mantissas_12_13_14_15 = MantissaStage(self.gc, self.bfrt_info, 12, 13, 14, 15)
         self.registers_to_clear.append(self.mantissas_12_13_14_15)
+        self.tables_to_clear.append(self.mantissas_12_13_14_15)
         self.mantissas_16_17_18_19 = MantissaStage(self.gc, self.bfrt_info, 16, 17, 18, 19)
         self.registers_to_clear.append(self.mantissas_16_17_18_19)
+        self.tables_to_clear.append(self.mantissas_16_17_18_19)
         self.mantissas_20_21_22_23 = MantissaStage(self.gc, self.bfrt_info, 20, 21, 22, 23)
         self.registers_to_clear.append(self.mantissas_20_21_22_23)
+        self.tables_to_clear.append(self.mantissas_20_21_22_23)
         self.mantissas_24_25_26_27 = MantissaStage(self.gc, self.bfrt_info, 24, 25, 26, 27)
         self.registers_to_clear.append(self.mantissas_24_25_26_27)
+        self.tables_to_clear.append(self.mantissas_24_25_26_27)
         self.mantissas_28_29_30_31 = MantissaStage(self.gc, self.bfrt_info, 28, 29, 30, 31)
         self.registers_to_clear.append(self.mantissas_28_29_30_31)
+        self.tables_to_clear.append(self.mantissas_28_29_30_31)
     
         #
         # configure multicast group
@@ -149,9 +182,13 @@ class Job(Cmd, object):
             
         # now add workers to set_dst_addr table in egress
         self.set_dst_addr = SetDstAddr(self.gc, self.bfrt_info)
+        self.tables_to_clear.append(self.set_dst_addr)
         for worker in self.workers:
-            self.set_dst_addr.add_udp_entry(worker.mac, worker.ip, worker.rid,
+            self.set_dst_addr.add_udp_entry(worker.mac, worker.ip, worker.udp_port, worker.rid,
                                             self.ports.get_dev_port(worker.front_panel_port, worker.lane))
+
+        # should already be done
+        #self.clear_registers()
 
     
     def __init__(self, gc, bfrt_info,
@@ -176,6 +213,11 @@ class Job(Cmd, object):
         self.switch_udp_port_mask = switch_udp_port_mask
         self.switch_mgid = switch_mgid
         self.workers = workers
+
+        # allocate storage
+        self.registers_to_clear = []
+        self.tables_to_clear    = []
+        self.max_register_to_clear = None
         
         # configure job
         self.configure_job()

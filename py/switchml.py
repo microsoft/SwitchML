@@ -55,8 +55,8 @@ bfrt_info = c.bfrt_info_get(args.program)
 # configure job
 #
 
-# Print overall list of tables
-logger.info(pformat(bfrt_info.table_dict))
+# # Print overall list of tables
+# logger.info(pformat(bfrt_info.table_dict))
 
 
 # mac, ip, and udp port number that switch will respond to for SwitchML
@@ -76,8 +76,8 @@ from Job import Job
 from Worker import Worker
 job = Job(gc, bfrt_info,
           switch_ip, switch_mac, switch_udp_port, switch_udp_port_mask, switch_mgid,
-          [Worker(mac="b8:83:03:73:a6:a0", ip="198.19.200.49", front_panel_port=1, lane=1, speed=10, fec='none'),
-           Worker(mac="b8:83:03:74:01:8c", ip="198.19.200.50", front_panel_port=1, lane=0, speed=10, fec='none')])
+          [Worker(mac="b8:83:03:73:a6:a0", ip="198.19.200.49", udp_port=0xbee0, front_panel_port=1, lane=1, speed=10, fec='none'),
+           Worker(mac="b8:83:03:74:01:8c", ip="198.19.200.50", udp_port=0xbee0, front_panel_port=1, lane=0, speed=10, fec='none')])
 
 # Done with configuration
 #logger.info("Switch configured! Hit Ctrl-\ to exit.")

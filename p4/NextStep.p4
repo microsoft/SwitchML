@@ -31,15 +31,19 @@ control NextStep(
         // recirculate for harvest
         ig_tm_md.ucast_egress_port = ig_md.switchml_md.ingress_port[8:7] ++ 7w68;
         ig_tm_md.bypass_egress = 1w1;
+        ig_dprsr_md.drop_ctl = 0;
         ig_md.switchml_md.packet_type = packet_type_t.HARVEST;
     }
 
     action broadcast_eth() {
         // set the switch as the source MAC address
         hdr.ethernet.src_addr = hdr.ethernet.dst_addr;
+
         // send to multicast group; egress will fill in destination IP and MAC address
         ig_tm_md.mcast_grp_a = ig_md.switchml_md.mgid;
         ig_md.switchml_md.packet_type = packet_type_t.EGRESS;
+        ig_tm_md.bypass_egress = 1w0;
+        ig_dprsr_md.drop_ctl = 0;
     }
     
     action broadcast_udp() {
@@ -50,17 +54,34 @@ control NextStep(
     
     action retransmit_eth() {
         // swap source and destination MAC addresses
+        mac_addr_t dst_addr;
+        dst_addr = 0;
+        //dst_addr = hdr.ethernet.dst_addr;
+        
         hdr.ethernet.dst_addr = hdr.ethernet.src_addr;
-        //hdr.ethernet.src_addr = hdr.ethernet.dst_addr;
+        hdr.ethernet.src_addr = dst_addr;
+
         // send back out ingress port
         ig_tm_md.ucast_egress_port = ig_md.switchml_md.ingress_port;
         ig_md.switchml_md.packet_type = packet_type_t.IGNORE;
+        ig_tm_md.bypass_egress = 1w0;
+        ig_dprsr_md.drop_ctl = 0;
     }
     
     action retransmit_udp() {
         // swap source and destination IPs
+        ipv4_addr_t dst_addr;
+        dst_addr = 0;//hdr.ipv4.dst_addr;
         hdr.ipv4.dst_addr = hdr.ipv4.src_addr;
-        //hdr.ipv4.src_addr = hdr.ipv4.dst_addr;
+        hdr.ipv4.src_addr = dst_addr;
+
+        udp_port_t dst_port;
+        dst_port = 0;//hdr.udp.dst_port;
+        hdr.udp.dst_port = hdr.udp.src_port;
+        hdr.udp.src_port = dst_port;
+
+        hdr.udp.checksum = 0;
+        
         retransmit_eth();
     }
     

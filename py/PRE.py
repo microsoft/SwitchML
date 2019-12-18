@@ -72,12 +72,6 @@ class PRE(Table):
                     raise e
                 self.logger.info("Multicast node ID {} not found in switch already during delete; this is expected.".format(worker.rid))
 
-        # # now that nodes are added, create multicast group
-        # self.mgid_table.entry_add(
-        #     target,
-        #     [self.mgid_table.make_key([gc.KeyTuple('$MGID', switch_mgid)])],
-        #     [])
-        
         # now add new nodes
         for worker in workers:
             dev_port = self.ports.get_dev_port(worker.front_panel_port, worker.lane)

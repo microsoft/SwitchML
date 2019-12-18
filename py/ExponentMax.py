@@ -25,11 +25,15 @@ class ExponentMax(Table):
         self.register = self.bfrt_info.table_get("pipe.SwitchMLIngress.exponent_max.exponents")
 
         # clear and add defaults
-        ###self.clear() # Don't clear table; it's programmed in the P4 code
-        self.clear_registers()
+        self.clear() # Don't clear table; it's programmed in the P4 code
         self.add_default_entries()
 
-    def clear_registers(self):
+    def clear(self):
+        # override base class method so we don't clear entries set by p4 code
+        # just clear registers
+        self.clear_registers()
+
+    def clear_registers(self, max_index = None):
         self.logger.info("Clearing exponent registers...")
 
         # target all pipes on device 0
@@ -37,6 +41,8 @@ class ExponentMax(Table):
 
         # clear all register entries
         for i in range(self.register.info.size_get()):
+            if max_index is not None and max_index == i:
+                break
             self.register.entry_add(
                 target,
                 [self.register.make_key([gc.KeyTuple('$REGISTER_INDEX', i)])],

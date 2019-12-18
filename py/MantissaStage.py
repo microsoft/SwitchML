@@ -28,9 +28,14 @@ class MantissaStage(Table):
         self.add_default_entries()
         
         # clear registers
-        self.clear_registers()
+        self.clear()
         
-    def clear_registers(self):
+    def clear(self):
+        # override base class method so we don't clear entries set by p4 code
+        # just clear registers
+        self.clear_registers()
+
+    def clear_registers(self, max_index = None):
         self.logger.info("Clearing mantissa registers...")
 
         # target all pipes on device 0
@@ -43,6 +48,8 @@ class MantissaStage(Table):
             self.logger.info("Clearing mantissa register {}...".format(register_name))
             register = self.bfrt_info.table_get(register_name)
             for i in range(register.info.size_get()):
+                if max_index is not None and max_index == i:
+                    break
                 register.entry_add(
                     target,
                     [register.make_key([gc.KeyTuple('$REGISTER_INDEX', i)])],

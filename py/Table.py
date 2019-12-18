@@ -37,3 +37,9 @@ class Table(object):
                 if key:
                     self.table.entry_del(target, [key])
 
+        # # try to reinsert default entry if it exists
+        # try:
+        #     self.table.default_entry_reset(target)
+        # except:
+        #     pass
+            

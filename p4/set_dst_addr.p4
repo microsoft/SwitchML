@@ -19,7 +19,8 @@ control SetDestinationAddress(
 
     action set_dst_addr_for_SwitchML_UDP(
         mac_addr_t eth_dst_addr,
-        ipv4_addr_t ip_dst_addr) {
+        ipv4_addr_t ip_dst_addr,
+        udp_port_t udp_dst_port) {
         
         hdr.ethernet.src_addr = hdr.ethernet.dst_addr;
         hdr.ethernet.dst_addr = eth_dst_addr;
@@ -27,9 +28,8 @@ control SetDestinationAddress(
         hdr.ipv4.src_addr = hdr.ipv4.dst_addr;
         hdr.ipv4.dst_addr = ip_dst_addr;
 
-        udp_port_t tmp = hdr.udp.src_port;
-        hdr.udp.dst_port = hdr.udp.src_port;
-        hdr.udp.src_port = tmp;
+        hdr.udp.src_port = hdr.udp.dst_port; // TODO: pull from table
+        hdr.udp.dst_port = udp_dst_port;
 
         // disable UDP checksum for now
         hdr.udp.checksum = 0;
