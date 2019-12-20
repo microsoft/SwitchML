@@ -178,127 +178,145 @@ class RetransmitAfterReduction(ThreeWorkerTest):
         send_packet(self, 0, self.pktW2S0)
         verify_packet(self, self.expected_pktW2S0, 0)
 
-# class OtherSetReduction(ThreeWorkerTest):
-#     """
-#     Test basic operation of a single slot, starting from the second
-#     set instead of the first.
-#     """
+class OtherSetReduction(ThreeWorkerTest):
+    """
+    Test basic operation of a single slot, starting from the second
+    set instead of the first.
+    """
 
-#     def runTest(self):
-#         # do a straightforward reduction in the second set
-#         send_packet(self, 0, self.pktW0S1)
-#         send_packet(self, 1, self.pktW1S1)
+    def runTest(self):
+        # do a straightforward reduction in the second set
+        send_packet(self, 0, self.pktW0S1)
+        send_packet(self, 1, self.pktW1S1)
+        send_packet(self, 2, self.pktW2S1)
 
-#         verify_packet(self, self.expected_pktW0S1, 0)
-#         verify_packet(self, self.expected_pktW1S1, 1)
+        verify_packet(self, self.expected_pktW0S1, 0)
+        verify_packet(self, self.expected_pktW1S1, 1)
+        verify_packet(self, self.expected_pktW2S1, 2)
 
-# class BothSetsReduction(ThreeWorkerTest):
-#     """
-#     Test basic operation of a pair of sets.
-#     """
+class BothSetsReduction(ThreeWorkerTest):
+    """
+    Test basic operation of a pair of sets.
+    """
 
-#     def runTest(self):
-#         # do a straightforward reduction in the first set
-#         send_packet(self, 0, self.pktW0S0)
-#         send_packet(self, 1, self.pktW1S0)
+    def runTest(self):
+        # do a straightforward reduction in the first set
+        send_packet(self, 0, self.pktW0S0)
+        send_packet(self, 1, self.pktW1S0)
+        send_packet(self, 2, self.pktW2S0)
 
-#         verify_packet(self, self.expected_pktW0S0, 0)
-#         verify_packet(self, self.expected_pktW1S0, 1)
+        verify_packet(self, self.expected_pktW0S0, 0)
+        verify_packet(self, self.expected_pktW1S0, 1)
+        verify_packet(self, self.expected_pktW2S0, 2)
 
-#         # now do a straightforward reduction in the second set
-#         send_packet(self, 0, self.pktW0S1)
-#         send_packet(self, 1, self.pktW1S1)
+        # now do a straightforward reduction in the second set
+        send_packet(self, 0, self.pktW0S1)
+        send_packet(self, 1, self.pktW1S1)
+        send_packet(self, 2, self.pktW2S1)
 
-#         verify_packet(self, self.expected_pktW0S1, 0)
-#         verify_packet(self, self.expected_pktW1S1, 1)
+        verify_packet(self, self.expected_pktW0S1, 0)
+        verify_packet(self, self.expected_pktW1S1, 1)
+        verify_packet(self, self.expected_pktW2S1, 2)
                 
 
-# class SlotReuse(ThreeWorkerTest):
-#     """
-#     Test basic slot reuse.
-#     """
+class SlotReuse(ThreeWorkerTest):
+    """
+    Test basic slot reuse.
+    """
 
-#     def runTest(self):
-#         # do a straightforward reduction in the first set
-#         send_packet(self, 0, self.pktW0S0)
-#         send_packet(self, 1, self.pktW1S0)
+    def runTest(self):
+        # do a straightforward reduction in the first set
+        send_packet(self, 0, self.pktW0S0)
+        send_packet(self, 1, self.pktW1S0)
+        send_packet(self, 2, self.pktW2S0)
 
-#         verify_packet(self, self.expected_pktW0S0, 0)
-#         verify_packet(self, self.expected_pktW1S0, 1)
+        verify_packet(self, self.expected_pktW0S0, 0)
+        verify_packet(self, self.expected_pktW1S0, 1)
+        verify_packet(self, self.expected_pktW2S0, 2)
 
-#         # now do a straightforward reduction in the second set
-#         send_packet(self, 0, self.pktW0S1)
-#         send_packet(self, 1, self.pktW1S1)
+        # now do a straightforward reduction in the second set
+        send_packet(self, 0, self.pktW0S1)
+        send_packet(self, 1, self.pktW1S1)
+        send_packet(self, 2, self.pktW2S1)
 
-#         verify_packet(self, self.expected_pktW0S1, 0)
-#         verify_packet(self, self.expected_pktW1S1, 1)
+        verify_packet(self, self.expected_pktW0S1, 0)
+        verify_packet(self, self.expected_pktW1S1, 1)
+        verify_packet(self, self.expected_pktW2S1, 2)
                 
-#         # now reduce in first set again
-#         send_packet(self, 0, self.pktW0S0)
-#         send_packet(self, 1, self.pktW1S0)
+        # now reduce in first set again
+        send_packet(self, 0, self.pktW0S0)
+        send_packet(self, 1, self.pktW1S0)
+        send_packet(self, 2, self.pktW2S0)
 
-#         verify_packet(self, self.expected_pktW0S0, 0)
-#         verify_packet(self, self.expected_pktW1S0, 1)
+        verify_packet(self, self.expected_pktW0S0, 0)
+        verify_packet(self, self.expected_pktW1S0, 1)
+        verify_packet(self, self.expected_pktW2S0, 2)
 
-#         # now reduce in second set again
-#         send_packet(self, 0, self.pktW0S0)
-#         send_packet(self, 1, self.pktW1S0)
+        # now reduce in second set again
+        send_packet(self, 0, self.pktW0S0)
+        send_packet(self, 1, self.pktW1S0)
+        send_packet(self, 2, self.pktW2S0)
 
-#         verify_packet(self, self.expected_pktW0S0, 0)
-#         verify_packet(self, self.expected_pktW1S0, 1)
+        verify_packet(self, self.expected_pktW0S0, 0)
+        verify_packet(self, self.expected_pktW1S0, 1)
+        verify_packet(self, self.expected_pktW2S0, 2)
 
-# class IgnoreRetransmissions(ThreeWorkerTest):
-#     """
-#     Ensure that retransmissions during reduction are ignored.
-#     """
+class IgnoreRetransmissions(ThreeWorkerTest):
+    """
+    Ensure that retransmissions during reduction are ignored.
+    """
 
-#     def runTest(self):
-#         # half-complete reduction in set 1
-#         send_packet(self, 0, self.pktW0S1)
+    def runTest(self):
+        # half-complete reduction in set 1
+        send_packet(self, 0, self.pktW0S1)
 
-#         # make sure retransmissions to that set from the same worker are ignored
-#         send_packet(self, 0, self.pktW0S1)
-#         verify_no_other_packets(self)
+        # make sure retransmissions to that set from the same worker are ignored
+        send_packet(self, 0, self.pktW0S1)
+        verify_no_other_packets(self)
 
-#         send_packet(self, 0, self.pktW0S1)
-#         verify_no_other_packets(self)
+        send_packet(self, 0, self.pktW0S1)
+        verify_no_other_packets(self)
 
-#         # now finish aggregation
-#         send_packet(self, 1, self.pktW1S1)
+        # now finish aggregation
+        send_packet(self, 1, self.pktW1S1)
+        send_packet(self, 2, self.pktW2S1)
 
-#         # ensure that we still get the correct answer
-#         verify_packet(self, self.expected_pktW0S1, 0)
-#         verify_packet(self, self.expected_pktW1S1, 1)
+        # ensure that we still get the correct answer
+        verify_packet(self, self.expected_pktW0S1, 0)
+        verify_packet(self, self.expected_pktW1S1, 1)
+        verify_packet(self, self.expected_pktW2S1, 2)
         
-# class RetransmitFromPreviousSet(ThreeWorkerTest):
-#     """
-#     Ensure that retransmissions to a previously-aggregated set generate replies.
-#     """
+class RetransmitFromPreviousSet(ThreeWorkerTest):
+    """
+    Ensure that retransmissions to a previously-aggregated set generate replies.
+    """
 
-#     def runTest(self):
-#         # start by doing a straightforward reduction in the second set
-#         send_packet(self, 0, self.pktW0S1)
-#         send_packet(self, 1, self.pktW1S1)
+    def runTest(self):
+        # start by doing a straightforward reduction in the second set
+        send_packet(self, 0, self.pktW0S1)
+        send_packet(self, 1, self.pktW1S1)
+        send_packet(self, 2, self.pktW2S1)
 
-#         # check the answer
-#         verify_packet(self, self.expected_pktW0S1, 0)
-#         verify_packet(self, self.expected_pktW1S1, 1)
+        # check the answer
+        verify_packet(self, self.expected_pktW0S1, 0)
+        verify_packet(self, self.expected_pktW1S1, 1)
+        verify_packet(self, self.expected_pktW2S1, 2)
 
-#         # now, half-complete reduction in the first set
-#         send_packet(self, 1, self.pktW1S0)
+        # now, half-complete reduction in the first set
+        send_packet(self, 1, self.pktW1S0)
         
-#         # verify we can still retransmit from the second set
-#         send_packet(self, 0, self.pktW0S1)
-#         verify_packet(self, self.expected_pktW0S1, 0)
+        # verify we can still retransmit from the second set
+        send_packet(self, 0, self.pktW0S1)
+        verify_packet(self, self.expected_pktW0S1, 0)
 
-#         # try again
-#         send_packet(self, 0, self.pktW0S1)
-#         verify_packet(self, self.expected_pktW0S1, 0)
+        # try again
+        send_packet(self, 0, self.pktW0S1)
+        verify_packet(self, self.expected_pktW0S1, 0)
 
-#         # try again one more time
-#         send_packet(self, 0, self.pktW0S1)
-#         verify_packet(self, self.expected_pktW0S1, 0)
+        # try again one more time
+        send_packet(self, 0, self.pktW0S1)
+        verify_packet(self, self.expected_pktW0S1, 0)
 
-#         # ensure we get no other packets.
-#         verify_no_other_packets(self)
+        # ensure we get no other packets.
+        verify_no_other_packets(self)
         

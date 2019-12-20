@@ -19,14 +19,14 @@
 #include "parsers.p4"
 //#include "registers.p4"
 
-#include "get_worker_bitmap.p4"
-#include "drop_simulator.p4"
-#include "update_and_check_worker_bitmap.p4"
-#include "exponent_max.p4"
-#include "mantissa_stage.p4"
-#include "count_workers.p4"
-#include "set_dst_addr.p4"
-#include "forward.p4"
+#include "GetWorkerBitmap.p4"
+#include "DropSimulator.p4"
+#include "UpdateAndCheckWorkerBitmap.p4"
+#include "ExponentMax.p4"
+#include "MantissaStage.p4"
+#include "CountWorkers.p4"
+#include "SetDstAddr.p4"
+#include "Forward.p4"
 #include "NextStep.p4"
 
 control SwitchMLIngress(

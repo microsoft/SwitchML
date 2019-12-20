@@ -10,7 +10,7 @@
 #include "types.p4"
 #include "headers.p4"
 
-#include "mantissa_sum.p4"
+#include "MantissaSum.p4"
 
 // Mantissa stage value calculator
 //
