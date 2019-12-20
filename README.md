@@ -98,9 +98,9 @@ This design expects the packet to be laid out like this:
 * UDP (port 0xbee0)
 * SwitchML header
 * SwitchML exponents
-* SwitchML mantissas
+* SwitchML significands
 
-The current code is set up for one exponent and 64 mantissas per
+The current code is set up for one exponent and 64 significands per
 packet. The code should be easily modifiable to change this.
 
 To deal with the Tofino 1 imbalance between register write and read

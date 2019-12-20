@@ -23,7 +23,7 @@
 #include "DropSimulator.p4"
 #include "UpdateAndCheckWorkerBitmap.p4"
 #include "ExponentMax.p4"
-#include "MantissaStage.p4"
+#include "SignificandStage.p4"
 #include "CountWorkers.p4"
 #include "SetDstAddr.p4"
 #include "Forward.p4"
@@ -47,14 +47,14 @@ control SwitchMLIngress(
 
     ExponentMax() exponent_max;
 
-    MantissaStage() mantissas_00_01_02_03;
-    MantissaStage() mantissas_04_05_06_07;
-    MantissaStage() mantissas_08_09_10_11;
-    MantissaStage() mantissas_12_13_14_15;
-    MantissaStage() mantissas_16_17_18_19;
-    MantissaStage() mantissas_20_21_22_23;
-    MantissaStage() mantissas_24_25_26_27;
-    MantissaStage() mantissas_28_29_30_31;
+    SignificandStage() significands_00_01_02_03;
+    SignificandStage() significands_04_05_06_07;
+    SignificandStage() significands_08_09_10_11;
+    SignificandStage() significands_12_13_14_15;
+    SignificandStage() significands_16_17_18_19;
+    SignificandStage() significands_20_21_22_23;
+    SignificandStage() significands_24_25_26_27;
+    SignificandStage() significands_28_29_30_31;
     
     CountWorkers() count_workers;
 
@@ -82,24 +82,24 @@ control SwitchMLIngress(
         // (using just half of the register unit). 
         exponent_max.apply(hdr.exponents.e0, hdr.exponents.e0, hdr.exponents.e0, _, hdr, ig_md);
 
-        // aggregate mantissas
+        // aggregate significands
         // use a macro to reduce a little typing.
-#define APPLY_MANTISSA_STAGE(AA, BB, CC, DD)       \
-        mantissas_##AA##_##BB##_##CC##_##DD.apply( \
+#define APPLY_SIGNIFICAND_STAGE(AA, BB, CC, DD)       \
+        significands_##AA##_##BB##_##CC##_##DD.apply( \
             hdr.d0.d##AA, hdr.d1.d##AA,            \
             hdr.d0.d##BB, hdr.d1.d##BB,            \
             hdr.d0.d##CC, hdr.d1.d##CC,            \
             hdr.d0.d##DD, hdr.d1.d##DD,            \
             hdr, ig_md)
         
-        APPLY_MANTISSA_STAGE(00, 01, 02, 03);
-        APPLY_MANTISSA_STAGE(04, 05, 06, 07);
-        APPLY_MANTISSA_STAGE(08, 09, 10, 11);
-        APPLY_MANTISSA_STAGE(12, 13, 14, 15);
-        APPLY_MANTISSA_STAGE(16, 17, 18, 19);
-        APPLY_MANTISSA_STAGE(20, 21, 22, 23);
-        APPLY_MANTISSA_STAGE(24, 25, 26, 27);
-        APPLY_MANTISSA_STAGE(28, 29, 30, 31);
+        APPLY_SIGNIFICAND_STAGE(00, 01, 02, 03);
+        APPLY_SIGNIFICAND_STAGE(04, 05, 06, 07);
+        APPLY_SIGNIFICAND_STAGE(08, 09, 10, 11);
+        APPLY_SIGNIFICAND_STAGE(12, 13, 14, 15);
+        APPLY_SIGNIFICAND_STAGE(16, 17, 18, 19);
+        APPLY_SIGNIFICAND_STAGE(20, 21, 22, 23);
+        APPLY_SIGNIFICAND_STAGE(24, 25, 26, 27);
+        APPLY_SIGNIFICAND_STAGE(28, 29, 30, 31);
 
         // decide what to do with this packet
         switchml_next_step.apply(hdr, ig_md, ig_intr_md, ig_dprsr_md, ig_tm_md);

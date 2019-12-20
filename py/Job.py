@@ -20,7 +20,7 @@ from GetWorkerBitmap import GetWorkerBitmap, Worker
 from UpdateAndCheckWorkerBitmap import UpdateAndCheckWorkerBitmap
 from CountWorkers import CountWorkers
 from ExponentMax import ExponentMax
-from MantissaStage import MantissaStage
+from SignificandStage import SignificandStage
 from SetDstAddr import SetDstAddr
 from PRE import PRE
 from Worker import Worker
@@ -80,10 +80,7 @@ class Job(Cmd, object):
 
     def clear_registers(self):
         for x in self.registers_to_clear:
-            if self.max_register_to_clear is not None:
-                x.clear_registers(max_index=self.max_register_to_clear)
-            else:
-                x.clear_registers()
+            x.clear_registers()
 
     def clear_all(self):
         for x in self.tables_to_clear:
@@ -101,8 +98,6 @@ class Job(Cmd, object):
 
         self.tables_to_clear    = []
         self.registers_to_clear = []
-        # set this to a postivie integer n to clear only registers 0 to n-1 for testing
-        self.max_register_to_clear = None
             
         # add workers to worker bitmap table
         self.get_worker_bitmap = GetWorkerBitmap(self.gc, self.bfrt_info)
@@ -128,43 +123,32 @@ class Job(Cmd, object):
         # add update rules for bitmap and clear register
         self.update_and_check_worker_bitmap = UpdateAndCheckWorkerBitmap(self.gc, self.bfrt_info)
         self.registers_to_clear.append(self.update_and_check_worker_bitmap)
-        self.tables_to_clear.append(self.update_and_check_worker_bitmap)
         
         # add rules for worker count and clear register
         self.count_workers = CountWorkers(self.gc, self.bfrt_info)
         self.registers_to_clear.append(self.count_workers)
-        self.tables_to_clear.append(self.count_workers)
         
         # add rules for exponent max calculation and clear register
         self.exponent_max = ExponentMax(self.gc, self.bfrt_info)
         self.registers_to_clear.append(self.exponent_max)
-        self.tables_to_clear.append(self.exponent_max)
         
         # add rules for data registers and clear registers
-        self.mantissas_00_01_02_03 = MantissaStage(self.gc, self.bfrt_info,  0,  1,  2,  3)
-        self.registers_to_clear.append(self.mantissas_00_01_02_03)
-        self.tables_to_clear.append(self.mantissas_00_01_02_03)
-        self.mantissas_04_05_06_07 = MantissaStage(self.gc, self.bfrt_info,  4,  5,  6,  7)
-        self.registers_to_clear.append(self.mantissas_04_05_06_07)
-        self.tables_to_clear.append(self.mantissas_04_05_06_07)
-        self.mantissas_08_09_10_11 = MantissaStage(self.gc, self.bfrt_info,  8,  9, 10, 11)
-        self.registers_to_clear.append(self.mantissas_08_09_10_11)
-        self.tables_to_clear.append(self.mantissas_08_09_10_11)
-        self.mantissas_12_13_14_15 = MantissaStage(self.gc, self.bfrt_info, 12, 13, 14, 15)
-        self.registers_to_clear.append(self.mantissas_12_13_14_15)
-        self.tables_to_clear.append(self.mantissas_12_13_14_15)
-        self.mantissas_16_17_18_19 = MantissaStage(self.gc, self.bfrt_info, 16, 17, 18, 19)
-        self.registers_to_clear.append(self.mantissas_16_17_18_19)
-        self.tables_to_clear.append(self.mantissas_16_17_18_19)
-        self.mantissas_20_21_22_23 = MantissaStage(self.gc, self.bfrt_info, 20, 21, 22, 23)
-        self.registers_to_clear.append(self.mantissas_20_21_22_23)
-        self.tables_to_clear.append(self.mantissas_20_21_22_23)
-        self.mantissas_24_25_26_27 = MantissaStage(self.gc, self.bfrt_info, 24, 25, 26, 27)
-        self.registers_to_clear.append(self.mantissas_24_25_26_27)
-        self.tables_to_clear.append(self.mantissas_24_25_26_27)
-        self.mantissas_28_29_30_31 = MantissaStage(self.gc, self.bfrt_info, 28, 29, 30, 31)
-        self.registers_to_clear.append(self.mantissas_28_29_30_31)
-        self.tables_to_clear.append(self.mantissas_28_29_30_31)
+        self.significands_00_01_02_03 = SignificandStage(self.gc, self.bfrt_info,  0,  1,  2,  3)
+        self.registers_to_clear.append(self.significands_00_01_02_03)
+        self.significands_04_05_06_07 = SignificandStage(self.gc, self.bfrt_info,  4,  5,  6,  7)
+        self.registers_to_clear.append(self.significands_04_05_06_07)
+        self.significands_08_09_10_11 = SignificandStage(self.gc, self.bfrt_info,  8,  9, 10, 11)
+        self.registers_to_clear.append(self.significands_08_09_10_11)
+        self.significands_12_13_14_15 = SignificandStage(self.gc, self.bfrt_info, 12, 13, 14, 15)
+        self.registers_to_clear.append(self.significands_12_13_14_15)
+        self.significands_16_17_18_19 = SignificandStage(self.gc, self.bfrt_info, 16, 17, 18, 19)
+        self.registers_to_clear.append(self.significands_16_17_18_19)
+        self.significands_20_21_22_23 = SignificandStage(self.gc, self.bfrt_info, 20, 21, 22, 23)
+        self.registers_to_clear.append(self.significands_20_21_22_23)
+        self.significands_24_25_26_27 = SignificandStage(self.gc, self.bfrt_info, 24, 25, 26, 27)
+        self.registers_to_clear.append(self.significands_24_25_26_27)
+        self.significands_28_29_30_31 = SignificandStage(self.gc, self.bfrt_info, 28, 29, 30, 31)
+        self.registers_to_clear.append(self.significands_28_29_30_31)
     
         #
         # configure multicast group
@@ -217,7 +201,6 @@ class Job(Cmd, object):
         # allocate storage
         self.registers_to_clear = []
         self.tables_to_clear    = []
-        self.max_register_to_clear = None
         
         # configure job
         self.configure_job()

@@ -46,10 +46,10 @@ struct data_pair_t {
     data_t second;
 }
 
-typedef bit<32> mantissa_t;
-struct mantissa_pair_t {
-    mantissa_t first;
-    mantissa_t second;
+typedef bit<32> significand_t;
+struct significand_pair_t {
+    significand_t first;
+    significand_t second;
 }
 
 //typedef bit<8> exponent_t;

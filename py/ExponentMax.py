@@ -33,7 +33,7 @@ class ExponentMax(Table):
         # just clear registers
         self.clear_registers()
 
-    def clear_registers(self, max_index = None):
+    def clear_registers(self):
         self.logger.info("Clearing exponent registers...")
 
         # target all pipes on device 0
@@ -41,8 +41,6 @@ class ExponentMax(Table):
 
         # clear all register entries
         for i in range(self.register.info.size_get()):
-            if max_index is not None and max_index == i:
-                break
             self.register.entry_add(
                 target,
                 [self.register.make_key([gc.KeyTuple('$REGISTER_INDEX', i)])],
