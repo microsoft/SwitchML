@@ -67,10 +67,6 @@ switch_udp_port      = 0xbee0
 switch_udp_port_mask = 0xfff0
 switch_mgid          = 1234
 
-# set_up_job(switch_ip, switch_mac, switch_udp_port, switch_udp_port_mask, switch_mgid,
-#            [Worker(mac="b8:83:03:73:a6:a0", ip="198.19.200.49", front_panel_port= 9, lane=0, speed=100, fec='none'),
-#             Worker(mac="b8:83:03:74:01:8c", ip="198.19.200.50", front_panel_port=10, lane=0, speed=100, fec='none')])
-
 # setup job for model
 from Job import Job
 from Worker import Worker

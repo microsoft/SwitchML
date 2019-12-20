@@ -58,11 +58,7 @@ class ThreeWorkerTest(SwitchMLTest):
                         Worker(mac="b8:83:03:74:01:8c", ip="198.19.200.50", udp_port=23456, front_panel_port=1, lane=1, speed=10, fec='none'),
                         Worker(mac="b8:83:03:74:02:9a", ip="198.19.200.48", udp_port=34567, front_panel_port=1, lane=2, speed=10, fec='none')])
 
-        # These tests only use slot 0 and 1, so stop clearing registers after that
-        self.job.max_register_to_clear = 2
-
-
-        # make packets for slot 0
+        # make packets for set 0
         self.pktW0S0 = make_switchml_udp(src_mac="b8:83:03:73:a6:a0",
                                          src_ip="198.19.200.49",
                                          dst_mac="06:00:00:00:00:01",
@@ -111,7 +107,7 @@ class ThreeWorkerTest(SwitchMLTest):
                                                   pool_index=0,
                                                   value_multiplier=3,
                                                   checksum=0)
-        # make packets for slot 1
+        # make packets for set 1
         self.pktW0S1 = copy.deepcopy(self.pktW0S0)
         self.pktW1S1 = copy.deepcopy(self.pktW1S0)
         self.pktW2S1 = copy.deepcopy(self.pktW2S0)
@@ -132,7 +128,7 @@ class BasicReduction(ThreeWorkerTest):
     """
 
     def runTest(self):
-        # do a straightforward reduction in the first slot
+        # do a straightforward reduction in the first set of the first slot.
         send_packet(self, 0, self.pktW0S0)
         send_packet(self, 1, self.pktW1S0)
         send_packet(self, 2, self.pktW2S0)
@@ -143,13 +139,13 @@ class BasicReduction(ThreeWorkerTest):
 
 class RetransmitAfterReduction(ThreeWorkerTest):
     """
-    Ensure we can retransmit from a slot after it has received all
-    updates and before its paired slot has received its first update.
+    Ensure we can retransmit from a set after it has received all
+    updates and before its paired set has received its first update.
 
     """
 
     def runTest(self):
-        # firstdo a straightforward reduction in the first slot
+        # firstdo a straightforward reduction in the first set
         send_packet(self, 0, self.pktW0S0)
         send_packet(self, 1, self.pktW1S0)
         send_packet(self, 2, self.pktW2S0)
@@ -182,34 +178,34 @@ class RetransmitAfterReduction(ThreeWorkerTest):
         send_packet(self, 0, self.pktW2S0)
         verify_packet(self, self.expected_pktW2S0, 0)
 
-# class OtherSlotReduction(ThreeWorkerTest):
+# class OtherSetReduction(ThreeWorkerTest):
 #     """
 #     Test basic operation of a single slot, starting from the second
-#     slot instead of the first.
+#     set instead of the first.
 #     """
 
 #     def runTest(self):
-#         # do a straightforward reduction in the second slot
+#         # do a straightforward reduction in the second set
 #         send_packet(self, 0, self.pktW0S1)
 #         send_packet(self, 1, self.pktW1S1)
 
 #         verify_packet(self, self.expected_pktW0S1, 0)
 #         verify_packet(self, self.expected_pktW1S1, 1)
 
-# class BothSlotsReduction(ThreeWorkerTest):
+# class BothSetsReduction(ThreeWorkerTest):
 #     """
-#     Test basic operation of a pair of slots.
+#     Test basic operation of a pair of sets.
 #     """
 
 #     def runTest(self):
-#         # do a straightforward reduction in the first slot
+#         # do a straightforward reduction in the first set
 #         send_packet(self, 0, self.pktW0S0)
 #         send_packet(self, 1, self.pktW1S0)
 
 #         verify_packet(self, self.expected_pktW0S0, 0)
 #         verify_packet(self, self.expected_pktW1S0, 1)
 
-#         # now do a straightforward reduction in the second slot
+#         # now do a straightforward reduction in the second set
 #         send_packet(self, 0, self.pktW0S1)
 #         send_packet(self, 1, self.pktW1S1)
 
@@ -223,28 +219,28 @@ class RetransmitAfterReduction(ThreeWorkerTest):
 #     """
 
 #     def runTest(self):
-#         # do a straightforward reduction in the first slot
+#         # do a straightforward reduction in the first set
 #         send_packet(self, 0, self.pktW0S0)
 #         send_packet(self, 1, self.pktW1S0)
 
 #         verify_packet(self, self.expected_pktW0S0, 0)
 #         verify_packet(self, self.expected_pktW1S0, 1)
 
-#         # now do a straightforward reduction in the second slot
+#         # now do a straightforward reduction in the second set
 #         send_packet(self, 0, self.pktW0S1)
 #         send_packet(self, 1, self.pktW1S1)
 
 #         verify_packet(self, self.expected_pktW0S1, 0)
 #         verify_packet(self, self.expected_pktW1S1, 1)
                 
-#         # now reduce in first slot again
+#         # now reduce in first set again
 #         send_packet(self, 0, self.pktW0S0)
 #         send_packet(self, 1, self.pktW1S0)
 
 #         verify_packet(self, self.expected_pktW0S0, 0)
 #         verify_packet(self, self.expected_pktW1S0, 1)
 
-#         # now reduce in second slot again
+#         # now reduce in second set again
 #         send_packet(self, 0, self.pktW0S0)
 #         send_packet(self, 1, self.pktW1S0)
 
@@ -257,10 +253,10 @@ class RetransmitAfterReduction(ThreeWorkerTest):
 #     """
 
 #     def runTest(self):
-#         # half-complete reduction in slot 1
+#         # half-complete reduction in set 1
 #         send_packet(self, 0, self.pktW0S1)
 
-#         # make sure retransmissions to that slot from the same worker are ignored
+#         # make sure retransmissions to that set from the same worker are ignored
 #         send_packet(self, 0, self.pktW0S1)
 #         verify_no_other_packets(self)
 
@@ -274,13 +270,13 @@ class RetransmitAfterReduction(ThreeWorkerTest):
 #         verify_packet(self, self.expected_pktW0S1, 0)
 #         verify_packet(self, self.expected_pktW1S1, 1)
         
-# class RetransmitFromPreviousSlot(ThreeWorkerTest):
+# class RetransmitFromPreviousSet(ThreeWorkerTest):
 #     """
-#     Ensure that retransmissions to a previously-aggregated slot generate replies.
+#     Ensure that retransmissions to a previously-aggregated set generate replies.
 #     """
 
 #     def runTest(self):
-#         # start by doing a straightforward reduction in the second slot
+#         # start by doing a straightforward reduction in the second set
 #         send_packet(self, 0, self.pktW0S1)
 #         send_packet(self, 1, self.pktW1S1)
 
@@ -288,10 +284,10 @@ class RetransmitAfterReduction(ThreeWorkerTest):
 #         verify_packet(self, self.expected_pktW0S1, 0)
 #         verify_packet(self, self.expected_pktW1S1, 1)
 
-#         # now, half-complete reduction in the first slot
+#         # now, half-complete reduction in the first set
 #         send_packet(self, 1, self.pktW1S0)
         
-#         # verify we can still retransmit from the second slot
+#         # verify we can still retransmit from the second set
 #         send_packet(self, 0, self.pktW0S1)
 #         verify_packet(self, self.expected_pktW0S1, 0)
 

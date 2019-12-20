@@ -21,7 +21,7 @@ control ExponentMax(
     in header_t hdr,
     inout ingress_metadata_t ig_md) {
 
-    Register<exponent_pair_t, pool_index_t>(num_pools) exponents;
+    Register<exponent_pair_t, pool_index_t>(register_size) exponents;
 
     // Write both exponents and read first one
     RegisterAction<exponent_pair_t, pool_index_t, exponent_t>(exponents) exponent_write_read0_register_action = {

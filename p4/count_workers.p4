@@ -12,7 +12,7 @@ control CountWorkers(
     inout ingress_metadata_t ig_md,
     in ingress_intrinsic_metadata_for_deparser_t ig_dprsr_md) {
 
-    Register<num_workers_pair_t, pool_index_t>(num_pools) worker_count;
+    Register<num_workers_pair_t, pool_index_t>(register_size) worker_count;
 
     RegisterAction<num_workers_pair_t, pool_index_t, num_workers_t>(worker_count) worker_count_action = {
         void apply(inout num_workers_pair_t value, out num_workers_t read_value) {

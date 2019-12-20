@@ -13,7 +13,7 @@ control UpdateAndCheckWorkerBitmap(
     in ingress_intrinsic_metadata_t ig_intr_md,
     inout ingress_intrinsic_metadata_for_deparser_t ig_dprsr_md) {
 
-    Register<worker_bitmap_pair_t, pool_index_by2_t>(num_pools) worker_bitmap;
+    Register<worker_bitmap_pair_t, pool_index_by2_t>(num_slots) worker_bitmap;
 
     RegisterAction<worker_bitmap_pair_t, pool_index_by2_t, worker_bitmap_t>(worker_bitmap) worker_bitmap_update_set0 = {
         void apply(inout worker_bitmap_pair_t value, out worker_bitmap_t return_value) {

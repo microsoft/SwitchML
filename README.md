@@ -1,15 +1,16 @@
-SwitchML for RoCE in P4_16
-==========================
+SwitchML in P4_16
+=================
 
-This is another implementation of the SwitchML idea, but done in P4_16 and tweaked to support larger packets and RDMA via RoCE.
-
-NOTE: RDMA support is not yet complete.
+This is an implementation of the SwitchML concept, but done in P4_16
+and tweaked to support larger packets and RDMA via RoCE. It's very
+much a work in progress.
 
 
 Status
 ------
 
-This is a preliminary version of the P4_16 code; it works but has many incomplete features. 
+This is a preliminary version of the P4_16 code; it works as described
+in the paper, but I have lots of plans to improve it.
 
 Things to do:
 * This code is impacted by a number of compiler bugs, all of which
@@ -20,58 +21,87 @@ Things to do:
   9.0.0. The API may change in future releases of the SDE, and this
   code will benefit from being updated (in particular, faster register
   clearing will be handy)
-* The code has the beginnings of isolation support for multiple jobs, but this is currently not implemented.
-* The code has the beginnings of support for hierarchical and multi-pipeline reductions, but this is currently not implemented.
-* The code has the beginnings of support for non-SwitchML-UDP packets, including RDMA/RoCE and SwitchML-Ethernet, but these are not yet implemented.
-* Right now all payloads must be padded to the full payload size set in configuration.p4
-
-//* 64 32-bit integers for 256 bytes of payload
-//* 8 one-byte exponents
-
-
-SwitchML packet format
-----------------------
-
-NOTE: for now only the SwitchML UDP or Eth approach is supported.
- 
-There are four ways to send packets to be aggreagted:
-* SwitchML/UDP: data is sent with SwitchML header inside UDP/IP/Ethernet
-* SwitchML/Ethernet: data is sent with SwitchML header inside Ethernet
-* RoCEv2: data is sent in IB_BTH frames in UDP/IP/Ethernet. RoCE data includes SwitchML header.
-* RoCEv1: data is sent in IB_BTH frames in IB_GRH/Ethernet. RoCE data includes SwitchML header.
+* The code has the beginnings of isolation support for multiple jobs,
+  but this is currently not implemented.
+* The code has the beginnings of support for hierarchical and
+  multi-pipeline reductions, but this is currently not implemented.
+* The code has the beginnings of support for non-SwitchML-UDP packets,
+  including RDMA/RoCE and SwitchML-Ethernet, but these are not yet
+  implemented.
+* Right now all payloads must be padded to the full payload size set
+  in configuration.p4
+* The current design uses only one recirculation port per pipeline, so
+  the minimum supported job size at full line rate may be limited by
+  recirculation bandwidth to about 7 or 8 workers. We can cut that in
+  half by modifying the code to use two recirculation ports.
+* Drop simulation is not currently supported.
 
 
-This design uses a slightly different packet format than Amedeo's
-implementation. It's set up as follows:
-* Ethernet
-* IP
-* UDP (port 0xbee0)
-* SwitchML
-* exponents
-* significands
+Requirements
+------------
 
-The number of exponents is variable, as is the number of significands. Edit configuration.p4 to configure these.
+For the SwitchML p4 code, the main requirement is SDE 9.0.0.
 
-To support large packets, significands are split over two headers. This allows us to con
+FOr the control plane, Python 2.7 with Scapy and other SDE dependences
+is required. This should be installed on any machine with the SDE
+installed. 
 
 
+Instructions
+------------
 
-Design overview
----------------
+* Clone the switchml repo.
+* Build the P4 code with a command like ```p4_build.sh p4/switchml.p4``` or the equivalent.
+* Make a copy of and/or edit ```py/switchml.py``` for your job configuration.
+* Run your modified control plane in a shell with the $SDE environment variable set: ```python py/switchml.py```
+* Run your job using the SwitchML server-side code.
 
+Testing
+-------
 
+* Build with SWITCHML_TEST set to minimize register size for speedier
+  model initialization:
+  ```p4_build.sh p4/switchml.p4 -DSWITCHML_TEST=1```
+* After starting model and switchd, run tests with ```bash run_tests.sh```
+
+Glossary
+--------
 
 *Pool*: a collection of aggregator slots
 
 *Slot*: register storage for one packet's worth of data
 
-*Set*: each pool is divided into two sets: odd and even. Pools should
+*Set*: each pool element is divided into two sets: odd and even. Pools should
 always be allocated in multiples of two, so that we have storage for
 both sets.
 
 *Consume*: adding values into registers
 
 *Harvest*: reading aggregated values out of registers
+
+
+SwitchML packet format
+----------------------
+
+NOTE: for now only the SwitchML UDP packet format is supported.
+ 
+Eventually, there are four ways to send packets to be aggreagted:
+* SwitchML/UDP: data is sent with SwitchML header inside UDP/IP/Ethernet
+* SwitchML/Ethernet: data is sent with SwitchML header inside Ethernet
+* RoCEv2: data is sent in IB_BTH frames in UDP/IP/Ethernet. RoCE data includes SwitchML header.
+* RoCEv1: data is sent in IB_BTH frames in IB_GRH/Ethernet. RoCE data includes SwitchML header.
+
+
+This design expects the packet to be laid out like this:
+* Ethernet
+* IP
+* UDP (port 0xbee0)
+* SwitchML header
+* SwitchML exponents
+* SwitchML significands
+
+The current code is set up for one exponent and 64 significands per
+packet. The code should be easily modifiable to change this.
 
 To deal with the Tofino 1 imbalance between register write and read
 bandwidth, each packet is divided into two halves. Both halves are
@@ -80,42 +110,11 @@ first half is harvested. When it is time to send an aggregated packet,
 the packet is recirculated and the second half is harvested before the
 packet is replicated and sent out.
 
-The design uses a bitmap to track 
 
-
-TODO: not working yet:
-Pools are allocate to jobs in segments in this design. The workers use
-0-baesd indices, and the switch uses a per-job base index to
-convert that to an offset into its registers.
-
-Parsing
--------
-
-Ingress processing
-------------------
-
-
-Egress processing
-------------------
-There are two main tasks that happen in egress.
-
-* Drop simulation. To simulate switch-to-worker packet drops, 
-  
-
-* Destination address processing. 
-
-Drop simulation
+Design overview
 ---------------
 
-
-
-
-
-* Convert from little- to big-endian
-
-* Convert back from big- to little-endian
-
-
+TBD
 
 Maximum register size
 ---------------------
@@ -137,7 +136,7 @@ and the Stateful Processing in 10K Series documents. I believe Tofino
 
 If we could use all the SRAM blocks in a stage for registers, that
 would be 80 - 1*4 = 76, or 76 / 4 = 19 = 38912 64-bit entries. But
-this isn't supported by the architecture.
+this isn't supported.
 
 If we only wanted a single register in a stage, we'd hit the 36-block
 limit first. That would use 35 blocks for data and 1 for simultaneous
@@ -151,4 +150,29 @@ entries.
 
 So the total number of slots allocated per pipeline in this design is
 22528.
+
+Endianness conversion
+---------------------
+
+TBD. Currently we don't do endianness conversion in the switch.
+
+There are two natural ways to do endianness conversion in
+Tofino 1. The first is in the parser, using 8-bit extractors. This is
+only practical at small scales, since we can only extract 4 8-bit
+values per cycle.
+
+The second is using the hash calculation units. There are 8 per pipe
+stage, and each can output 52 bits, so in theory we could do 8*52=416,
+or 13 32-bit conversions per stage. However, I believe that we have to
+use a hash distribution unit to get the output of a hash calculation
+unit into the PHV, and there are only 6 16-bit hash distribution units
+per pipe stage. That limits us to 3 32-bit conversions per
+stage. However, some of these are already being used for the register
+address calculation, so we might be even more limited in using this
+technique.
+
+There may be a better way to do this in the Tofino, but these are my
+preliminary thoughts. I did some implementation that suggested the
+compiler was doing something smarter than either of what I described,
+but I couldn't get it to work for all 64 parameters.
 

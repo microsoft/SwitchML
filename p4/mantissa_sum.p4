@@ -19,7 +19,7 @@ control MantissaSum(
     in header_t hdr,
     inout ingress_metadata_t ig_md) {
 
-    Register<mantissa_pair_t, pool_index_t>(num_pools) mantissas;
+    Register<mantissa_pair_t, pool_index_t>(register_size) mantissas;
 
     // Write both mantissas and read first one
     RegisterAction<mantissa_pair_t, pool_index_t, mantissa_t>(mantissas) mantissa_write_read0_register_action = {
@@ -96,8 +96,6 @@ control MantissaSum(
             (   _,    _, packet_type_t.CONSUME) : mantissa_read0_action();
             // if type is HARVEST, read second value
             (   _,    _, packet_type_t.HARVEST) : mantissa_read1_action();
-            // if bitmap_before is all 0's and type is CONSUME, this is the first packet for slot, so just write values and read first value
-            (32w0,    _, packet_type_t.CONSUME) : mantissa_write_read0_action();
         }
         // if none of the above are true, do nothing.
         const default_action = NoAction;

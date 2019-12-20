@@ -54,10 +54,7 @@ control NextStep(
     
     action retransmit_eth() {
         // swap source and destination MAC addresses
-        mac_addr_t dst_addr;
-        dst_addr = 0;
-        //dst_addr = hdr.ethernet.dst_addr;
-        
+        mac_addr_t dst_addr = hdr.ethernet.dst_addr;
         hdr.ethernet.dst_addr = hdr.ethernet.src_addr;
         hdr.ethernet.src_addr = dst_addr;
 
@@ -70,13 +67,12 @@ control NextStep(
     
     action retransmit_udp() {
         // swap source and destination IPs
-        ipv4_addr_t dst_addr;
-        dst_addr = 0;//hdr.ipv4.dst_addr;
+        ipv4_addr_t dst_addr = hdr.ipv4.dst_addr;
         hdr.ipv4.dst_addr = hdr.ipv4.src_addr;
         hdr.ipv4.src_addr = dst_addr;
 
-        udp_port_t dst_port;
-        dst_port = 0;//hdr.udp.dst_port;
+        // swap source and destination ports
+        udp_port_t dst_port = hdr.udp.dst_port;
         hdr.udp.dst_port = hdr.udp.src_port;
         hdr.udp.src_port = dst_port;
 
