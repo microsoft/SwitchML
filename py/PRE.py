@@ -33,15 +33,24 @@ class PRE(Table):
         ###self.add_default_entries()
 
     def dev_port_to_bitmap(self, dev_port):
-        port_count = 288
         # get number of bytes for port_count-width bitmap
-        bitmap_byte_count = (port_count + 7) / 8
+        dev_port_count = 288
+        bitmap_byte_count = (dev_port_count + 7) / 8
         bitmap = [0] * bitmap_byte_count
-        # get index of bit to set
-        byte_index = dev_port / 8
-        bit_index = dev_port % 8
+
+        # get index of bit to set (convert from dev_port to contiguous)
+        pipe_index    = dev_port >> 7
+        index_in_pipe = dev_port & 0x7f
+        index         = 72 * pipe_index + index_in_pipe
+
+        # get byte index and index in byte to set
+        byte_index = index / 8
+        bit_index  = index % 8
+        
         # set bit in array
-        bitmap[byte_index] = bitmap[byte_index] | (1 << bit_index)
+        self.logger.debug("Setting bit in PRE bitmap byte {} bit {} for dev_port {}".format(byte_index, bit_index, dev_port))
+        bitmap[byte_index] = bitmap[byte_index] | (1 << bit_index) & 0xff
+        
         # return byte array
         return bytearray(bitmap)
         

@@ -24,7 +24,7 @@ class Ports(object):
                                            gc.KeyTuple('$CHNL_ID', lane)])],
             {"from_hw": False})
         dev_port = next(resp)[0].to_dict()["$DEV_PORT"]
-        self.logger.info("Got dev port {} for front panel port {}/{}".format(dev_port, front_panel_port, lane))
+        self.logger.debug("Got dev port {} for front panel port {}/{}".format(dev_port, front_panel_port, lane))
 
         return dev_port
 
