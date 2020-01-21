@@ -4,14 +4,14 @@
 *                                                       *
 ********************************************************/
 
-#ifndef _FORWARD_
-#define _FORWARD_
+#ifndef _NON_SWITCHML_FORWARD_
+#define _NON_SWITCHML_FORWARD_
 
 #include "configuration.p4"
 #include "types.p4"
 #include "headers.p4"
 
-control Forward(
+control NonSwitchMLForward(
     in header_t hdr,
     inout ingress_metadata_t ig_md,
     inout ingress_intrinsic_metadata_for_deparser_t ig_dprsr_md,
@@ -27,7 +27,9 @@ control Forward(
     
     table forward {
         key = {
-            hdr.ethernet.dst_addr : exact;
+            ig_md.switchml_md.packet_type : exact;
+            hdr.ethernet.dst_addr         : exact;
+            //hdr.ethernet.ether_type       : exact;
         }
         actions = {
             set_egress_port;
@@ -45,4 +47,4 @@ control Forward(
     }
 }
 
-#endif /* _FORWARD_ */
+#endif /* _NON_SWITCHML_FORWARD_ */

@@ -23,6 +23,7 @@ from ExponentMax import ExponentMax
 from SignificandStage import SignificandStage
 from SetDstAddr import SetDstAddr
 from PRE import PRE
+from NonSwitchMLForward import NonSwitchMLForward
 from Worker import Worker
 from Ports import Ports
 
@@ -163,7 +164,11 @@ class Job(Cmd, object):
         # add workers to multicast group   
         self.pre = PRE(self.gc, self.bfrt_info, self.ports)
         self.pre.add_workers(self.switch_mgid, self.workers)
-            
+
+        # add workers to non-switchml forwarding table
+        self.non_switchml_forward = NonSwitchMLForward(self.gc, self.bfrt_info, self.ports)
+        self.non_switchml_forward.add_workers(self.switch_mgid, self.workers)
+        
         # now add workers to set_dst_addr table in egress
         self.set_dst_addr = SetDstAddr(self.gc, self.bfrt_info)
         self.tables_to_clear.append(self.set_dst_addr)

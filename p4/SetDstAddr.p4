@@ -12,6 +12,10 @@ control SetDestinationAddress(
     in egress_intrinsic_metadata_t eg_intr_md,
     inout header_t hdr) {
 
+    action set_dst_addr_for_Ignore(mac_addr_t eth_dst_addr) {
+        hdr.ethernet.dst_addr = eth_dst_addr;
+    }
+
     action set_dst_addr_for_SwitchML_Eth(mac_addr_t eth_dst_addr) {
         hdr.ethernet.src_addr = hdr.ethernet.dst_addr;
         hdr.ethernet.dst_addr = eth_dst_addr;
@@ -95,9 +99,10 @@ control SetDestinationAddress(
             set_dst_addr_for_RoCEv2;
             set_dst_addr_for_SwitchML_UDP;
             set_dst_addr_for_SwitchML_Eth;
+            set_dst_addr_for_Ignore;
             NoAction;
         }
-        size = max_num_workers;
+        size = max_num_workers * 2;
         const default_action = NoAction;
     }
 

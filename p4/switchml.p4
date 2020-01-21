@@ -26,7 +26,7 @@
 #include "SignificandStage.p4"
 #include "CountWorkers.p4"
 #include "SetDstAddr.p4"
-#include "Forward.p4"
+#include "NonSwitchMLForward.p4"
 #include "NextStep.p4"
 
 control SwitchMLIngress(
@@ -59,7 +59,7 @@ control SwitchMLIngress(
     CountWorkers() count_workers;
 
     NextStep() switchml_next_step;
-    Forward() non_switchml_forward;
+    NonSwitchMLForward() non_switchml_forward;
 
     apply {
 

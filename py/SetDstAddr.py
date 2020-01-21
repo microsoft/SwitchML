@@ -26,6 +26,7 @@ class SetDstAddr(Table):
         # set format annotations
         self.table.info.data_field_annotation_add("ip_dst_addr",  'SwitchMLEgress.set_dst_addr.set_dst_addr_for_SwitchML_UDP', "ipv4")
         self.table.info.data_field_annotation_add("eth_dst_addr", 'SwitchMLEgress.set_dst_addr.set_dst_addr_for_SwitchML_UDP', "mac")
+        self.table.info.data_field_annotation_add("eth_dst_addr", 'SwitchMLEgress.set_dst_addr.set_dst_addr_for_Ignore', "mac")
 
         # clear and add defaults
         self.clear()
@@ -60,4 +61,17 @@ class SetDstAddr(Table):
                                    gc.DataTuple('ip_dst_addr', worker_ip),
                                    gc.DataTuple('udp_dst_port', worker_udp_port)],
                                   'SwitchMLEgress.set_dst_addr.set_dst_addr_for_SwitchML_UDP')])
+
+        self.table.entry_add(
+            target,
+            [self.table.make_key([gc.KeyTuple('$MATCH_PRIORITY', 10),
+                                  # match on packet type, egress RID and port
+                                  gc.KeyTuple('eg_md.switchml_md.packet_type',
+                                              0x0,  # only match on ignored packets
+                                              0x3),
+                                  gc.KeyTuple('eg_intr_md.egress_rid',
+                                              worker_rid, # 16 bits
+                                              0xffff)])],
+            [self.table.make_data([gc.DataTuple('eth_dst_addr', worker_mac)],
+                                  'SwitchMLEgress.set_dst_addr.set_dst_addr_for_Ignore')])
 
