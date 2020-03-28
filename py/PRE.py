@@ -98,8 +98,8 @@ class PRE(Table):
             [self.mgid_table.make_data([gc.DataTuple('$MULTICAST_NODE_ID',
                                                      int_arr_val=[worker.rid for worker in workers]),
                                         gc.DataTuple('$MULTICAST_NODE_L1_XID_VALID',
-                                                     bool_arr_val=[False for worker in workers]),
+                                                     bool_arr_val=[True for worker in workers]),
                                         gc.DataTuple('$MULTICAST_NODE_L1_XID',
-                                                     int_arr_val=[0 for worker in workers])])])
+                                                     int_arr_val=[worker.xid for worker in workers])])])
             
 

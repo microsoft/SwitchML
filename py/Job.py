@@ -99,6 +99,7 @@ class Job(Cmd, object):
         self.ports = Ports(self.gc, self.bfrt_info)
         self.ports.delete_all_ports()
         for worker in self.workers:
+            worker.xid = self.ports.get_dev_port(worker.front_panel_port, worker.lane)
             self.ports.add_port(worker.front_panel_port, worker.lane, worker.speed, worker.fec)
         
         # set switch IP and MAC and enable ARP/ICMP responder

@@ -120,14 +120,18 @@ class ArpRequest(ARPTest):
 
 class OtherArpRequest(ARPTest):
     """
-    Ensure we don't get a Test basic operation of a single ARP request not for the switch.
+    Ensure an ARP for something other than the switch gets broadcast out the non-requesting port.
     """
 
     def runTest(self):
         pkt = (Ether(src=self.worker_mac, dst=self.broadcast_mac) /
                ARP(op="who-has", hwsrc=self.worker_mac, pdst="198.19.200.201"))
 
+        expected = (Ether(src=self.worker_mac, dst=self.broadcast_mac) /
+                    ARP(op="who-has", hwsrc=self.worker_mac, pdst="198.19.200.201"))
+
         send_packet(self, 0, pkt)
+        verify_packet(self, expected, 1)
         verify_no_other_packets(self)
 
 class PingRequest(ARPTest):

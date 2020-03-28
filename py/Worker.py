@@ -22,3 +22,4 @@ class Worker(object):
 
         # things not set by default
         self.rid = None
+        self.xid = None

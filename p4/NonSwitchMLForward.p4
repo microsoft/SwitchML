@@ -14,6 +14,7 @@
 control NonSwitchMLForward(
     in header_t hdr,
     in ingress_metadata_t ig_md,
+    in ingress_intrinsic_metadata_t ig_intr_md,
     in ingress_intrinsic_metadata_for_deparser_t ig_dprsr_md,
     inout ingress_intrinsic_metadata_for_tm_t ig_tm_md) {
 
@@ -22,7 +23,8 @@ control NonSwitchMLForward(
     }
     
     action flood(MulticastGroupId_t flood_mgid) {
-        ig_tm_md.mcast_grp_a = flood_mgid;
+        ig_tm_md.mcast_grp_a         = flood_mgid;
+        ig_tm_md.level1_exclusion_id = 7w0 ++ ig_intr_md.ingress_port;
     }
     
     table forward {
