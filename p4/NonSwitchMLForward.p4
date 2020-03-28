@@ -13,8 +13,8 @@
 
 control NonSwitchMLForward(
     in header_t hdr,
-    inout ingress_metadata_t ig_md,
-    inout ingress_intrinsic_metadata_for_deparser_t ig_dprsr_md,
+    in ingress_metadata_t ig_md,
+    in ingress_intrinsic_metadata_for_deparser_t ig_dprsr_md,
     inout ingress_intrinsic_metadata_for_tm_t ig_tm_md) {
 
     action set_egress_port(bit<9> egress_port) {
@@ -27,7 +27,7 @@ control NonSwitchMLForward(
     
     table forward {
         key = {
-            ig_md.switchml_md.packet_type : exact;
+            //ig_md.switchml_md.packet_type : exact;
             hdr.ethernet.dst_addr         : exact;
             //hdr.ethernet.ether_type       : exact;
         }
@@ -43,7 +43,12 @@ control NonSwitchMLForward(
     }
 
     apply {
-        forward.apply();
+        // if this isn't a SwitchML packet, and if the ARP/ICMP
+        // responder hasn't already handled it, forward.
+        if ((ig_md.switchml_md.packet_type == packet_type_t.IGNORE) &&
+            (ig_tm_md.bypass_egress == 0)) { // set by ARP responder
+            forward.apply();
+        }
     }
 }
 

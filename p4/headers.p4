@@ -21,22 +21,40 @@ const ether_type_t ETHERTYPE_SWITCHML_BASE = 16w0xbee0;
 const ether_type_t ETHERTYPE_SWITCHML_MASK = 16w0xfff0;
 
 header ipv4_h {
-    bit<4>       version;
-    bit<4>       ihl;
-    bit<8>       diffserv;
-    bit<16>      total_len;
-    bit<16>      identification;
-    bit<3>       flags;
-    bit<13>      frag_offset;
-    bit<8>       ttl;
-    bit<8>       protocol;
-    bit<16>      hdr_checksum;
-    ipv4_addr_t  src_addr;
-    ipv4_addr_t  dst_addr;
+    bit<4>        version;
+    bit<4>        ihl;
+    bit<8>        diffserv;
+    bit<16>       total_len;
+    bit<16>       identification;
+    bit<3>        flags;
+    bit<13>       frag_offset;
+    bit<8>        ttl;
+    ip_protocol_t protocol;
+    bit<16>       hdr_checksum;
+    ipv4_addr_t   src_addr;
+    ipv4_addr_t   dst_addr;
 }
-const ip_protocol_t IP_PROTOCOL_ICMP = 1;
-const ip_protocol_t IP_PROTOCOL_TCP  = 6;
-const ip_protocol_t IP_PROTOCOL_UDP  = 17;
+
+header icmp_h {
+    icmp_type_t msg_type;
+    bit<8>      msg_code;
+    bit<16>     checksum;
+}
+
+header arp_h {
+    bit<16>       hw_type;
+    ether_type_t  proto_type;
+    bit<8>        hw_addr_len;
+    bit<8>        proto_addr_len;
+    arp_opcode_t  opcode;
+} 
+
+header arp_ipv4_h {
+    mac_addr_t   src_hw_addr;
+    ipv4_addr_t  src_proto_addr;
+    mac_addr_t   dst_hw_addr;
+    ipv4_addr_t  dst_proto_addr;
+}
 
 header udp_h {
     bit<16> src_port;
@@ -69,19 +87,40 @@ header ib_grh_h {
 
 // InfiniBand-RoCE Base Transport Header
 header ib_bth_h {
-    bit<8>  opcode;
-    bit<1>  se;
-    bit<1>  migration_req;
-    bit<2>  pad_count;
-    bit<4>  transport_version;
-    bit<16> partition_key;
-    bit<1>  f_res1;
-    bit<1>  b_res1;
-    bit<6>  reserved;
-    bit<24> dst_qp;
-    bit<1>  ack_req;
-    bit<7>  reserved2;
-    bit<24> psn;
+    ib_opcode_t       opcode;
+    bit<1>            se;
+    bit<1>            migration_req;
+    bit<2>            pad_count;
+    bit<4>            transport_version;
+    bit<16>           partition_key;
+    bit<1>            f_res1;
+    bit<1>            b_res1;
+    bit<6>            reserved;
+    queue_pair_t      dst_qp;
+    bit<1>            ack_req;
+    bit<7>            reserved2;
+    sequence_number_t psn;
+}
+
+// Make sure QP number and PSN are in 32-bit containers for register ops
+@pa_container_size("ingress", "hdr.ib_bth.dst_qp", 32)
+@pa_container_size("ingress", "hdr.ib_bth.psn", 32)
+
+// InfiniBand-RoCE RDMA Extended Transport Header
+header ib_reth_h {
+    bit<64> addr;
+    bit<32> r_key;
+    bit<32> len;
+}
+
+// InfiniBand-RoCE Immediate Header
+header ib_immediate_h {
+    bit<32> immediate;
+}
+
+// InfiniBand-RoCE ICRC Header
+header ib_icrc_h {
+    bit<32> icrc;
 }
 
 // 2-byte exponent header (assuming exponent_t is bit<16>)
@@ -127,16 +166,22 @@ header data_h {
 
 // Full header stack
 struct header_t {
-    ethernet_h  ethernet;
-    ipv4_h      ipv4;
-    udp_h       udp;
-    switchml_h  switchml;
-    ib_grh_h    ib_grh;
-    ib_bth_h    ib_bth;
-    exponents_h exponents;
+    ethernet_h     ethernet;
+    arp_h          arp;
+    arp_ipv4_h     arp_ipv4;
+    ipv4_h         ipv4;
+    icmp_h         icmp;
+    udp_h          udp;
+    switchml_h     switchml;
+    ib_grh_h       ib_grh;
+    ib_bth_h       ib_bth;
+    ib_reth_h      ib_reth;
+    ib_immediate_h ib_immediate;
+    exponents_h    exponents;
     // two 128-byte data headers to support harvesting 256 bytes with recirculation.
-    data_h      d0;
-    data_h      d1;
+    data_h         d0;
+    data_h         d1;
+    ib_icrc_h      ib_icrc;
 }
 
 #endif /* _HEADERS_ */

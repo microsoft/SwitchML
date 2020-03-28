@@ -26,6 +26,7 @@ from PRE import PRE
 from NonSwitchMLForward import NonSwitchMLForward
 from Worker import Worker
 from Ports import Ports
+from ARPandICMP import ARPandICMP
 
 class Job(Cmd, object):
 
@@ -88,6 +89,10 @@ class Job(Cmd, object):
             x.clear()
     
     def configure_job(self):
+        self.tables_to_clear    = []
+        self.registers_to_clear = []
+
+        # clear and reset everything to defaults
         self.clear_all()
         
         # first, delete all old ports and add new ports for workers,
@@ -96,10 +101,9 @@ class Job(Cmd, object):
         for worker in self.workers:
             self.ports.add_port(worker.front_panel_port, worker.lane, worker.speed, worker.fec)
         
-
-        self.tables_to_clear    = []
-        self.registers_to_clear = []
-            
+        # set switch IP and MAC and enable ARP/ICMP responder
+        self.arp_and_icmp = ARPandICMP(self.gc, self.bfrt_info, self.switch_mac, self.switch_ip)
+        
         # add workers to worker bitmap table
         self.get_worker_bitmap = GetWorkerBitmap(self.gc, self.bfrt_info)
         self.tables_to_clear.append(self.get_worker_bitmap)

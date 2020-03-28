@@ -13,7 +13,7 @@ control SetDestinationAddress(
     inout header_t hdr) {
 
     action set_dst_addr_for_Ignore(mac_addr_t eth_dst_addr) {
-        hdr.ethernet.dst_addr = eth_dst_addr;
+        // do nothing. for Ignored packets, the header should already be fine for broadcast.
     }
 
     action set_dst_addr_for_SwitchML_Eth(mac_addr_t eth_dst_addr) {

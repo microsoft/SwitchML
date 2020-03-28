@@ -68,6 +68,7 @@ parser SwitchMLIngressParser(
     state parse_ethernet {
         pkt.extract(hdr.ethernet);
         transition select(hdr.ethernet.ether_type) {
+            ETHERTYPE_ARP                                       : parse_arp;
             ETHERTYPE_ROCEv1                                    : parse_ib_grh;
             ETHERTYPE_IPV4                                      : parse_ipv4;
             ETHERTYPE_SWITCHML_BASE &&& ETHERTYPE_SWITCHML_MASK : parse_switchml;
@@ -75,14 +76,34 @@ parser SwitchMLIngressParser(
         }
     }
 
+    state parse_arp {
+        pkt.extract(hdr.arp);
+        transition select(hdr.arp.hw_type, hdr.arp.proto_type) {
+            (0x0001, ETHERTYPE_IPV4) : parse_arp_ipv4;
+            default: accept_non_switchml;
+        }
+    }
+
+    state parse_arp_ipv4 {
+        pkt.extract(hdr.arp_ipv4);
+        transition accept_non_switchml;
+    }        
+
     state parse_ipv4 {
         pkt.extract(hdr.ipv4);
         ipv4_checksum.add(hdr.ipv4);
         ig_md.checksum_err_ipv4 = ipv4_checksum.verify();
-        transition select(hdr.ipv4.protocol) {
-            IP_PROTOCOL_UDP : parse_udp;
-            default         : accept_non_switchml;
+        // parse only non-fragmented IP packets with no options
+        transition select(hdr.ipv4.ihl, hdr.ipv4.frag_offset, hdr.ipv4.protocol) {
+            (5, 0, ip_protocol_t.ICMP) : parse_icmp;
+            (5, 0, ip_protocol_t.UDP)  : parse_udp;
+            default                    : accept_non_switchml;
         }
+    }
+
+    state parse_icmp {
+        pkt.extract(hdr.icmp);
+        transition accept_non_switchml;
     }
 
     state parse_udp {
@@ -101,9 +122,49 @@ parser SwitchMLIngressParser(
 
     state parse_ib_bth {
         pkt.extract(hdr.ib_bth);
-        transition parse_switchml;
+        transition select(hdr.ib_bth.opcode) {
+            // include only UC operations here
+            ib_opcode_t.UC_SEND_FIRST                : parse_ib_payload;
+            ib_opcode_t.UC_SEND_MIDDLE               : parse_ib_payload;
+            ib_opcode_t.UC_SEND_LAST                 : parse_ib_payload;
+            ib_opcode_t.UC_SEND_LAST_IMMEDIATE       : parse_ib_immediate;
+            ib_opcode_t.UC_SEND_ONLY                 : parse_ib_payload;
+            ib_opcode_t.UC_SEND_ONLY_IMMEDIATE       : parse_ib_immediate;
+            ib_opcode_t.UC_RDMA_WRITE_FIRST          : parse_ib_reth;
+            ib_opcode_t.UC_RDMA_WRITE_MIDDLE         : parse_ib_payload;
+            ib_opcode_t.UC_RDMA_WRITE_LAST           : parse_ib_payload;
+            ib_opcode_t.UC_RDMA_WRITE_LAST_IMMEDIATE : parse_ib_immediate;
+            ib_opcode_t.UC_RDMA_WRITE_ONLY           : parse_ib_reth;
+            ib_opcode_t.UC_RDMA_WRITE_ONLY_IMMEDIATE : parse_ib_reth_immediate;
+        }
     }
 
+    state parse_ib_immediate {
+        pkt.extract(hdr.ib_immediate);
+        transition parse_ib_payload;
+    }
+
+    state parse_ib_reth {
+        pkt.extract(hdr.ib_reth);
+        transition parse_ib_payload;
+    }
+
+    state parse_ib_reth_immediate {
+        pkt.extract(hdr.ib_reth);
+        pkt.extract(hdr.ib_immediate);
+        transition parse_ib_payload;
+    }
+
+    state parse_ib_payload {
+        pkt.extract(hdr.d0);
+        pkt.extract(hdr.d1);
+        pkt.extract(hdr.ib_icrc);
+        // at this point we know this is a SwitchML packet that wasn't recirculated, so mark it for consumption.
+        ig_md.switchml_md.setValid();
+        ig_md.switchml_md.packet_type = packet_type_t.CONSUME;
+        transition accept;
+    }
+    
     state parse_switchml {
         pkt.extract(hdr.switchml);
         transition parse_exponents;
@@ -217,8 +278,8 @@ parser SwitchMLEgressParser(
         ipv4_checksum.add(hdr.ipv4);
         eg_md.checksum_err_ipv4 = ipv4_checksum.verify();
         transition select(hdr.ipv4.protocol) {
-            IP_PROTOCOL_UDP : parse_udp;
-            default         : accept;
+            ip_protocol_t.UDP : parse_udp;
+            default           : accept;
         }
     }
 

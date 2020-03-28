@@ -19,6 +19,7 @@
 #include "parsers.p4"
 //#include "registers.p4"
 
+#include "ARPandICMP.p4"
 #include "GetWorkerBitmap.p4"
 #include "DropSimulator.p4"
 #include "UpdateAndCheckWorkerBitmap.p4"
@@ -38,9 +39,10 @@ control SwitchMLIngress(
     inout ingress_intrinsic_metadata_for_tm_t ig_tm_md) {
     
     //
-    // instantiate controls for  of tables and actions
+    // instantiate controls for tables and actions
     //
 
+    ARPandICMP() arp_and_icmp;
     GetWorkerBitmap() get_worker_bitmap;
     DropRNG() drop_rng;
     UpdateAndCheckWorkerBitmap() update_and_check_worker_bitmap;
@@ -67,6 +69,8 @@ control SwitchMLIngress(
         // get worker masks, pool base index, other parameters for this packet
         // add switchml_md header if it isn't already added
         get_worker_bitmap.apply(hdr, ig_md, ig_intr_md, ig_prsr_md, ig_dprsr_md, ig_tm_md);
+        // handle ARP and ICMP requests
+        arp_and_icmp.apply(hdr, ig_md, ig_intr_md, ig_prsr_md, ig_dprsr_md, ig_tm_md);
 
         // support dropping packets with some probability by commputing random number here
         drop_rng.apply(ig_md.switchml_md.drop_random_value);
@@ -102,8 +106,8 @@ control SwitchMLIngress(
         APPLY_SIGNIFICAND_STAGE(28, 29, 30, 31);
 
         // decide what to do with this packet
-        switchml_next_step.apply(hdr, ig_md, ig_intr_md, ig_dprsr_md, ig_tm_md);
         non_switchml_forward.apply(hdr, ig_md, ig_dprsr_md, ig_tm_md);
+        switchml_next_step.apply(hdr, ig_md, ig_intr_md, ig_dprsr_md, ig_tm_md);
     }
 }
 

@@ -13,13 +13,49 @@ typedef bit<16> ether_type_t;
 
 // IPv4-specific types;
 typedef bit<32> ipv4_addr_t;
-typedef bit<8> ip_protocol_t;
+enum bit<8> ip_protocol_t {
+    ICMP = 1,
+    TCP  = 6,
+    UDP  = 17
+}
+
+// ARP-specific types
+enum bit<16> arp_opcode_t {
+    REQUEST = 1,
+    REPLY   = 2
+}
+
+// ICMP-specific types
+enum bit<8> icmp_type_t {
+    ECHO_REPLY   = 0,
+    ECHO_REQUEST = 8
+}
 
 // UDP-specific types;
 typedef bit<16> udp_port_t;
 
 // IB/RoCE-specific types:
 typedef bit<128> ib_gid_t;
+typedef bit<24> sequence_number_t;
+typedef bit<24> queue_pair_t;
+//typedef bit<32> sequence_number_t;
+//typedef bit<32> queue_pair_t;
+
+// UC opcodes
+enum bit<8> ib_opcode_t {
+    UC_SEND_FIRST                = 8w0b00100000,
+    UC_SEND_MIDDLE               = 8w0b00100001,
+    UC_SEND_LAST                 = 8w0b00100010,
+    UC_SEND_LAST_IMMEDIATE       = 8w0b00100011,
+    UC_SEND_ONLY                 = 8w0b00100100,
+    UC_SEND_ONLY_IMMEDIATE       = 8w0b00100101,
+    UC_RDMA_WRITE_FIRST          = 8w0b00100110,
+    UC_RDMA_WRITE_MIDDLE         = 8w0b00100111,
+    UC_RDMA_WRITE_LAST           = 8w0b00101000,
+    UC_RDMA_WRITE_LAST_IMMEDIATE = 8w0b00101001,
+    UC_RDMA_WRITE_ONLY           = 8w0b00101010,
+    UC_RDMA_WRITE_ONLY_IMMEDIATE = 8w0b00101011
+}
 
 // worker types
 typedef bit<32> worker_bitmap_t;
@@ -128,6 +164,10 @@ struct ingress_metadata_t {
 
     // checksum stuff
     bool checksum_err_ipv4;
+
+    // switch MAC and IP
+    mac_addr_t switch_mac;
+    ipv4_addr_t switch_ip;
 }
 
 // Metadata for egress stage

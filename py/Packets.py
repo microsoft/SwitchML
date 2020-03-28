@@ -81,6 +81,98 @@ def make_switchml_udp(src_mac, src_ip, dst_mac, dst_ip, src_port, dst_port, pool
         
     return p
 
+
+class IB_GRH(Packet):
+    name = "IB_GRH"
+    fields_desc = [
+        XBitField("ipver", 6, 4),
+        XBitField("tclass", 2, 8),
+        XBitField("flowlabel", 0, 20),
+        XShortField("paylen", 0),
+        XByteField("nxthdr", 27),
+        XByteField("hoplmt", 64),
+        IP6Field("sgid", "::1"),
+        IP6Field("dgid", "::1")
+        ]
+
+
+roce_opcode_n2s = {0b00100000: "UC_SEND_FIRST",
+                   0b00100001: "UC_SEND_MIDDLE",
+                   0b00100010: "UC_SEND_LAST",
+                   0b00100011: "UC_SEND_LAST_IMMEDIATE",
+                   0b00100100: "UC_SEND_ONLY",
+                   0b00100101: "UC_SEND_ONLY_IMMEDIATE",
+                   0b00100110: "UC_RDMA_WRITE_FIRST",
+                   0b00100111: "UC_RDMA_WRITE_MIDDLE",
+                   0b00101000: "UC_RDMA_WRITE_LAST",
+                   0b00101001: "UC_RDMA_WRITE_LAST_IMMEDIATE",
+                   0b00101010: "UC_RDMA_WRITE_ONLY",
+                   0b00101011: "UC_RDMA_WRITE_ONLY_IMMEDIATE"}
+
+roce_opcode_s2n = {"UC_SEND_FIRST": 0b00100000,
+                   "UC_SEND_MIDDLE": 0b00100001,
+                   "UC_SEND_LAST": 0b00100010,
+                   "UC_SEND_LAST_IMMEDIATE": 0b00100011,
+                   "UC_SEND_ONLY": 0b00100100,
+                   "UC_SEND_ONLY_IMMEDIATE": 0b00100101,
+                   "UC_RDMA_WRITE_FIRST": 0b00100110,
+                   "UC_RDMA_WRITE_MIDDLE": 0b00100111,
+                   "UC_RDMA_WRITE_LAST": 0b00101000,
+                   "UC_RDMA_WRITE_LAST_IMMEDIATE": 0b00101001,
+                   "UC_RDMA_WRITE_ONLY": 0b00101010,
+                   "UC_RDMA_WRITE_ONLY_IMMEDIATE": 0b00101011}
+                   
+class IB_BTH(Packet):
+    name = "IB BTH"
+    fields_desc = [
+        ByteEnumField("opcode", 0b0,
+                      {0b00100000: "UC_SEND_FIRST",
+                       0b00100001: "UC_SEND_MIDDLE",
+                       0b00100010: "UC_SEND_LAST",
+                       0b00100011: "UC_SEND_LAST_IMMEDIATE",
+                       0b00100100: "UC_SEND_ONLY",
+                       0b00100101: "UC_SEND_ONLY_IMMEDIATE",
+                       0b00100110: "UC_RDMA_WRITE_FIRST",
+                       0b00100111: "UC_RDMA_WRITE_MIDDLE",
+                       0b00101000: "UC_RDMA_WRITE_LAST",
+                       0b00101001: "UC_RDMA_WRITE_LAST_IMMEDIATE",
+                       0b00101010: "UC_RDMA_WRITE_ONLY",
+                       0b00101011: "UC_RDMA_WRITE_ONLY_IMMEDIATE",
+        }),
+        XBitField("se", 0, 1),
+        XBitField("migration_req", 1, 1), # ???
+        XBitField("pad_count", 0, 2),
+        XBitField("transport_version", 0, 4),
+        XShortField("partition_key", 0xffff),
+        XBitField("f_res1", 0, 1),
+        XBitField("b_res1", 0, 1),
+        XBitField("reserved", 0, 6),
+        X3BytesField("dst_qp", 0),
+        XBitField("ack_req", 0, 1),
+        XBitField("reserved2", 0, 7),
+        X3BytesField("psn", 0)
+        ]
+
+bind_layers(UDP, IB_BTH, dport=4791)
+    
+class IB_ICRC(Packet):
+    name = "IB_ICRC"
+    fields_desc = [
+        XIntField("icrc", None)
+    ]
+
+
+def make_switchml_rdma(src_mac, src_ip, dst_mac, dst_ip, src_port, dst_qp, opcode="UC_SEND_ONLY", psn=0, icrc=0x01020304):
+    p = (Ether(dst=dst_mac, src=src_mac) /
+         IP(dst=dst_ip, src=src_ip, tos=2, flags="DF") /
+         UDP(dport=4791, sport=src_port, chksum=0) /
+         IB_BTH(opcode=opcode, dst_qp=dst_qp, psn=psn) /
+         SwitchMLData() /
+         SwitchMLData() /
+         IB_ICRC(icrc=icrc))
+    
+    return p
+
 if __name__ == '__main__':
     p = make_switchml_udp(src_mac="b8:83:03:73:a6:a0", src_ip="198.19.200.49", dst_mac="06:00:00:00:00:01", dst_ip="198.19.200.200", src_port=1234, dst_port=0xbee0, pool_index=0)
     pprint(p)

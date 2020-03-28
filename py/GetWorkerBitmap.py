@@ -84,41 +84,6 @@ class GetWorkerBitmap(Table):
             [self.table.make_data([],
                                   'SwitchMLIngress.get_worker_bitmap.forward')])
 
-        # add entry to drop all other packets
-        self.table.entry_add(
-            target,
-            [self.table.make_key([gc.KeyTuple('$MATCH_PRIORITY', self.lowest_priority - 1),
-                                  # ignore all key fields
-                                  gc.KeyTuple('ig_prsr_md.parser_err',
-                                              0x0000, # 16 bits
-                                              0x0000),
-                                  gc.KeyTuple('ig_intr_md.ingress_port',
-                                              0x000, # 9 bits
-                                              0x000),
-                                  gc.KeyTuple('hdr.ipv4.src_addr',
-                                              self.all_zeros_ip_address,
-                                              self.all_zeros_ip_address),
-                                  gc.KeyTuple('hdr.ipv4.dst_addr',
-                                              self.all_zeros_ip_address,
-                                              self.all_zeros_ip_address),
-                                  gc.KeyTuple('hdr.ethernet.src_addr',
-                                              self.all_zeros_mac_address,
-                                              self.all_zeros_mac_address),
-                                  gc.KeyTuple('hdr.ethernet.dst_addr',
-                                              self.all_zeros_mac_address,
-                                              self.all_zeros_mac_address),
-                                  gc.KeyTuple('hdr.udp.dst_port',
-                                              0x0000, # 16 bits
-                                              0x0000),
-                                  gc.KeyTuple('hdr.ib_bth.partition_key',
-                                              0x0000, # 16 bits
-                                              0x0000),
-                                  gc.KeyTuple('hdr.ib_bth.dst_qp',
-                                              0x000000, # 24 bits
-                                              0x000000)])],
-            [self.table.make_data([],
-                             'SwitchMLIngress.get_worker_bitmap.drop')])
-
         # # add default entry
         # # NOTE: not necessary because default action is const for this table
         # self.table.default_entry_set(

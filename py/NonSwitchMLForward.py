@@ -49,8 +49,8 @@ class NonSwitchMLForward(Table):
         self.table.entry_add(
             target,
             [self.table.make_key([# match on egress RID and port
-                                  gc.KeyTuple('ig_md.switchml_md.packet_type',
-                                                  0x0), # packet_type_t.IGNORE
+                                  # gc.KeyTuple('ig_md.switchml_md.packet_type',
+                                  #                 0x0), # packet_type_t.IGNORE
                                   gc.KeyTuple('hdr.ethernet.dst_addr',
                                               "ff:ff:ff:ff:ff:ff")])],
                 [self.table.make_data([gc.DataTuple('flood_mgid', switch_mgid)],
@@ -61,8 +61,8 @@ class NonSwitchMLForward(Table):
             self.table.entry_add(
                 target,
                 [self.table.make_key([# match on egress RID and port
-                                      gc.KeyTuple('ig_md.switchml_md.packet_type',
-                                                  0x0), # packet_type_t.IGNORE
+                                      # gc.KeyTuple('ig_md.switchml_md.packet_type',
+                                      #             0x0), # packet_type_t.IGNORE
                                       gc.KeyTuple('hdr.ethernet.dst_addr',
                                                   worker.mac)])],
                 [self.table.make_data([gc.DataTuple('egress_port', dev_port)],
