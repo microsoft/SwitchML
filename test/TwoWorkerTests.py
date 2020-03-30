@@ -212,11 +212,11 @@ class SlotReuse(TwoWorkerTest):
         verify_packet(self, self.expected_pktW1S0, 1)
 
         # now reduce in second set again
-        send_packet(self, 0, self.pktW0S0)
-        send_packet(self, 1, self.pktW1S0)
+        send_packet(self, 0, self.pktW0S1)
+        send_packet(self, 1, self.pktW1S1)
 
-        verify_packet(self, self.expected_pktW0S0, 0)
-        verify_packet(self, self.expected_pktW1S0, 1)
+        verify_packet(self, self.expected_pktW0S1, 0)
+        verify_packet(self, self.expected_pktW1S1, 1)
 
 class IgnoreRetransmissions(TwoWorkerTest):
     """

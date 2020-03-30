@@ -19,16 +19,20 @@ control UpdateAndCheckWorkerBitmap(
         void apply(inout worker_bitmap_pair_t value, out worker_bitmap_t return_value) {
             return_value = value.first; // return first set
             value.first  = value.first  | ig_md.worker_bitmap;    // add bit to first set
-            // TODO: this works around a compiler bug; remove outer ~ after it's fixed
-            value.second = ~(value.second & (~ig_md.worker_bitmap)); // remove bit from second set
+            // // TODO: BUG: this works around a compiler bug; remove outer ~ after it's fixed
+            // value.second = ~(value.second & (~ig_md.worker_bitmap)); // remove bit from second set
+            // This is the correct computation that works with SDE 9.1.0 and above
+            value.second = value.second & (~ig_md.worker_bitmap); // remove bit from second set
         }
     };
 
     RegisterAction<worker_bitmap_pair_t, pool_index_by2_t, worker_bitmap_t>(worker_bitmap) worker_bitmap_update_set1 = {
         void apply(inout worker_bitmap_pair_t value, out worker_bitmap_t return_value) {
             return_value = value.second; // return second set
-            // TODO: this works around a compiler bug; remove outer ~ after it's fixed
-            value.first  = ~(value.first  & (~ig_md.worker_bitmap)); // remove bit from first set
+            // // TODO: BUG: this works around a compiler bug; remove outer ~ after it's fixed
+            // value.first  = ~(value.first  & (~ig_md.worker_bitmap)); // remove bit from first set
+            // This is the correct computation that works with SDE 9.1.0 and above
+            value.first  = value.first & (~ig_md.worker_bitmap); // remove bit from first set
             value.second = value.second | ig_md.worker_bitmap;    // add bit to second set
         }
     };
