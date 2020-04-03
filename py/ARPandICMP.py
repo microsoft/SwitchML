@@ -34,8 +34,6 @@ class ARPandICMP(Table):
         self.table.info.data_field_annotation_add("switch_ip",  'SwitchMLIngress.arp_and_icmp.send_arp_reply', "ipv4")
         self.table.info.data_field_annotation_add("switch_mac", 'SwitchMLIngress.arp_and_icmp.send_icmp_echo_reply', "mac")
         self.table.info.data_field_annotation_add("switch_ip",  'SwitchMLIngress.arp_and_icmp.send_icmp_echo_reply', "ipv4")
-        self.table.info.data_field_annotation_add("switch_mac", 'SwitchMLIngress.arp_and_icmp.set_switch_addresses', "mac")
-        self.table.info.data_field_annotation_add("switch_ip",  'SwitchMLIngress.arp_and_icmp.set_switch_addresses', "ipv4")
 
         # clear and add defaults
         self.clear()
@@ -95,12 +93,5 @@ class ARPandICMP(Table):
                                    gc.DataTuple('switch_ip',  self.switch_ip)],
                                   'SwitchMLIngress.arp_and_icmp.send_icmp_echo_reply')])
 
-
-        # add default entry to just set switch mac and ip in metadata
-        self.table.default_entry_set(
-            target,
-            self.table.make_data([gc.DataTuple('switch_mac', self.switch_mac),
-                                  gc.DataTuple('switch_ip',  self.switch_ip)],
-                                 'SwitchMLIngress.arp_and_icmp.set_switch_addresses'))
 
         

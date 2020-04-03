@@ -27,6 +27,7 @@ from NonSwitchMLForward import NonSwitchMLForward
 from Worker import Worker
 from Ports import Ports
 from ARPandICMP import ARPandICMP
+from RoCESender import RoCESender
 
 class Job(Cmd, object):
 
@@ -95,11 +96,14 @@ class Job(Cmd, object):
         # clear and reset everything to defaults
         self.clear_all()
         
-        # first, delete all old ports and add new ports for workers,
+        # first, delete all old ports and add new ports for all workers
         self.ports = Ports(self.gc, self.bfrt_info)
         self.ports.delete_all_ports()
-        for worker in self.workers:
-            worker.xid = self.ports.get_dev_port(worker.front_panel_port, worker.lane)
+
+        # we allocate each worker its own rid.
+        for index, worker in enumerate(self.workers):
+            worker.rid = index
+            worker.xid = index
             self.ports.add_port(worker.front_panel_port, worker.lane, worker.speed, worker.fec)
         
         # set switch IP and MAC and enable ARP/ICMP responder
@@ -112,18 +116,31 @@ class Job(Cmd, object):
         pool_base = 0             # TODO: for now, support only one pool at base index 0
         pool_size = 22528         # TODO: for now, use entire switch for single pool
         worker_mask = 0x00000001  # initial worker mask
-        num_workers = len(self.workers)
 
-        if num_workers > 32:
-            log.error("Current design supports only 32 workers per job; you requested {}".format(num_workers))
-        
-        for worker in self.workers:
-            self.get_worker_bitmap.add_udp_entry(self.switch_mac, self.switch_ip, self.switch_udp_port, self.switch_udp_port_mask,
-                                                 worker.mac, worker.ip, worker_mask, num_workers,
-                                                 match_priority, self.switch_mgid, pool_base, pool_size)
-            # shift mask one bit to left for next worker
-            worker_mask = worker_mask << 1
+        # get workers that are enabled as SwitchML workers by having a UDP port or RoCE QPN set
+        switchml_workers = [w for w in self.workers if w.udp_port is not None or w.roce_qpn is not None]
+        num_switchml_workers = len(switchml_workers)
+        if num_switchml_workers > 32:
+            log.error("Current design supports only 32 workers per job; you requested {}".format(num_switchml_workers))
 
+        for worker in switchml_workers:
+            if worker.udp_port is not None:
+                # SwitchML-UDP worker
+                self.get_worker_bitmap.add_udp_entry(self.switch_mac, self.switch_ip, self.switch_udp_port, self.switch_udp_port_mask,
+                                                     worker.rid, worker.worker_type, worker.mac, worker.ip, worker_mask, num_switchml_workers,
+                                                     match_priority, self.switchml_workers_mgid, pool_base, pool_size)
+                # shift mask one bit to left for next worker
+                worker_mask = worker_mask << 1
+            elif worker.roce_qpn is not None:
+                # TODO: update for RoCE
+                self.get_worker_bitmap.add_udp_entry(self.switch_mac, self.switch_ip, self.switch_udp_port, self.switch_udp_port_mask,
+                                                     worker.rid, worker.worker_type, worker.mac, worker.ip, worker_mask, num_switchml_workers,
+                                                     match_priority, self.switchml_workers_mgid, pool_base, pool_size)
+                # shift mask one bit to left for next worker
+                worker_mask = worker_mask << 1
+            else:
+                # non-SwitchML worker; shouldn't be able to get here
+                log.error("Why are we trying to create a SwitchML entry for a non-SwitchML worker?")
 
         
         # add update rules for bitmap and clear register
@@ -160,33 +177,43 @@ class Job(Cmd, object):
         # configure multicast group
         #
         
-        # we allocate each worker its own rid.
-        rid = 1
-        for worker in self.workers:
-            worker.rid = rid
-            rid = rid + 1
-            
-        # add workers to multicast group   
+        # add workers to multicast groups.
         self.pre = PRE(self.gc, self.bfrt_info, self.ports)
-        self.pre.add_workers(self.switch_mgid, self.workers)
+        # add workers
+        self.pre.add_workers(self.switchml_workers_mgid, switchml_workers,
+                             self.all_ports_mgid, self.workers)
 
+        
         # add workers to non-switchml forwarding table
         self.non_switchml_forward = NonSwitchMLForward(self.gc, self.bfrt_info, self.ports)
-        self.non_switchml_forward.add_workers(self.switch_mgid, self.workers)
+        self.non_switchml_forward.add_workers(self.all_ports_mgid, self.workers)
         
         # now add workers to set_dst_addr table in egress
-        self.set_dst_addr = SetDstAddr(self.gc, self.bfrt_info)
+        self.set_dst_addr = SetDstAddr(self.gc, self.bfrt_info, self.switch_mac, self.switch_ip)
         self.tables_to_clear.append(self.set_dst_addr)
+        self.roce_sender = RoCESender(self.gc, self.bfrt_info,
+                                      self.switch_mac, self.switch_ip,
+                                      message_length = 256)#self.message_length)
+        self.tables_to_clear.append(self.roce_sender)
         for worker in self.workers:
-            self.set_dst_addr.add_udp_entry(worker.mac, worker.ip, worker.udp_port, worker.rid,
-                                            self.ports.get_dev_port(worker.front_panel_port, worker.lane))
+            if worker.udp_port is not None:
+                # SwitchML-UDP worker
+                self.set_dst_addr.add_udp_entry(worker.rid, worker.mac, worker.ip)
+            elif worker.roce_qpn is not None:
+                # SwitchML-RoCE worker
+                self.roce_sender.add_worker(worker.rid, worker.mac, worker.ip,
+                                            worker.roce_qpn, worker.roce_initial_psn)
+            else:
+                # not a SwitchML UDP or RoCE worker, so ignore
+                pass
+                
 
         # should already be done
         #self.clear_registers()
 
     
     def __init__(self, gc, bfrt_info,
-                 switch_ip, switch_mac, switch_udp_port, switch_udp_port_mask, switch_mgid, workers):
+                 switch_ip, switch_mac, switch_udp_port, switch_udp_port_mask, workers):
         # call Cmd constructor
         super(Job, self).__init__()
         self.intro = "SwitchML command loop. Use 'help' or '?' to list commands."
@@ -205,8 +232,11 @@ class Job(Cmd, object):
         self.switch_mac = switch_mac
         self.switch_udp_port = switch_udp_port
         self.switch_udp_port_mask = switch_udp_port_mask
-        self.switch_mgid = switch_mgid
         self.workers = workers
+
+        # set swithcml MGID and all nodes MGID
+        self.switchml_workers_mgid = 0x1234
+        self.all_ports_mgid = 0x1235
 
         # allocate storage
         self.registers_to_clear = []

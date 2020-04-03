@@ -52,12 +52,12 @@ control UpdateAndCheckWorkerBitmap(
     }    
 
     action update_worker_bitmap_set0_action() {
-        ig_md.switchml_md.worker_bitmap_before = worker_bitmap_update_set0.execute(ig_md.switchml_md.pool_index[16:1]);
+        ig_md.switchml_md.worker_bitmap_before = worker_bitmap_update_set0.execute(ig_md.switchml_md.pool_index[14:1]);
         check_worker_bitmap_action();
     }
 
     action update_worker_bitmap_set1_action() {
-        ig_md.switchml_md.worker_bitmap_before = worker_bitmap_update_set1.execute(ig_md.switchml_md.pool_index[16:1]);
+        ig_md.switchml_md.worker_bitmap_before = worker_bitmap_update_set1.execute(ig_md.switchml_md.pool_index[14:1]);
         check_worker_bitmap_action();
     }
 

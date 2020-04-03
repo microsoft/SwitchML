@@ -10,7 +10,7 @@ import grpc
 
 
 from Table import Table
-from Worker import Worker
+from Worker import Worker, WorkerType
 
 class GetWorkerBitmap(Table):
 
@@ -47,53 +47,10 @@ class GetWorkerBitmap(Table):
         # target all pipes on device 0
         target = gc.Target(device_id=0, pipe_id=0xffff)
 
-        # add entry to forward non-matching packets with no parse errors
-        self.table.entry_add(
-            target,
-            [self.table.make_key([gc.KeyTuple('$MATCH_PRIORITY', self.lowest_priority - 2),
-                                  # allow packets with no parser errors or with partial headers only (bit 2)
-                                  gc.KeyTuple('ig_prsr_md.parser_err',
-                                              0x0000, # 16 bits
-                                              0xffff),
-
-                                  # ignore all other key fields
-                                  gc.KeyTuple('ig_intr_md.ingress_port',
-                                              0x000, # 9 bits
-                                              0x000),
-                                  gc.KeyTuple('hdr.ipv4.src_addr',
-                                              self.all_zeros_ip_address,
-                                              self.all_zeros_ip_address),
-                                  gc.KeyTuple('hdr.ipv4.dst_addr',
-                                              self.all_zeros_ip_address,
-                                              self.all_zeros_ip_address),
-                                  gc.KeyTuple('hdr.ethernet.src_addr',
-                                              self.all_zeros_mac_address,
-                                              self.all_zeros_mac_address),
-                                  gc.KeyTuple('hdr.ethernet.dst_addr',
-                                              self.all_zeros_mac_address,
-                                              self.all_zeros_mac_address),
-                                  gc.KeyTuple('hdr.udp.dst_port',
-                                              0x0000, # 16 bits
-                                              0x0000),
-                                  gc.KeyTuple('hdr.ib_bth.partition_key',
-                                              0x0000, # 16 bits
-                                              0x0000),
-                                  gc.KeyTuple('hdr.ib_bth.dst_qp',
-                                              0x000000, # 24 bits
-                                              0x000000)])],
-            [self.table.make_data([],
-                                  'SwitchMLIngress.get_worker_bitmap.forward')])
-
-        # # add default entry
-        # # NOTE: not necessary because default action is const for this table
-        # self.table.default_entry_set(
-        #     target,
-        #     self.table.make_data(data_field_list_in=[],
-        #                           action_name='SwitchMLIngress.get_worker_bitmap.forward'))
 
     # Add SwitchML UDP entry to table
     def add_udp_entry(self, switch_mac, switch_ip, switch_udp_port, switch_udp_mask,
-                      worker_mac, worker_ip, worker_bitmap, num_workers,
+                      worker_id, worker_type, worker_mac, worker_ip, worker_bitmap, num_workers,
                       match_priority, switch_mgid, pool_base, pool_size):
         self.logger.info("Adding worker {} {}".format(worker_mac, worker_ip))
 
@@ -139,6 +96,8 @@ class GetWorkerBitmap(Table):
                                               0x000000, # 24 bits
                                               0x000000)])],
             [self.table.make_data([gc.DataTuple('mgid', switch_mgid),
+                                   gc.DataTuple('worker_type', worker_type.value), # true
+                                   gc.DataTuple('worker_id', worker_id),
                                    gc.DataTuple('packet_type', 0x1), # packet_type_t.CONSUME
                                    gc.DataTuple('num_workers', num_workers),
                                    gc.DataTuple('worker_bitmap', worker_bitmap),

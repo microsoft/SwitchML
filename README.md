@@ -18,7 +18,7 @@ Things to do:
   undone. Search for "BUG" in the code to find these places.
 * The control plane and tests use the BF Runtime GRPC API, which was
   still under development when this code was written against SDE
-  9.0.0. The API may change in future releases of the SDE, and this
+  9.1.0. The API may change in future releases of the SDE, and this
   code will benefit from being updated (in particular, faster register
   clearing will be handy)
 * The code has the beginnings of isolation support for multiple jobs,
@@ -36,13 +36,12 @@ Things to do:
   half by modifying the code to use two recirculation ports.
 * Drop simulation is not currently supported.
 
-
 Requirements
 ------------
 
-For the SwitchML p4 code, the main requirement is SDE 9.0.0.
+For the SwitchML p4 code, the main requirement is SDE 9.1.0.
 
-FOr the control plane, Python 2.7 with Scapy and other SDE dependences
+For the control plane, Python 2.7 with Scapy and other SDE dependences
 is required. This should be installed on any machine with the SDE
 installed. 
 

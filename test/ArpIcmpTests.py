@@ -93,7 +93,7 @@ class ARPTest(SwitchMLTest):
         
         #self.arp_and_icmp = ARPandICMP(gc, self.bfrt_info, self.switch_mac, self.switch_ip)
         self.job = Job(gc, self.bfrt_info,
-                       self.switch_ip, self.switch_mac, self.switch_udp_port, self.switch_udp_port_mask, self.switch_mgid,
+                       self.switch_ip, self.switch_mac, self.switch_udp_port, self.switch_udp_port_mask, 
                        [Worker(mac=self.worker_mac, ip=self.worker_ip, udp_port=12345, front_panel_port=1, lane=0, speed=10, fec='none'),
                         Worker(mac="b8:83:03:74:01:8c", ip="198.19.200.50", udp_port=23456, front_panel_port=1, lane=1, speed=10, fec='none')])
 

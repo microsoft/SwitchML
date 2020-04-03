@@ -23,6 +23,8 @@ import bfrt_grpc.client as gc
 
 # import SwitchML job setup
 from SwitchML.Job import Job
+from SwitchML.Worker import Worker, WorkerType
+from SwitchML.Packets import make_switchml_udp, make_switchml_rdma
 
 # init logging
 logger = logging.getLogger('Test')
@@ -58,3 +60,45 @@ class SwitchMLTest(BfRuntimeTest):
         except Exception as e:
             print("Error cleaning up: {}".format(e))
 
+    def make_switchml_packets(self, workers, pool_index, value_multiplier, dst_port):
+        packets = []
+        scaled_value_multiplier = value_multiplier * len(workers)
+        for w in workers:
+            if w.udp_port is not None:
+                p = make_switchml_udp(src_mac=w.mac,
+                                      src_ip=w.ip,
+                                      dst_mac=self.switch_mac,
+                                      dst_ip=self.switch_ip,
+                                      src_port=w.udp_port,
+                                      dst_port=dst_port,
+                                      pool_index=pool_index,
+                                      value_multiplier=value_multiplier)
+                e = make_switchml_udp(src_mac=self.switch_mac,
+                                      src_ip=self.switch_ip,
+                                      dst_mac=w.mac,
+                                      dst_ip=w.ip,
+                                      src_port=dst_port,
+                                      dst_port=w.udp_port,
+                                      pool_index=pool_index,
+                                      checksum=0,
+                                      value_multiplier=scaled_value_multiplier)
+                packets.append( (p, e) )
+            elif w.roce_qpn is not None:
+                p = make_switchml_udp(src_mac=w.mac, # TODO: make RDMA when ready
+                                      src_ip=w.ip,
+                                      dst_mac=self.switch_mac,
+                                      dst_ip=self.switch_ip,
+                                      src_port=w.udp_port,
+                                      dst_port=dst_port,
+                                      pool_index=pool_index,
+                                      value_multiplier=value_multiplier)
+                e = make_switchml_rdma(src_mac=self.switch_mac,
+                                       src_ip=self.switch_ip,
+                                       dst_mac=w.mac,
+                                       dst_ip=w.ip,
+                                       src_port=0x2345,
+                                       dst_qp=w.roce_qpn,
+                                       value_multiplier=scaled_value_multiplier)
+                packets.append( (p, e) )
+            
+        return tuple(packets)

@@ -29,6 +29,8 @@
 #include "SetDstAddr.p4"
 #include "NonSwitchMLForward.p4"
 #include "NextStep.p4"
+//#include "RoCEReceiver.p4"
+#include "RoCESender.p4"
 
 control SwitchMLIngress(
     inout header_t hdr,
@@ -44,7 +46,7 @@ control SwitchMLIngress(
 
     ARPandICMP() arp_and_icmp;
     GetWorkerBitmap() get_worker_bitmap;
-    DropRNG() drop_rng;
+    // DropRNG() drop_rng;
     UpdateAndCheckWorkerBitmap() update_and_check_worker_bitmap;
 
     ExponentMax() exponent_max;
@@ -63,7 +65,12 @@ control SwitchMLIngress(
     NextStep() switchml_next_step;
     NonSwitchMLForward() non_switchml_forward;
 
+    //RoCEReceiver() roce_receiver;
+    
     apply {
+
+        //roce_receiver.apply(hdr, ig_md, ig_dprsr_md, ig_tm_md);
+        
 
         // see if this is a SwitchML packet
         // get worker masks, pool base index, other parameters for this packet
@@ -73,8 +80,8 @@ control SwitchMLIngress(
         // if it's a SwitchML packet that should be processed in ingress, do so
         if ((ig_md.switchml_md.packet_type == packet_type_t.CONSUME) ||
             (ig_md.switchml_md.packet_type == packet_type_t.HARVEST)) {
-            // support dropping packets with some probability by commputing random number here
-            drop_rng.apply(ig_md.switchml_md.drop_random_value);
+            // // support dropping packets with some probability by commputing random number here
+            // drop_rng.apply(ig_md.switchml_md.drop_random_value);
             
             // for CONSUME packets, record packet reception and check if this packet is a retransmission.
             update_and_check_worker_bitmap.apply(hdr, ig_md, ig_intr_md, ig_dprsr_md);
@@ -127,16 +134,29 @@ control SwitchMLEgress(
     inout egress_intrinsic_metadata_for_deparser_t eg_intr_dprs_md,
     inout egress_intrinsic_metadata_for_output_port_t eg_intr_oport_md) {
 
-    EgressDropSimulator() egress_drop_sim;
+    // EgressDropSimulator() egress_drop_sim;
     SetDestinationAddress() set_dst_addr;
+    RoCESender() roce_sender;
     
     apply {
-        // simulate packet drops
-        // (will clear switchml_md valid bit if packet is dropped)
-        egress_drop_sim.apply(eg_md.switchml_md, eg_intr_dprs_md);
+        if (eg_md.switchml_md.packet_type == packet_type_t.BROADCAST ||
+            eg_md.switchml_md.packet_type == packet_type_t.RETRANSMIT) {
 
-        // for multicast packets, fill in correct destination address based on 
-        set_dst_addr.apply(eg_md, eg_intr_md, hdr);
+            // if it's BROADCAST, copy rid from PRE to worker id field
+            // so tables see it.
+            if (eg_md.switchml_md.packet_type == packet_type_t.BROADCAST) {
+                eg_md.switchml_md.worker_id = eg_intr_md.egress_rid;
+            }
+            
+            if (eg_md.switchml_md.worker_type == worker_type_t.ROCEv2) {
+                roce_sender.apply(hdr, eg_md, eg_intr_md, eg_intr_md_from_prsr, eg_intr_dprs_md);
+            } else { // must be UDP
+                set_dst_addr.apply(eg_md, eg_intr_md, hdr);
+            }
+
+            // // simulate packet drops
+            // egress_drop_sim.apply(eg_md.switchml_md, eg_intr_dprs_md);
+        }
     }
 }
 

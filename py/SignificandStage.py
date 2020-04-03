@@ -8,6 +8,8 @@ import bfrt_grpc.bfruntime_pb2 as bfruntime_pb2
 import bfrt_grpc.client as gc
 import grpc
 
+from timeit import default_timer as timer
+
 from Table import Table
 
 
@@ -23,6 +25,15 @@ class SignificandStage(Table):
         # store control name for future register accesses
         self.control_name = "SwitchMLIngress.significands_{:02d}_{:02d}_{:02d}_{:02d}".format(aa, bb, cc, dd)
 
+        # get registers
+        self.registers = []
+        # for each register in stage
+        for index in [0, 1, 2, 3]:
+            # clear all entries in this register
+            register_name = self.control_name + ".sum{}.significands".format(index)
+            register = self.bfrt_info.table_get(register_name)
+            self.registers.append(register)
+        
         # no table entries to clear or set defaults for
         ###self.clear() # Don't clear table; it's programmed in the P4 code, and self.table is not set.
         self.add_default_entries()
@@ -42,22 +53,12 @@ class SignificandStage(Table):
         target = gc.Target(device_id=0, pipe_id=0xffff)
 
         # for each register in stage
-        for index in [0, 1, 2, 3]:
-            # clear all entries in this register
-            register_name = self.control_name + ".sum{}.significands".format(index)
-            self.logger.info("Clearing significand register {}...".format(register_name))
-            register = self.bfrt_info.table_get(register_name)
-            for i in range(register.info.size_get()):
-                register.entry_add(
-                    target,
-                    [register.make_key([gc.KeyTuple('$REGISTER_INDEX', i)])],
-                    [register.make_data(
-                        [gc.DataTuple(register_name + '.first', 0),
-                         gc.DataTuple(register_name + '.second', 0)])])
-
-            # sync?
-            register.operations_execute(target, 'Sync')
-
+        start = timer()
+        for register in self.registers:
+            register.entry_del(target)
+        end = timer()
+        self.logger.info("Cleared four registers in {} seconds per register...".format((end-start)/4))
+        
         
     def add_default_entries(self):
         # all this is handled in the p4 code

@@ -65,15 +65,19 @@ switch_mac           = "06:00:00:00:00:01"
 switch_ip            = "198.19.200.200"
 switch_udp_port      = 0xbee0
 switch_udp_port_mask = 0xfff0
-switch_mgid          = 1234
 
 # setup job for model
 from Job import Job
 from Worker import Worker
 job = Job(gc, bfrt_info,
-          switch_ip, switch_mac, switch_udp_port, switch_udp_port_mask, switch_mgid,
-          [Worker(mac="b8:83:03:73:a6:a0", ip="198.19.200.49", udp_port=0xbee0, front_panel_port=1, lane=1, speed=10, fec='none'),
-           Worker(mac="b8:83:03:74:01:8c", ip="198.19.200.50", udp_port=0xbee0, front_panel_port=1, lane=0, speed=10, fec='none')])
+          switch_ip, switch_mac, switch_udp_port, switch_udp_port_mask, [
+              # Two UDP workers
+              Worker(mac="b8:83:03:73:a6:a0", ip="198.19.200.49", udp_port=12345, front_panel_port=1, lane=0, speed=10, fec='none'),
+              Worker(mac="b8:83:03:74:01:8c", ip="198.19.200.50", udp_port=12345, front_panel_port=1, lane=1, speed=10, fec='none'),
+              # A non-SwitchML worker; packets will be L2-forwarded
+              # out this port for this MAC, but this worker will not
+              # be included in the reduction.
+              Worker(mac="b8:83:03:74:01:c4", ip="198.19.200.48", front_panel_port=1, lane=2, speed=10, fec='none')])
 
 # Done with configuration
 #logger.info("Switch configured! Hit Ctrl-\ to exit.")

@@ -123,7 +123,7 @@ roce_opcode_s2n = {"UC_SEND_FIRST": 0b00100000,
                    "UC_RDMA_WRITE_ONLY_IMMEDIATE": 0b00101011}
                    
 class IB_BTH(Packet):
-    name = "IB BTH"
+    name = "IB_BTH"
     fields_desc = [
         ByteEnumField("opcode", 0b0,
                       {0b00100000: "UC_SEND_FIRST",
@@ -153,8 +153,26 @@ class IB_BTH(Packet):
         X3BytesField("psn", 0)
         ]
 
-bind_layers(UDP, IB_BTH, dport=4791)
+class IB_IMM(Packet):
+    name = "IB_Immediate"
+    fields_desc = [
+        XIntField("imm", 0)
+    ]
     
+bind_layers(UDP, IB_BTH, dport=4791)
+bind_layers(IB_BTH, IB_IMM, opcode="UC_SEND_LAST_IMMEDIATE")
+bind_layers(IB_BTH, IB_IMM, opcode="UC_SEND_ONLY_IMMEDIATE")
+bind_layers(IB_BTH, IB_IMM, opcode="UC_RDMA_WRITE_LAST_IMMEDIATE")
+bind_layers(IB_BTH, IB_IMM, opcode="UC_RDMA_WRITE_ONLY_IMMEDIATE")
+bind_layers(IB_BTH, SwitchMLData, opcode="UC_SEND_FIRST")
+bind_layers(IB_BTH, SwitchMLData, opcode="UC_SEND_MIDDLE")
+bind_layers(IB_BTH, SwitchMLData, opcode="UC_SEND_LAST")
+bind_layers(IB_BTH, SwitchMLData, opcode="UC_SEND_ONLY")
+bind_layers(IB_BTH, SwitchMLData, opcode="UC_RDMA_WRITE_FIRST")
+bind_layers(IB_BTH, SwitchMLData, opcode="UC_RDMA_WRITE_MIDDLE")
+bind_layers(IB_BTH, SwitchMLData, opcode="UC_RDMA_WRITE_LAST")
+bind_layers(IB_BTH, SwitchMLData, opcode="UC_RDMA_WRITE_ONLY")
+
 class IB_ICRC(Packet):
     name = "IB_ICRC"
     fields_desc = [
@@ -162,7 +180,7 @@ class IB_ICRC(Packet):
     ]
 
 
-def make_switchml_rdma(src_mac, src_ip, dst_mac, dst_ip, src_port, dst_qp, opcode="UC_SEND_ONLY", psn=0, icrc=0x01020304):
+def make_switchml_rdma(src_mac, src_ip, dst_mac, dst_ip, src_port, dst_qp, opcode="UC_SEND_ONLY", psn=0, icrc=None, value_multiplier=1):
     p = (Ether(dst=dst_mac, src=src_mac) /
          IP(dst=dst_ip, src=src_ip, tos=2, flags="DF") /
          UDP(dport=4791, sport=src_port, chksum=0) /
@@ -171,6 +189,14 @@ def make_switchml_rdma(src_mac, src_ip, dst_mac, dst_ip, src_port, dst_qp, opcod
          SwitchMLData() /
          IB_ICRC(icrc=icrc))
     
+    # initialize data
+    for i in range(32):
+        setattr(p.getlayer('SwitchMLData', 1), 'd{}'.format(i), value_multiplier * i)
+        setattr(p.getlayer('SwitchMLData', 2), 'd{}'.format(i), value_multiplier * (i+32))
+
+    if icrc is not None:
+        p['IB_ICRC'].icrc = icrc
+        
     return p
 
 if __name__ == '__main__':

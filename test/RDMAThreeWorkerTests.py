@@ -20,7 +20,7 @@ import bfrt_grpc.client as gc
 # import SwitchML setup
 from SwitchML.Job import Job
 from SwitchML.Worker import Worker
-from SwitchML.Packets import make_switchml_udp
+from SwitchML.Packets import make_switchml_udp, make_switchml_rdma
 
 # import SwitchML test base class
 from SwitchMLTest import *
@@ -34,9 +34,9 @@ if not len(logger.handlers):
 logging.basicConfig(level=logging.INFO)
 
 
-class ThreeWorkerTest(SwitchMLTest):
+class RDMAThreeWorkerTest(SwitchMLTest):
     """
-    Base class for 3-worker SwitchML tests
+    Base class for 3-worker SwitchML tests using RDMA
     """
 
     def setUp(self):
@@ -52,13 +52,12 @@ class ThreeWorkerTest(SwitchMLTest):
         self.switch_udp_port_mask = 0xfff0
         self.switch_mgid          = 1234
 
-        self.workers = [Worker(mac="b8:83:03:73:a6:a0", ip="198.19.200.49", udp_port=12345, front_panel_port=1, lane=0, speed=10, fec='none'),
-                        Worker(mac="b8:83:03:74:01:8c", ip="198.19.200.50", udp_port=12345, front_panel_port=1, lane=1, speed=10, fec='none'),
-                        Worker(mac="b8:83:03:74:02:9a", ip="198.19.200.48", udp_port=12345, front_panel_port=1, lane=2, speed=10, fec='none')]
+        self.workers = [Worker(mac="b8:83:03:73:a6:a0", ip="198.19.200.49", roce_qpn=12345, front_panel_port=1, lane=0, speed=10, fec='none'),
+                        Worker(mac="b8:83:03:74:01:8c", ip="198.19.200.50", roce_qpn=23456, front_panel_port=1, lane=1, speed=10, fec='none'),
+                        Worker(mac="b8:83:03:74:02:9a", ip="198.19.200.48", roce_qpn=34567, front_panel_port=1, lane=2, speed=10, fec='none')]
         
         self.job = Job(gc, self.bfrt_info,
-                       self.switch_ip, self.switch_mac, self.switch_udp_port, self.switch_udp_port_mask,
-                       self.workers)
+                       self.switch_ip, self.switch_mac, self.switch_udp_port, self.switch_udp_port_mask, self.workers)
 
         # make packets for set 0
         ((self.pktW0S0, self.expected_pktW0S0),
@@ -79,8 +78,8 @@ class ThreeWorkerTest(SwitchMLTest):
          (self.pktW2S1x3, self.expected_pktW2S1x3)) = self.make_switchml_packets(self.workers, 0x8000, 3, self.switch_udp_port)
 
 
-            
-class BasicReduction(ThreeWorkerTest):
+ 
+class BasicReduction(RDMAThreeWorkerTest):
     """
     Test basic operation of a single slot.
     """
@@ -95,7 +94,7 @@ class BasicReduction(ThreeWorkerTest):
         verify_packet(self, self.expected_pktW1S0, 1)
         verify_packet(self, self.expected_pktW2S0, 2)
 
-class RetransmitAfterReduction(ThreeWorkerTest):
+class RetransmitAfterReduction(RDMAThreeWorkerTest):
     """
     Ensure we can retransmit from a set after it has received all
     updates and before its paired set has received its first update.
@@ -109,7 +108,7 @@ class RetransmitAfterReduction(ThreeWorkerTest):
 
         send_packet(self, 1, self.pktW1S0)
         verify_no_other_packets(self)
-        
+
         send_packet(self, 2, self.pktW2S0)
 
         verify_packet(self, self.expected_pktW0S0, 0)
@@ -118,29 +117,35 @@ class RetransmitAfterReduction(ThreeWorkerTest):
 
         # try retransmission from second worker
         send_packet(self, 1, self.pktW1S0)
+        self.expected_pktW1S0['IB_BTH'].psn = 1
         verify_packet(self, self.expected_pktW1S0, 1)
 
         # try retransmission from second worker again
         send_packet(self, 1, self.pktW1S0)
+        self.expected_pktW1S0['IB_BTH'].psn = 2
         verify_packet(self, self.expected_pktW1S0, 1)
 
         # try retransmission from second worker one more time
         send_packet(self, 1, self.pktW1S0)
+        self.expected_pktW1S0['IB_BTH'].psn = 3        
         verify_packet(self, self.expected_pktW1S0, 1)
 
         # try retransmission from first worker
         send_packet(self, 0, self.pktW0S0)
+        self.expected_pktW0S0['IB_BTH'].psn = 1
         verify_packet(self, self.expected_pktW0S0, 0)
 
         # try retransmission from first worker again
         send_packet(self, 0, self.pktW0S0)
+        self.expected_pktW0S0['IB_BTH'].psn = 2
         verify_packet(self, self.expected_pktW0S0, 0)
 
         # try retransmission from third worker
         send_packet(self, 0, self.pktW2S0)
+        self.expected_pktW2S0['IB_BTH'].psn = 1
         verify_packet(self, self.expected_pktW2S0, 0)
 
-class OtherSetReduction(ThreeWorkerTest):
+class OtherSetReduction(RDMAThreeWorkerTest):
     """
     Test basic operation of a single slot, starting from the second
     set instead of the first.
@@ -150,7 +155,7 @@ class OtherSetReduction(ThreeWorkerTest):
         # do a straightforward reduction in the second set
         send_packet(self, 0, self.pktW0S1)
         verify_no_other_packets(self)
-        
+
         send_packet(self, 1, self.pktW1S1)
         verify_no_other_packets(self)
         
@@ -160,7 +165,7 @@ class OtherSetReduction(ThreeWorkerTest):
         verify_packet(self, self.expected_pktW1S1, 1)
         verify_packet(self, self.expected_pktW2S1, 2)
 
-class BothSetsReduction(ThreeWorkerTest):
+class BothSetsReduction(RDMAThreeWorkerTest):
     """
     Test basic operation of a pair of sets.
     """
@@ -169,10 +174,10 @@ class BothSetsReduction(ThreeWorkerTest):
         # do a straightforward reduction in the first set
         send_packet(self, 0, self.pktW0S0)
         verify_no_other_packets(self)
-        
+
         send_packet(self, 1, self.pktW1S0)
         verify_no_other_packets(self)
-        
+
         send_packet(self, 2, self.pktW2S0)
 
         verify_packet(self, self.expected_pktW0S0, 0)
@@ -182,18 +187,22 @@ class BothSetsReduction(ThreeWorkerTest):
         # now do a straightforward reduction in the second set
         send_packet(self, 0, self.pktW0S1x3)
         verify_no_other_packets(self)
-        
+
         send_packet(self, 1, self.pktW1S1x3)
         verify_no_other_packets(self)
-        
+
         send_packet(self, 2, self.pktW2S1x3)
+
+        self.expected_pktW0S1x3['IB_BTH'].psn = 1
+        self.expected_pktW1S1x3['IB_BTH'].psn = 1
+        self.expected_pktW2S1x3['IB_BTH'].psn = 1
 
         verify_packet(self, self.expected_pktW0S1x3, 0)
         verify_packet(self, self.expected_pktW1S1x3, 1)
         verify_packet(self, self.expected_pktW2S1x3, 2)
                 
 
-class SlotReuse(ThreeWorkerTest):
+class SlotReuse(RDMAThreeWorkerTest):
     """
     Test basic slot reuse.
     """
@@ -202,10 +211,10 @@ class SlotReuse(ThreeWorkerTest):
         # do a straightforward reduction in the first set
         send_packet(self, 0, self.pktW0S0)
         verify_no_other_packets(self)
-        
+
         send_packet(self, 1, self.pktW1S0)
         verify_no_other_packets(self)
-        
+
         send_packet(self, 2, self.pktW2S0)
 
         verify_packet(self, self.expected_pktW0S0, 0)
@@ -215,11 +224,15 @@ class SlotReuse(ThreeWorkerTest):
         # now do a straightforward reduction in the second set
         send_packet(self, 0, self.pktW0S1)
         verify_no_other_packets(self)
-        
+
         send_packet(self, 1, self.pktW1S1)
         verify_no_other_packets(self)
-        
+
         send_packet(self, 2, self.pktW2S1)
+
+        self.expected_pktW0S1['IB_BTH'].psn = 1
+        self.expected_pktW1S1['IB_BTH'].psn = 1
+        self.expected_pktW2S1['IB_BTH'].psn = 1
 
         verify_packet(self, self.expected_pktW0S1, 0)
         verify_packet(self, self.expected_pktW1S1, 1)
@@ -228,12 +241,16 @@ class SlotReuse(ThreeWorkerTest):
         # now reduce in first set again
         send_packet(self, 0, self.pktW0S0x3)
         verify_no_other_packets(self)
-        
+
         send_packet(self, 1, self.pktW1S0x3)
         verify_no_other_packets(self)
-        
+
         send_packet(self, 2, self.pktW2S0x3)
 
+        self.expected_pktW0S0x3['IB_BTH'].psn = 2
+        self.expected_pktW1S0x3['IB_BTH'].psn = 2
+        self.expected_pktW2S0x3['IB_BTH'].psn = 2
+        
         verify_packet(self, self.expected_pktW0S0x3, 0)
         verify_packet(self, self.expected_pktW1S0x3, 1)
         verify_packet(self, self.expected_pktW2S0x3, 2)
@@ -241,17 +258,21 @@ class SlotReuse(ThreeWorkerTest):
         # now reduce in second set again
         send_packet(self, 0, self.pktW0S1x3)
         verify_no_other_packets(self)
-        
+
         send_packet(self, 1, self.pktW1S1x3)
         verify_no_other_packets(self)
-        
+
         send_packet(self, 2, self.pktW2S1x3)
+
+        self.expected_pktW0S1x3['IB_BTH'].psn = 3
+        self.expected_pktW1S1x3['IB_BTH'].psn = 3
+        self.expected_pktW2S1x3['IB_BTH'].psn = 3
 
         verify_packet(self, self.expected_pktW0S1x3, 0)
         verify_packet(self, self.expected_pktW1S1x3, 1)
         verify_packet(self, self.expected_pktW2S1x3, 2)
 
-class IgnoreRetransmissions(ThreeWorkerTest):
+class IgnoreRetransmissions(RDMAThreeWorkerTest):
     """
     Ensure that retransmissions during reduction are ignored.
     """
@@ -271,7 +292,7 @@ class IgnoreRetransmissions(ThreeWorkerTest):
         # now finish aggregation
         send_packet(self, 1, self.pktW1S1)
         verify_no_other_packets(self)
-        
+
         send_packet(self, 2, self.pktW2S1)
 
         # ensure that we still get the correct answer
@@ -279,52 +300,11 @@ class IgnoreRetransmissions(ThreeWorkerTest):
         verify_packet(self, self.expected_pktW1S1, 1)
         verify_packet(self, self.expected_pktW2S1, 2)
         
-class RetransmitFromPreviousSet(ThreeWorkerTest):
+class RetransmitFromPreviousSet(RDMAThreeWorkerTest):
     """
     Ensure that retransmissions to a previously-aggregated set generate replies.
     """
 
-    def runTest(self):
-        # start by doing a straightforward reduction in the second set
-        send_packet(self, 0, self.pktW0S1)
-        verify_no_other_packets(self)
-        
-        send_packet(self, 1, self.pktW1S1)
-        verify_no_other_packets(self)
-        
-        send_packet(self, 2, self.pktW2S1)
-
-        # check the answer
-        verify_packet(self, self.expected_pktW0S1, 0)
-        verify_packet(self, self.expected_pktW1S1, 1)
-        verify_packet(self, self.expected_pktW2S1, 2)
-
-        # now, half-complete reduction in the first set
-        send_packet(self, 1, self.pktW1S0)
-        verify_no_other_packets(self)
-        
-        
-        # verify we can still retransmit from the second set
-        send_packet(self, 0, self.pktW0S1)
-        verify_packet(self, self.expected_pktW0S1, 0)
-
-        # try again
-        send_packet(self, 0, self.pktW0S1)
-        verify_packet(self, self.expected_pktW0S1, 0)
-
-        # try again one more time
-        send_packet(self, 0, self.pktW0S1)
-        verify_packet(self, self.expected_pktW0S1, 0)
-
-        # ensure we get no other packets.
-        verify_no_other_packets(self)
-        
-
-class SlotReuseAndRetransmit(ThreeWorkerTest):
-    """
-    Test basic slot reuse.
-    """
-        
     def runTest(self):
         # do a straightforward reduction in the first set
         send_packet(self, 0, self.pktW0S0)
@@ -348,6 +328,10 @@ class SlotReuseAndRetransmit(ThreeWorkerTest):
         
         send_packet(self, 2, self.pktW2S1)
 
+        self.expected_pktW0S1['IB_BTH'].psn = 1
+        self.expected_pktW1S1['IB_BTH'].psn = 1
+        self.expected_pktW2S1['IB_BTH'].psn = 1
+
         verify_packet(self, self.expected_pktW0S1, 0)
         verify_packet(self, self.expected_pktW1S1, 1)
         verify_packet(self, self.expected_pktW2S1, 2)
@@ -361,6 +345,10 @@ class SlotReuseAndRetransmit(ThreeWorkerTest):
 
         send_packet(self, 2, self.pktW2S0x3)
 
+        self.expected_pktW0S0x3['IB_BTH'].psn = 2
+        self.expected_pktW1S0x3['IB_BTH'].psn = 2
+        self.expected_pktW2S0x3['IB_BTH'].psn = 2
+
         verify_packet(self, self.expected_pktW0S0x3, 0)
         verify_packet(self, self.expected_pktW1S0x3, 1)
         verify_packet(self, self.expected_pktW2S0x3, 2)
@@ -371,8 +359,9 @@ class SlotReuseAndRetransmit(ThreeWorkerTest):
 
         # and verify we can retransmit from first set
         send_packet(self, 0, self.pktW0S0x3)
+        self.expected_pktW0S0x3['IB_BTH'].psn = 3
         verify_packet(self, self.expected_pktW0S0x3, 0)
 
         send_packet(self, 2, self.pktW2S0x3)
+        self.expected_pktW2S0x3['IB_BTH'].psn = 3
         verify_packet(self, self.expected_pktW2S0x3, 2)
-

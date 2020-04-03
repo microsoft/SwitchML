@@ -15,42 +15,37 @@ control NonSwitchMLForward(
     in header_t hdr,
     in ingress_metadata_t ig_md,
     in ingress_intrinsic_metadata_t ig_intr_md,
-    in ingress_intrinsic_metadata_for_deparser_t ig_dprsr_md,
+    inout ingress_intrinsic_metadata_for_deparser_t ig_dprsr_md,
     inout ingress_intrinsic_metadata_for_tm_t ig_tm_md) {
 
     action set_egress_port(bit<9> egress_port) {
         ig_tm_md.ucast_egress_port = egress_port;
+        ig_tm_md.bypass_egress = 1w0;
+        ig_dprsr_md.drop_ctl = 0;
     }
     
     action flood(MulticastGroupId_t flood_mgid) {
         ig_tm_md.mcast_grp_a         = flood_mgid;
-        ig_tm_md.level1_exclusion_id = 7w0 ++ ig_intr_md.ingress_port;
+        // we use 0x8000 + dev_port as the RID and XID for the non-SwitchML group
+        ig_tm_md.level1_exclusion_id = 7w0b1000000 ++ ig_intr_md.ingress_port;
+        ig_tm_md.bypass_egress = 1w0;
+        ig_dprsr_md.drop_ctl = 0;
     }
     
     table forward {
         key = {
-            //ig_md.switchml_md.packet_type : exact;
-            hdr.ethernet.dst_addr         : exact;
-            //hdr.ethernet.ether_type       : exact;
+            hdr.ethernet.dst_addr : exact;
         }
         actions = {
             set_egress_port;
             flood;
         }
-
-        // // TODO: is this a good idea? Should we finish this and add MAC learning?
-        //const default_action = flood;
         
         size = max_num_workers;
     }
 
     apply {
-        // if this isn't a SwitchML packet, and if the ARP/ICMP
-        // responder hasn't already handled it, forward.
-        if ((ig_md.switchml_md.packet_type == packet_type_t.IGNORE) &&
-            (ig_tm_md.bypass_egress == 0)) { // set by ARP responder
-            forward.apply();
-        }
+        forward.apply();
     }
 }
 

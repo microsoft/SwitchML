@@ -54,52 +54,80 @@ class PRE(Table):
         # return byte array
         return bytearray(bitmap)
         
-    def add_workers(self, switch_mgid, workers):
+    def add_workers(self, switchml_workers_mgid, switchml_workers, all_ports_mgid, all_workers):
         # target all pipes on device 0
         target = gc.Target(device_id=0, pipe_id=0xffff)
 
-        # first, clean up old group if it exists
+        # compute list of ports for the all_ports group
+        all_ports = [self.ports.get_dev_port(worker.front_panel_port, worker.lane) for worker in all_workers]
+        
+        # first, clean up old group if they exist
+        #self.mgid_table.entry_del(target) # ideally we could do this, but it's not supported.
         try:
             self.mgid_table.entry_del(
                 target,
-                [self.mgid_table.make_key([gc.KeyTuple('$MGID', switch_mgid)])])
-        except grpc.RpcError as e:
-            if e.code() != grpc.StatusCode.UNKNOWN:
-                    raise e
-            else:
-                self.logger.info("Multicast group ID {} not found in switch already during delete; this is fine.".format(switch_mgid))
+                [self.mgid_table.make_key([gc.KeyTuple('$MGID', switchml_workers_mgid)])])
+        except gc.BfruntimeReadWriteRpcException as e:
+            self.logger.info("Multicast group ID {} not found in switch already during delete; this is expected.".format(switchml_workers_mgid))
+            
+        try:
+            self.mgid_table.entry_del(
+                target,
+                [self.mgid_table.make_key([gc.KeyTuple('$MGID', all_ports_mgid)])])
+        except gc.BfruntimeReadWriteRpcException as e:
+            self.logger.info("Multicast group ID {} not found in switch already during delete; this is expected.".format(all_ports_mgid))
 
         # and clean up old nodes if they exist
-        for worker in workers:
-            # clean up old node if it exists
+        for worker in switchml_workers:
             try:
                 self.node_table.entry_del(
                     target,
                     [self.node_table.make_key([gc.KeyTuple('$MULTICAST_NODE_ID', worker.rid)])])
-            except grpc.RpcError as e:
-                if e.code() != grpc.StatusCode.UNKNOWN:
-                    raise e
+            except gc.BfruntimeReadWriteRpcException as e:
                 self.logger.info("Multicast node ID {} not found in switch already during delete; this is expected.".format(worker.rid))
 
+        for port in all_ports:
+            try:
+                self.node_table.entry_del(
+                    target,
+                    [self.node_table.make_key([gc.KeyTuple('$MULTICAST_NODE_ID', 0x8000 + port)])])
+            except gc.BfruntimeReadWriteRpcException as e:
+                self.logger.info("Multicast node ID {} not found in switch already during delete; this is expected.".format(port))
+
         # now add new nodes
-        for worker in workers:
+        for worker in switchml_workers:
             dev_port = self.ports.get_dev_port(worker.front_panel_port, worker.lane)
             self.node_table.entry_add(
                 target,
                 [self.node_table.make_key([gc.KeyTuple('$MULTICAST_NODE_ID', worker.rid)])],
                 [self.node_table.make_data([gc.DataTuple('$MULTICAST_RID', worker.rid),
-                                            gc.DataTuple('$MULTICAST_LAG_BITMAP', 0x0),
-                                            gc.DataTuple('$MULTICAST_PORT_BITMAP', self.dev_port_to_bitmap(dev_port))])])
+                                            gc.DataTuple('$DEV_PORT', int_arr_val=[dev_port])])])
 
-        # now that nodes are added, create multicast group
+        for port in all_ports:
+            self.node_table.entry_add(
+                target,
+                [self.node_table.make_key([gc.KeyTuple('$MULTICAST_NODE_ID', 0x8000 + port)])],
+                [self.node_table.make_data([gc.DataTuple('$MULTICAST_RID', 0x8000 + port),
+                                            gc.DataTuple('$DEV_PORT', int_arr_val=[port])])])
+
+        # now that nodes are added, create multicast groups
         self.mgid_table.entry_add(
             target,
-            [self.mgid_table.make_key([gc.KeyTuple('$MGID', switch_mgid)])],
+            [self.mgid_table.make_key([gc.KeyTuple('$MGID', switchml_workers_mgid)])],
             [self.mgid_table.make_data([gc.DataTuple('$MULTICAST_NODE_ID',
-                                                     int_arr_val=[worker.rid for worker in workers]),
+                                                     int_arr_val=[worker.rid for worker in switchml_workers]),
                                         gc.DataTuple('$MULTICAST_NODE_L1_XID_VALID',
-                                                     bool_arr_val=[True for worker in workers]),
+                                                     bool_arr_val=[True for worker in switchml_workers]),
                                         gc.DataTuple('$MULTICAST_NODE_L1_XID',
-                                                     int_arr_val=[worker.xid for worker in workers])])])
+                                                     int_arr_val=[worker.xid for worker in switchml_workers])])])
+        self.mgid_table.entry_add(
+            target,
+            [self.mgid_table.make_key([gc.KeyTuple('$MGID', all_ports_mgid)])],
+            [self.mgid_table.make_data([gc.DataTuple('$MULTICAST_NODE_ID',
+                                                     int_arr_val=[0x8000 + port for port in all_ports]),
+                                        gc.DataTuple('$MULTICAST_NODE_L1_XID_VALID',
+                                                     bool_arr_val=[True for port in all_ports]),
+                                        gc.DataTuple('$MULTICAST_NODE_L1_XID',
+                                                     int_arr_val=[0x8000 + port for port in all_ports])])])
             
 

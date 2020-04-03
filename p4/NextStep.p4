@@ -29,7 +29,7 @@ control NextStep(
         hdr.d1.setInvalid();
         
         // recirculate for harvest
-        ig_tm_md.ucast_egress_port = ig_md.switchml_md.ingress_port[8:7] ++ 7w68;
+        ig_tm_md.ucast_egress_port = ig_md.switchml_md.ingress_port[8:7] ++ 7w68; // TODO: use both recirc ports
         ig_tm_md.bypass_egress = 1w1;
         ig_dprsr_md.drop_ctl = 0;
         ig_md.switchml_md.packet_type = packet_type_t.HARVEST;
@@ -38,47 +38,72 @@ control NextStep(
     action broadcast_eth() {
         // set the switch as the source MAC address
         hdr.ethernet.src_addr = hdr.ethernet.dst_addr;
+        // destination address will be filled in egress pipe
 
         // send to multicast group; egress will fill in destination IP and MAC address
         ig_tm_md.mcast_grp_a = ig_md.switchml_md.mgid;
         ig_tm_md.level1_exclusion_id = null_level1_exclusion_id; // don't exclude any nodes
-        ig_md.switchml_md.packet_type = packet_type_t.EGRESS;
+        ig_md.switchml_md.packet_type = packet_type_t.BROADCAST;
         ig_tm_md.bypass_egress = 1w0;
         ig_dprsr_md.drop_ctl = 0;
     }
     
     action broadcast_udp() {
-        // set the switch as the source IP
-        hdr.ipv4.src_addr = hdr.ipv4.dst_addr;
+        // // set the switch as the source IP
+        // hdr.ipv4.src_addr = hdr.ipv4.dst_addr;
+        // // destination IP will be filled in in egress pipe
+
+        broadcast_eth();
+    }
+    
+    action broadcast_roce() {
+        // // set the switch as the source IP
+        // hdr.ipv4.src_addr = hdr.ipv4.dst_addr;
+        // // destination IP, QPN, PSN, etc. will be filled in in egress pipe
+
+        // add empty ICRC header
+        hdr.ib_icrc.setValid();
+
         broadcast_eth();
     }
     
     action retransmit_eth() {
-        // swap source and destination MAC addresses
-        mac_addr_t dst_addr = hdr.ethernet.dst_addr;
-        hdr.ethernet.dst_addr = hdr.ethernet.src_addr;
-        hdr.ethernet.src_addr = dst_addr;
+        // // set the switch as the source MAC address
+        // hdr.ethernet.dst_addr = hdr.ethernet.src_addr;
+        // // destination address will be filled in egress pipe
 
         // send back out ingress port
         ig_tm_md.ucast_egress_port = ig_md.switchml_md.ingress_port;
-        ig_md.switchml_md.packet_type = packet_type_t.IGNORE;
+        ig_md.switchml_md.packet_type = packet_type_t.RETRANSMIT;
         ig_tm_md.bypass_egress = 1w0;
         ig_dprsr_md.drop_ctl = 0;
     }
     
     action retransmit_udp() {
-        // swap source and destination IPs
-        ipv4_addr_t dst_addr = hdr.ipv4.dst_addr;
-        hdr.ipv4.dst_addr = hdr.ipv4.src_addr;
-        hdr.ipv4.src_addr = dst_addr;
+        // // swap source and destination IPs
+        // ipv4_addr_t dst_addr = hdr.ipv4.dst_addr;
+        // hdr.ipv4.dst_addr = hdr.ipv4.src_addr;
+        // hdr.ipv4.src_addr = dst_addr;
 
-        // swap source and destination ports
-        udp_port_t dst_port = hdr.udp.dst_port;
-        hdr.udp.dst_port = hdr.udp.src_port;
-        hdr.udp.src_port = dst_port;
+        // // swap source and destination ports
+        // udp_port_t dst_port = hdr.udp.dst_port;
+        // hdr.udp.dst_port = hdr.udp.src_port;
+        // hdr.udp.src_port = dst_port;
 
-        hdr.udp.checksum = 0;
+        // hdr.udp.checksum = 0;
+        // ig_md.update_ipv4_checksum = true;
         
+        retransmit_eth();
+    }
+
+    action retransmit_roce() {
+        // // set the switch as the source IP
+        // hdr.ipv4.src_addr = hdr.ipv4.dst_addr;
+        // // destination IP, QPN, PSN, etc. will be filled in in egress pipe
+
+        // add empty ICRC header
+        hdr.ib_icrc.setValid();
+
         retransmit_eth();
     }
     
@@ -87,8 +112,9 @@ control NextStep(
             ig_md.switchml_md.packet_type : ternary;
             ig_md.switchml_md.first_last_flag : ternary; // 1: last 0: first
             ig_md.switchml_md.map_result : ternary;
-            hdr.ib_bth.isValid() : ternary;
-            hdr.udp.isValid() : ternary;
+            ig_md.switchml_md.worker_type : ternary;
+            //hdr.ib_bth.isValid() : ternary;
+            //hdr.udp.isValid() : ternary;
             //ig_dprsr_md.drop_ctl : ternary;
         }
         actions = {
@@ -96,29 +122,34 @@ control NextStep(
             drop;
             broadcast_udp;
             retransmit_udp;
+            broadcast_roce;
+            retransmit_roce;
             NoAction;
         }
-        size = 9;
+        size = 11;
         const entries = {
-            //        packet type | last |map result|RoCE|  UDP
+            //        packet type | last |map result|worker_type
 
             // for CONSUME packets that are the last packet, recirculate for harvest
-            (packet_type_t.CONSUME,     1,         _,    _,   _) : recirculate_for_harvest();
+            (packet_type_t.CONSUME,     1,         _,          _) : recirculate_for_harvest();
             // for CONSUME packets that are retransmitted packets to a full slot, recirculate for harvest
-            (packet_type_t.CONSUME,     0,         0,    _,   _) : drop(); // first consume packet for slot
-            (packet_type_t.CONSUME,     0,         _,    _,   _) : recirculate_for_harvest();
+            (packet_type_t.CONSUME,     0,         0,          _) : drop(); // first consume packet for slot
+            (packet_type_t.CONSUME,     0,         _,          _) : recirculate_for_harvest();
             // drop others
-            (packet_type_t.CONSUME,     _,         _,    _,   _) : drop();
+            (packet_type_t.CONSUME,     _,         _,          _) : drop();
 
-            // broadcast any HARVEST packets that are UDP, not retransmitted, and are the last packet 
-            (packet_type_t.HARVEST,     1,         0,  false, true) : broadcast_udp();
-            // drop any HARVEST packets that are not retransmitted and are the last packet
-            (packet_type_t.HARVEST,     1,         0,    _,   _) : drop(); // TODO: support other formats
-            // retransmit any other HARVEST packets that are UDP and 
-            (packet_type_t.HARVEST,     0,         0,    _,   _) : drop(); // shouldn't ever get here
-            (packet_type_t.HARVEST,     0,         _,  false, true) : retransmit_udp();
+            // broadcast any HARVEST packets that are not retransmitted, are the last packet, and the protocol is implemented
+            (packet_type_t.HARVEST,     1,         0, worker_type_t.SWITCHML_UDP) : broadcast_udp();
+            (packet_type_t.HARVEST,     1,         0, worker_type_t.ROCEv2) : broadcast_roce();
+            // drop any HARVEST packets that are not retransmitted, are the last packet, and we don't have a protocol implementation
+            (packet_type_t.HARVEST,     1,         0,          _) : drop(); // TODO: support other formats
+            // shouldn't ever get here, because the packet would be dropped in CONSUME
+            (packet_type_t.HARVEST,     0,         0,          _) : drop(); // shouldn't ever get here
+            // retransmit any other HARVEST packets for which we have an implementation
+            (packet_type_t.HARVEST,     0,         _, worker_type_t.SWITCHML_UDP) : retransmit_udp();
+            (packet_type_t.HARVEST,     0,         _, worker_type_t.ROCEv2) : retransmit_roce();
             // drop any other HARVEST packets
-            (packet_type_t.HARVEST,     _,         _,    _,   _) : drop(); // TODO: support other formats
+            (packet_type_t.HARVEST,     _,         _,          _) : drop(); // TODO: support other formats
             // ignore other packet types
         }
         const default_action = NoAction;

@@ -58,6 +58,12 @@ enum bit<8> ib_opcode_t {
 }
 
 // worker types
+enum bit<2> worker_type_t {
+    FORWARD_ONLY = 0,
+    SWITCHML_UDP = 1,
+    ROCEv2       = 2
+}
+typedef bit<16> worker_id_t; // Same as rid for worker; used when retransmitting RDMA packets
 typedef bit<32> worker_bitmap_t;
 struct worker_bitmap_pair_t {
     worker_bitmap_t first;
@@ -72,8 +78,8 @@ struct num_workers_pair_t {
 }
 
 // type used to index into register array
-typedef bit<17> pool_index_t;
-typedef bit<16> pool_index_by2_t;
+typedef bit<15> pool_index_t;
+typedef bit<14> pool_index_by2_t;
 typedef bit<16> worker_pool_index_t;
 
 typedef bit<32> data_t;
@@ -97,32 +103,43 @@ struct exponent_pair_t {
 
 typedef bit<16> drop_random_value_t;
 
-enum bit<2> packet_type_t {
-    IGNORE  = 0x0,
-    CONSUME = 0x1,
-    HARVEST = 0x2,
-    EGRESS  = 0x3
+enum bit<3> packet_type_t {
+    IGNORE     = 0x0,
+    CONSUME    = 0x1,
+    HARVEST    = 0x2,
+    BROADCAST  = 0x3,
+    RETRANSMIT = 0x4
 }
 
 // SwitchML metadata header; bridged for recirculation (and not exposed outside the switch)
-//@pa_container_size("ingress", "ig_md.switchml_md.pool_index", 32)
-//@pa_container_size("egress", "eg_md.switchml_md.pool_index", 32)
+// We should keep this <= 28 bytes to avoid impacting non-SwitchML minimum size packets.
+//@pa_container_size("ingress", "ig_md.switchml_md.dst_port_qpn", 16, 16)
+//@pa_container_size("egress", "eg_md.switchml_md.dst_port_qpn", 16, 16)
+
+@flexible
 header switchml_md_h {
     MulticastGroupId_t mgid;
 
     @padding
-    bit<7> pad2;
+    bit<5> pad2;
     
     PortId_t ingress_port;
 
     @padding
     bit<5> pad;
 
+    // is this RDMA or UDP?
+    worker_type_t worker_type;
+    worker_id_t worker_id;
+
+    // dest port or QPN to be used for responses
+    bit<16> dst_port;
+    
     // what should we do with this packet?
     packet_type_t packet_type;
 
     // which pool element are we talking about?
-    pool_index_t pool_index; // Index of pool element, including both sets.
+    pool_index_t pool_index; // Index of pool elements, including both sets.
 
 
     // random number used to simulated packet drops
@@ -138,6 +155,7 @@ header switchml_md_h {
     worker_bitmap_t worker_bitmap_before;
     worker_bitmap_t worker_bitmap_after;
 }
+//switchml_md_h switchml_md_initializer = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
 // Metadata for ingress stage
 struct ingress_metadata_t {
@@ -164,11 +182,13 @@ struct ingress_metadata_t {
 
     // checksum stuff
     bool checksum_err_ipv4;
+    bool update_ipv4_checksum;
 
     // switch MAC and IP
     mac_addr_t switch_mac;
     ipv4_addr_t switch_ip;
 }
+//const ingress_metadata_t ingress_metadata_initializer = {{0, 0, true, 0, 0, packet_type_t.IGNORE, 0, 0, 0, 0, 0, 0}, 0, 0, 0, 0, 0, false, 0, 0};
 
 // Metadata for egress stage
 struct egress_metadata_t {
@@ -176,6 +196,17 @@ struct egress_metadata_t {
     
     // checksum stuff
     bool checksum_err_ipv4;
+    bool update_ipv4_checksum;
+
+    bit<31> message_length;
+    
+    pool_index_t pool_index_mask;
+    pool_index_t masked_pool_index;
+    
+    // switch MAC and IP
+    mac_addr_t switch_mac;
+    ipv4_addr_t switch_ip;
 }
+//const egress_metadata_t egress_metadata_initializer = {{0, 0, true, 0, 0, packet_type_t.IGNORE, 0, 0, 0, 0, 0, 0}, false, false, 0, 0 };
 
 #endif /* _TYPES_ */

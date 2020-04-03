@@ -17,9 +17,11 @@ from ptf.testutils import *
 from bfruntime_client_base_tests import BfRuntimeTest
 import bfrt_grpc.client as gc
 
+from scapy.all import *
+
 # import SwitchML setup
 from SwitchML.Job import Job
-from SwitchML.Worker import Worker
+from SwitchML.Worker import Worker, WorkerType
 from SwitchML.Packets import make_switchml_udp
 
 # import SwitchML test base class
@@ -50,55 +52,37 @@ class TwoWorkerTest(SwitchMLTest):
         self.switch_ip            = "198.19.200.200"
         self.switch_udp_port      = 0xbee0
         self.switch_udp_port_mask = 0xfff0
-        self.switch_mgid          = 1234
 
+        self.all_workers = [
+            # Two UDP workers
+            Worker(mac="b8:83:03:73:a6:a0", ip="198.19.200.49", udp_port=12345, front_panel_port=1, lane=0, speed=10, fec='none'),
+            Worker(mac="b8:83:03:74:01:8c", ip="198.19.200.50", udp_port=12345, front_panel_port=1, lane=1, speed=10, fec='none'),
+            # A non-SwitchML worker
+            Worker(mac="b8:83:03:74:01:c4", ip="198.19.200.48", front_panel_port=1, lane=2, speed=10, fec='none'),
+        ]
+        self.switchml_workers = [w for w in self.all_workers if w.worker_type is not WorkerType.FORWARD_ONLY]
+                                                                             
         self.job = Job(gc, self.bfrt_info,
-                       self.switch_ip, self.switch_mac, self.switch_udp_port, self.switch_udp_port_mask, self.switch_mgid,
-                       [Worker(mac="b8:83:03:73:a6:a0", ip="198.19.200.49", udp_port=12345, front_panel_port=1, lane=0, speed=10, fec='none'),
-                        Worker(mac="b8:83:03:74:01:8c", ip="198.19.200.50", udp_port=23456, front_panel_port=1, lane=1, speed=10, fec='none')])
+                       self.switch_ip, self.switch_mac, self.switch_udp_port, self.switch_udp_port_mask, 
+                       self.all_workers)
 
         # make packets for set 0
-        self.pktW0S0 = make_switchml_udp(src_mac="b8:83:03:73:a6:a0",
-                                         src_ip="198.19.200.49",
-                                         dst_mac="06:00:00:00:00:01",
-                                         dst_ip="198.19.200.200",
-                                         src_port=12345,
-                                         dst_port=0xbee0,
-                                         pool_index=0)
-        self.pktW1S0 = make_switchml_udp(src_mac="b8:83:03:74:01:8c",
-                                         src_ip="198.19.200.50",
-                                         dst_mac="06:00:00:00:00:01",
-                                         dst_ip="198.19.200.200",
-                                         src_port=23456,
-                                         dst_port=0xbee0,
-                                         pool_index=0)
-        self.expected_pktW0S0 = make_switchml_udp(src_mac="06:00:00:00:00:01",
-                                                  src_ip="198.19.200.200",
-                                                  dst_mac="b8:83:03:73:a6:a0",
-                                                  dst_ip="198.19.200.49",
-                                                  src_port=0xbee0,
-                                                  dst_port=12345,
-                                                  pool_index=0,
-                                                  value_multiplier=2,
-                                                  checksum=0)
-        self.expected_pktW1S0 = make_switchml_udp(src_mac="06:00:00:00:00:01",
-                                                  src_ip="198.19.200.200",
-                                                  dst_mac="b8:83:03:74:01:8c",
-                                                  dst_ip="198.19.200.50",
-                                                  src_port=0xbee0,
-                                                  dst_port=23456,
-                                                  pool_index=0,
-                                                  value_multiplier=2,
-                                                  checksum=0)
+        ((self.pktW0S0, self.expected_pktW0S0),
+         (self.pktW1S0, self.expected_pktW1S0)) = self.make_switchml_packets(self.switchml_workers,
+                                                                             0x0000, 1, self.switch_udp_port)
+
         # make packets for set 1
-        self.pktW0S1 = copy.deepcopy(self.pktW0S0)
-        self.pktW1S1 = copy.deepcopy(self.pktW1S0)
-        self.expected_pktW0S1 = copy.deepcopy(self.expected_pktW0S0)
-        self.expected_pktW1S1 = copy.deepcopy(self.expected_pktW1S0)
-        self.pktW0S1['SwitchML'].pool_index = 1
-        self.pktW1S1['SwitchML'].pool_index = 1
-        self.expected_pktW0S1['SwitchML'].pool_index = 1
-        self.expected_pktW1S1['SwitchML'].pool_index = 1
+        ((self.pktW0S1, self.expected_pktW0S1),
+         (self.pktW1S1, self.expected_pktW1S1)) = self.make_switchml_packets(self.switchml_workers,
+                                                                             0x8000, 1, self.switch_udp_port)
+        
+        # make additional packets with different values to verify slot reuse
+        ((self.pktW0S0x3, self.expected_pktW0S0x3),
+         (self.pktW1S0x3, self.expected_pktW1S0x3)) = self.make_switchml_packets(self.switchml_workers,
+                                                                                 0x0000, 3, self.switch_udp_port)
+        ((self.pktW0S1x3, self.expected_pktW0S1x3),
+         (self.pktW1S1x3, self.expected_pktW1S1x3)) = self.make_switchml_packets(self.switchml_workers,
+                                                                                 0x8000, 3, self.switch_udp_port)
 
  
 class BasicReduction(TwoWorkerTest):
@@ -109,6 +93,8 @@ class BasicReduction(TwoWorkerTest):
     def runTest(self):
         # do a straightforward reduction in the first slot
         send_packet(self, 0, self.pktW0S0)
+        verify_no_other_packets(self)
+
         send_packet(self, 1, self.pktW1S0)
 
         verify_packet(self, self.expected_pktW0S0, 0)
@@ -124,6 +110,8 @@ class RetransmitAfterReduction(TwoWorkerTest):
     def runTest(self):
         # first do a straightforward reduction in the first set
         send_packet(self, 0, self.pktW0S0)
+        verify_no_other_packets(self)
+
         send_packet(self, 1, self.pktW1S0)
 
         verify_packet(self, self.expected_pktW0S0, 0)
@@ -158,6 +146,8 @@ class OtherSetReduction(TwoWorkerTest):
     def runTest(self):
         # do a straightforward reduction in the second set
         send_packet(self, 0, self.pktW0S1)
+        verify_no_other_packets(self)
+
         send_packet(self, 1, self.pktW1S1)
 
         verify_packet(self, self.expected_pktW0S1, 0)
@@ -171,18 +161,22 @@ class BothSetsReduction(TwoWorkerTest):
     def runTest(self):
         # do a straightforward reduction in the first set
         send_packet(self, 0, self.pktW0S0)
+        verify_no_other_packets(self)
+
         send_packet(self, 1, self.pktW1S0)
 
         verify_packet(self, self.expected_pktW0S0, 0)
         verify_packet(self, self.expected_pktW1S0, 1)
 
         # now do a straightforward reduction in the second set
-        send_packet(self, 0, self.pktW0S1)
-        send_packet(self, 1, self.pktW1S1)
+        send_packet(self, 0, self.pktW0S1x3)
+        verify_no_other_packets(self)
 
-        verify_packet(self, self.expected_pktW0S1, 0)
-        verify_packet(self, self.expected_pktW1S1, 1)
-                
+        send_packet(self, 1, self.pktW1S1x3)
+
+        verify_packet(self, self.expected_pktW0S1x3, 0)
+        verify_packet(self, self.expected_pktW1S1x3, 1)
+        
 
 class SlotReuse(TwoWorkerTest):
     """
@@ -192,6 +186,8 @@ class SlotReuse(TwoWorkerTest):
     def runTest(self):
         # do a straightforward reduction in the first set
         send_packet(self, 0, self.pktW0S0)
+        verify_no_other_packets(self)
+
         send_packet(self, 1, self.pktW1S0)
 
         verify_packet(self, self.expected_pktW0S0, 0)
@@ -199,24 +195,30 @@ class SlotReuse(TwoWorkerTest):
 
         # now do a straightforward reduction in the second set
         send_packet(self, 0, self.pktW0S1)
+        verify_no_other_packets(self)
+
         send_packet(self, 1, self.pktW1S1)
 
         verify_packet(self, self.expected_pktW0S1, 0)
         verify_packet(self, self.expected_pktW1S1, 1)
-                
+        
         # now reduce in first set again
-        send_packet(self, 0, self.pktW0S0)
-        send_packet(self, 1, self.pktW1S0)
+        send_packet(self, 0, self.pktW0S0x3)
+        verify_no_other_packets(self)
 
-        verify_packet(self, self.expected_pktW0S0, 0)
-        verify_packet(self, self.expected_pktW1S0, 1)
+        send_packet(self, 1, self.pktW1S0x3)
+
+        verify_packet(self, self.expected_pktW0S0x3, 0)
+        verify_packet(self, self.expected_pktW1S0x3, 1)
 
         # now reduce in second set again
-        send_packet(self, 0, self.pktW0S1)
-        send_packet(self, 1, self.pktW1S1)
+        send_packet(self, 0, self.pktW0S1x3)
+        verify_no_other_packets(self)
 
-        verify_packet(self, self.expected_pktW0S1, 0)
-        verify_packet(self, self.expected_pktW1S1, 1)
+        send_packet(self, 1, self.pktW1S1x3)
+
+        verify_packet(self, self.expected_pktW0S1x3, 0)
+        verify_packet(self, self.expected_pktW1S1x3, 1)
 
 class IgnoreRetransmissions(TwoWorkerTest):
     """
@@ -226,7 +228,8 @@ class IgnoreRetransmissions(TwoWorkerTest):
     def runTest(self):
         # half-complete reduction in set 1
         send_packet(self, 0, self.pktW0S1)
-
+        verify_no_other_packets(self)
+        
         # make sure retransmissions to that set from the same worker are ignored
         send_packet(self, 0, self.pktW0S1)
         verify_no_other_packets(self)
@@ -249,6 +252,8 @@ class RetransmitFromPreviousSet(TwoWorkerTest):
     def runTest(self):
         # start by doing a straightforward reduction in the second set
         send_packet(self, 0, self.pktW0S1)
+        verify_no_other_packets(self)
+
         send_packet(self, 1, self.pktW1S1)
 
         # check the answer
@@ -256,20 +261,95 @@ class RetransmitFromPreviousSet(TwoWorkerTest):
         verify_packet(self, self.expected_pktW1S1, 1)
 
         # now, half-complete reduction in the first set
-        send_packet(self, 1, self.pktW1S0)
+        send_packet(self, 1, self.pktW1S0x3)
         
         # verify we can still retransmit from the second set
         send_packet(self, 0, self.pktW0S1)
         verify_packet(self, self.expected_pktW0S1, 0)
 
-        # # try again
-        # send_packet(self, 0, self.pktW0S1)
-        # verify_packet(self, self.expected_pktW0S1, 0)
+        # try again
+        send_packet(self, 0, self.pktW0S1)
+        verify_packet(self, self.expected_pktW0S1, 0)
 
-        # # try again one more time
-        # send_packet(self, 0, self.pktW0S1)
-        # verify_packet(self, self.expected_pktW0S1, 0)
+        # try again one more time
+        send_packet(self, 0, self.pktW0S1)
+        verify_packet(self, self.expected_pktW0S1, 0)
 
         # ensure we get no other packets.
         verify_no_other_packets(self)
+
         
+class SlotReuseAndRetransmit(TwoWorkerTest):
+    """
+    Test basic slot reuse.
+    """
+
+    def runTest(self):
+        # do a straightforward reduction in the first set
+        send_packet(self, 0, self.pktW0S0)
+        verify_no_other_packets(self)
+
+        send_packet(self, 1, self.pktW1S0)
+
+        verify_packet(self, self.expected_pktW0S0, 0)
+        verify_packet(self, self.expected_pktW1S0, 1)
+
+        # now do a straightforward reduction in the second set
+        send_packet(self, 0, self.pktW0S1)
+        verify_no_other_packets(self)
+
+        send_packet(self, 1, self.pktW1S1)
+
+        verify_packet(self, self.expected_pktW0S1, 0)
+        verify_packet(self, self.expected_pktW1S1, 1)
+        
+        # now reduce in first set again
+        send_packet(self, 0, self.pktW0S0x3)
+        verify_no_other_packets(self)
+        
+        send_packet(self, 1, self.pktW1S0x3)
+
+        verify_packet(self, self.expected_pktW0S0x3, 0)
+        verify_packet(self, self.expected_pktW1S0x3, 1)
+
+        # now half-complete reduction in second set again
+        send_packet(self, 1, self.pktW1S1x3)
+        verify_no_other_packets(self)
+
+        # and verify we can retransmit from first set
+        send_packet(self, 0, self.pktW0S0x3)
+        verify_packet(self, self.expected_pktW0S0x3, 0)
+
+
+class NonSwitchML(TwoWorkerTest):
+    """
+    Test forwarding non-SwitchML traffic
+    """
+
+    def runTest(self):
+        p = (Ether(dst=self.all_workers[1].mac, src=self.all_workers[0].mac) /
+             IP(dst=self.all_workers[1].ip, src=self.all_workers[0].ip) /
+             "012345678901234567890123456789")
+
+        send_packet(self, 0, p)
+        verify_packet(self, p, 1)
+
+        send_packet(self, 1, p)
+        verify_packet(self, p, 1)
+
+        send_packet(self, 2, p)
+        verify_packet(self, p, 1)
+
+        q = (Ether(dst=self.all_workers[2].mac, src=self.all_workers[0].mac) /
+             IP(dst=self.all_workers[2].ip, src=self.all_workers[0].ip) /
+             "012345678901234567890123456789")
+
+        send_packet(self, 0, q)
+        verify_packet(self, q, 2)
+
+        send_packet(self, 1, q)
+        verify_packet(self, q, 2)
+
+        send_packet(self, 2, q)
+        verify_packet(self, q, 2)
+

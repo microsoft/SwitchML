@@ -35,6 +35,8 @@ control GetWorkerBitmap(
 
     action set_bitmap(
         MulticastGroupId_t mgid,
+        worker_type_t worker_type,
+        worker_id_t worker_id, 
         packet_type_t packet_type,
         num_workers_t num_workers,
         worker_bitmap_t worker_bitmap,
@@ -49,6 +51,10 @@ control GetWorkerBitmap(
 
         // group ID for this job
         ig_md.switchml_md.mgid = mgid;
+
+        ig_md.switchml_md.worker_type = worker_type;
+        ig_md.switchml_md.worker_id = worker_id;     // Same as rid for worker; used when retransmitting RDMA packets
+        ig_md.switchml_md.dst_port = hdr.udp.src_port;
         
         //
         // Pool parameters
@@ -57,15 +63,23 @@ control GetWorkerBitmap(
         // packet index is 0-based; we add this to pool_offset to get the
         // physical pool index that's correct for this job
         // TODO: fix this so that container sizes match when we add the base to the index
-        //ig_md.switchml_md.pool_index = pool_base + (1w0 ++ hdr.switchml.pool_index);
-        ig_md.switchml_md.pool_index = (1w0 ++ hdr.switchml.pool_index);
+        //ig_md.switchml_md.pool_index = pool_base + (hdr.switchml.pool_index);
+        //ig_md.switchml_md.pool_index = hdr.switchml.pool_index[14:0];
+
+        // move the SwitchML set bit in the MSB to the LSB to match existing software
+        ig_md.switchml_md.pool_index = hdr.switchml.pool_index[13:0] ++ hdr.switchml.pool_index[15:15];
         
         // use LSB of pool index to determine which set this packet is targeting.
-        ig_md.pool_set = hdr.switchml.pool_index[0:0];
+        //ig_md.pool_set = hdr.switchml.pool_index[0:0];
+
+        // use the SwitchML set bit in the MSB to switch between sets
+        ig_md.pool_set = hdr.switchml.pool_index[15:15];
         
         // use this to check if pool index in packet is too large
         // if it's negative, the index in the packet is too big, so drop
-        ig_md.pool_remaining = pool_size_minus_1 - hdr.switchml.pool_index;
+        //ig_md.pool_remaining = pool_size_minus_1 - (1w0 ++ hdr.switchml.pool_index[14:0]);
+        //ig_md.pool_remaining = pool_size_minus_1 - (1w0 ++ ig_md.switchml_md.pool_index[14:0]);
+        ig_md.pool_remaining = 0; // disable for now
     }
     
     table get_worker_bitmap {
