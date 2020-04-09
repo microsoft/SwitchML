@@ -96,7 +96,7 @@ class GetWorkerBitmap(Table):
                                               0x000000, # 24 bits
                                               0x000000)])],
             [self.table.make_data([gc.DataTuple('mgid', switch_mgid),
-                                   gc.DataTuple('worker_type', worker_type.value), # true
+                                   gc.DataTuple('worker_type', worker_type.value),
                                    gc.DataTuple('worker_id', worker_id),
                                    gc.DataTuple('packet_type', 0x1), # packet_type_t.CONSUME
                                    gc.DataTuple('num_workers', num_workers),

@@ -25,7 +25,9 @@ class Worker(object):
                  front_panel_port, lane, speed, fec,    # switch port configuration parameters
                  worker_type=None,                      # You can set this explicitly, or set implicitly by setting udp_port or roce_qpn
                  udp_port=None,                         # for SwitchML-UDP workers, set destination UDP port
-                 roce_qpn=None, roce_initial_psn=0):    # for RoCE workers, set destination QP number (and maybe the initial PSN)
+                 roce_base_qpn=None,                    # for RoCE workers, set destination QP number; we match on upper 8 bits and use rest for slot
+                 roce_initial_psn=0,                    #  (and maybe the initial PSN)
+                 roce_partition_key=0xffff):            # 0xffff default partition key for RoCE
         self.mac = mac
         self.ip = ip
         self.front_panel_port = front_panel_port
@@ -39,9 +41,10 @@ class Worker(object):
         if udp_port is not None and self.worker_type is None:
             self.worker_type = WorkerType.SWITCHML_UDP
             
-        self.roce_qpn = roce_qpn
+        self.roce_base_qpn = roce_base_qpn
         self.roce_initial_psn = roce_initial_psn
-        if roce_qpn is not None and self.worker_type is None:
+        self.roce_partition_key = roce_partition_key
+        if roce_base_qpn is not None and self.worker_type is None:
             self.worker_type = WorkerType.ROCEv2
 
         # assume forward only if we haven't set worker type

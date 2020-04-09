@@ -38,8 +38,8 @@ typedef bit<16> udp_port_t;
 typedef bit<128> ib_gid_t;
 typedef bit<24> sequence_number_t;
 typedef bit<24> queue_pair_t;
-//typedef bit<32> sequence_number_t;
-//typedef bit<32> queue_pair_t;
+typedef bit<32> rkey_t;
+typedef bit<64> addr_t;
 
 // UC opcodes
 enum bit<8> ib_opcode_t {
@@ -198,8 +198,6 @@ struct egress_metadata_t {
     bool checksum_err_ipv4;
     bool update_ipv4_checksum;
 
-    bit<31> message_length;
-    
     pool_index_t pool_index_mask;
     pool_index_t masked_pool_index;
     

@@ -24,10 +24,11 @@ from SignificandStage import SignificandStage
 from SetDstAddr import SetDstAddr
 from PRE import PRE
 from NonSwitchMLForward import NonSwitchMLForward
-from Worker import Worker
+from Worker import Worker, WorkerType
 from Ports import Ports
 from ARPandICMP import ARPandICMP
 from RoCESender import RoCESender
+from RoCEReceiver import RoCEReceiver
 
 class Job(Cmd, object):
 
@@ -112,36 +113,36 @@ class Job(Cmd, object):
         # add workers to worker bitmap table
         self.get_worker_bitmap = GetWorkerBitmap(self.gc, self.bfrt_info)
         self.tables_to_clear.append(self.get_worker_bitmap)
+        self.roce_receiver = RoCEReceiver(self.gc, self.bfrt_info)
+        self.tables_to_clear.append(self.roce_receiver)
+                
         match_priority = 10       # not sure if this matters
         pool_base = 0             # TODO: for now, support only one pool at base index 0
         pool_size = 22528         # TODO: for now, use entire switch for single pool
         worker_mask = 0x00000001  # initial worker mask
 
         # get workers that are enabled as SwitchML workers by having a UDP port or RoCE QPN set
-        switchml_workers = [w for w in self.workers if w.udp_port is not None or w.roce_qpn is not None]
+        switchml_workers = [w for w in self.workers if w.worker_type in [WorkerType.SWITCHML_UDP, WorkerType.ROCEv2]]
         num_switchml_workers = len(switchml_workers)
         if num_switchml_workers > 32:
             log.error("Current design supports only 32 workers per job; you requested {}".format(num_switchml_workers))
 
         for worker in switchml_workers:
-            if worker.udp_port is not None:
+            if worker.worker_type is WorkerType.SWITCHML_UDP:
                 # SwitchML-UDP worker
                 self.get_worker_bitmap.add_udp_entry(self.switch_mac, self.switch_ip, self.switch_udp_port, self.switch_udp_port_mask,
                                                      worker.rid, worker.worker_type, worker.mac, worker.ip, worker_mask, num_switchml_workers,
                                                      match_priority, self.switchml_workers_mgid, pool_base, pool_size)
-                # shift mask one bit to left for next worker
-                worker_mask = worker_mask << 1
-            elif worker.roce_qpn is not None:
-                # TODO: update for RoCE
-                self.get_worker_bitmap.add_udp_entry(self.switch_mac, self.switch_ip, self.switch_udp_port, self.switch_udp_port_mask,
-                                                     worker.rid, worker.worker_type, worker.mac, worker.ip, worker_mask, num_switchml_workers,
-                                                     match_priority, self.switchml_workers_mgid, pool_base, pool_size)
-                # shift mask one bit to left for next worker
-                worker_mask = worker_mask << 1
+            elif worker.worker_type is WorkerType.ROCEv2:
+                self.roce_receiver.add_entry(self.switch_mac, self.switch_ip, self.switch_udp_port, self.switch_udp_port_mask,
+                                             worker, worker_mask, num_switchml_workers,
+                                             self.switchml_workers_mgid)
             else:
                 # non-SwitchML worker; shouldn't be able to get here
                 log.error("Why are we trying to create a SwitchML entry for a non-SwitchML worker?")
 
+            # shift mask one bit to left for next worker
+            worker_mask = worker_mask << 1
         
         # add update rules for bitmap and clear register
         self.update_and_check_worker_bitmap = UpdateAndCheckWorkerBitmap(self.gc, self.bfrt_info)
@@ -196,13 +197,13 @@ class Job(Cmd, object):
                                       message_length = 256)#self.message_length)
         self.tables_to_clear.append(self.roce_sender)
         for worker in self.workers:
-            if worker.udp_port is not None:
+            if worker.worker_type is WorkerType.SWITCHML_UDP:
                 # SwitchML-UDP worker
                 self.set_dst_addr.add_udp_entry(worker.rid, worker.mac, worker.ip)
-            elif worker.roce_qpn is not None:
+            elif worker.worker_type is WorkerType.ROCEv2:
                 # SwitchML-RoCE worker
                 self.roce_sender.add_worker(worker.rid, worker.mac, worker.ip,
-                                            worker.roce_qpn, worker.roce_initial_psn)
+                                            worker.roce_base_qpn, worker.roce_initial_psn)
             else:
                 # not a SwitchML UDP or RoCE worker, so ignore
                 pass

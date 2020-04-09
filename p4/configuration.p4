@@ -12,8 +12,8 @@
 #ifdef SWITCHML_TEST
 const int register_size = 4;  // Smaller register size for speedier model setup
 #else
-//const int register_size = 22528;  // 22528 is theoretical max. Must be multiple of 2.
-const int register_size = 4096;
+const int register_size = 22528;  // 22528 is theoretical max. Must be multiple of 2.
+//const int register_size = 4096;
 #endif
 
 const int max_num_workers = 32;  // currently limited to the width of a register

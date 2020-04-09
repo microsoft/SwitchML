@@ -52,9 +52,9 @@ class RDMAThreeWorkerTest(SwitchMLTest):
         self.switch_udp_port_mask = 0xfff0
         self.switch_mgid          = 1234
 
-        self.workers = [Worker(mac="b8:83:03:73:a6:a0", ip="198.19.200.49", roce_qpn=12345, front_panel_port=1, lane=0, speed=10, fec='none'),
-                        Worker(mac="b8:83:03:74:01:8c", ip="198.19.200.50", roce_qpn=23456, front_panel_port=1, lane=1, speed=10, fec='none'),
-                        Worker(mac="b8:83:03:74:02:9a", ip="198.19.200.48", roce_qpn=34567, front_panel_port=1, lane=2, speed=10, fec='none')]
+        self.workers = [Worker(mac="b8:83:03:73:a6:a0", ip="198.19.200.49", roce_base_qpn=0, front_panel_port=1, lane=0, speed=10, fec='none'),
+                        Worker(mac="b8:83:03:74:01:8c", ip="198.19.200.50", roce_base_qpn=0, front_panel_port=1, lane=1, speed=10, fec='none'),
+                        Worker(mac="b8:83:03:74:02:9a", ip="198.19.200.48", roce_base_qpn=0, front_panel_port=1, lane=2, speed=10, fec='none')]
         
         self.job = Job(gc, self.bfrt_info,
                        self.switch_ip, self.switch_mac, self.switch_udp_port, self.switch_udp_port_mask, self.workers)

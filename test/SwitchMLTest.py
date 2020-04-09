@@ -24,7 +24,7 @@ import bfrt_grpc.client as gc
 # import SwitchML job setup
 from SwitchML.Job import Job
 from SwitchML.Worker import Worker, WorkerType
-from SwitchML.Packets import make_switchml_udp, make_switchml_rdma
+from SwitchML.Packets import make_switchml_udp, make_switchml_rdma, roce_opcode_s2n
 
 # init logging
 logger = logging.getLogger('Test')
@@ -64,7 +64,7 @@ class SwitchMLTest(BfRuntimeTest):
         packets = []
         scaled_value_multiplier = value_multiplier * len(workers)
         for w in workers:
-            if w.udp_port is not None:
+            if w.worker_type is WorkerType.SWITCHML_UDP:
                 p = make_switchml_udp(src_mac=w.mac,
                                       src_ip=w.ip,
                                       dst_mac=self.switch_mac,
@@ -83,21 +83,22 @@ class SwitchMLTest(BfRuntimeTest):
                                       checksum=0,
                                       value_multiplier=scaled_value_multiplier)
                 packets.append( (p, e) )
-            elif w.roce_qpn is not None:
-                p = make_switchml_udp(src_mac=w.mac, # TODO: make RDMA when ready
-                                      src_ip=w.ip,
-                                      dst_mac=self.switch_mac,
-                                      dst_ip=self.switch_ip,
-                                      src_port=w.udp_port,
-                                      dst_port=dst_port,
-                                      pool_index=pool_index,
-                                      value_multiplier=value_multiplier)
+            elif w.worker_type is WorkerType.ROCEv2:
+                p = make_switchml_rdma(src_mac=w.mac, # TODO: make RDMA when ready
+                                       src_ip=w.ip,
+                                       dst_mac=self.switch_mac,
+                                       dst_ip=self.switch_ip,
+                                       src_port=0x1234,
+                                       opcode=roce_opcode_s2n['UC_RDMA_WRITE_ONLY_IMMEDIATE'],
+                                       dst_qp=w.roce_base_qpn + pool_index,
+                                       value_multiplier=value_multiplier)
                 e = make_switchml_rdma(src_mac=self.switch_mac,
                                        src_ip=self.switch_ip,
                                        dst_mac=w.mac,
                                        dst_ip=w.ip,
                                        src_port=0x2345,
-                                       dst_qp=w.roce_qpn,
+                                       opcode=roce_opcode_s2n['UC_RDMA_WRITE_ONLY_IMMEDIATE'],
+                                       dst_qp=w.roce_base_qpn + pool_index,
                                        value_multiplier=scaled_value_multiplier)
                 packets.append( (p, e) )
             

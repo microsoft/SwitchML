@@ -63,7 +63,18 @@ parser SwitchMLIngressParser(
         counter.set(8w1);  // remember we don't need to parse 
         hdr.d1.setValid(); // this will be filled in by the pipeline
         // now parse the rest of the packet
-        transition parse_ethernet;
+        transition select(ig_md.switchml_md.worker_type) {
+            worker_type_t.SWITCHML_UDP : parse_ethernet;
+            worker_type_t.ROCEv2       : parse_bare_packet; 
+            default : parse_ethernet;
+        }
+    }
+
+    state parse_bare_packet {
+        // address
+        // exponents
+        pkt.extract(hdr.d0);
+        transition accept;
     }
     
     state parse_ethernet {
