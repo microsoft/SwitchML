@@ -10,6 +10,7 @@ import grpc
 import sys
 import os
 import signal
+import yaml
 
 import readline
 from cmd import Cmd
@@ -98,7 +99,6 @@ class Job(Cmd, object):
         self.clear_all()
         
         # first, delete all old ports and add new ports for all workers
-        self.ports = Ports(self.gc, self.bfrt_info)
         self.ports.delete_all_ports()
 
         # we allocate each worker its own rid.
@@ -125,7 +125,7 @@ class Job(Cmd, object):
         switchml_workers = [w for w in self.workers if w.worker_type in [WorkerType.SWITCHML_UDP, WorkerType.ROCEv2]]
         num_switchml_workers = len(switchml_workers)
         if num_switchml_workers > 32:
-            log.error("Current design supports only 32 workers per job; you requested {}".format(num_switchml_workers))
+            log.error("Current design supports only 32 SwitchML workers per job; you requested {}".format(num_switchml_workers))
 
         for worker in switchml_workers:
             if worker.worker_type is WorkerType.SWITCHML_UDP:
@@ -212,9 +212,44 @@ class Job(Cmd, object):
         # should already be done
         #self.clear_registers()
 
-    
+    def get_workers_from_files(self, ports_file, job_file):
+        workers = []
+
+        # get worker ports involved in SwitchML job
+        with open(job_file) as f:
+            job = yaml.full_load(f)
+            worker_ports = job['switch']['switchML']['workers_ports']
+
+        # get info on all ports
+        with open(ports_file) as f:
+            ports = yaml.full_load(f)
+
+        # create list of Worker objects from ports
+        for dev_port, v in ports['switch']['forward'].items():
+            fp_port, fp_lane = self.ports.get_fp_port(dev_port)
+            speed = int(v['speed'].upper().replace('G','').strip())
+
+            # args for non-SwitchML worker
+            args = {'mac': v['mac'].strip(),
+                    'ip': v['ip'].strip(),
+                    'front_panel_port': fp_port,
+                    'lane': fp_lane,
+                    'speed': speed,
+                    'fec': 'none'}
+
+            # if this worker is part of the job, mark it as such
+            if dev_port in worker_ports:
+                args['udp_port'] = 12345 # fake port to set type to SwitchML
+
+            # add this worker to list
+            workers.append(Worker(**args))
+
+        # return list of workers
+        return workers
+        
+
     def __init__(self, gc, bfrt_info,
-                 switch_ip, switch_mac, switch_udp_port, switch_udp_port_mask, workers):
+                 switch_ip, switch_mac, switch_udp_port, switch_udp_port_mask, workers=None, ports_file=None, job_file=None):
         # call Cmd constructor
         super(Job, self).__init__()
         self.intro = "SwitchML command loop. Use 'help' or '?' to list commands."
@@ -224,10 +259,13 @@ class Job(Cmd, object):
         self.gc = gc
         self.bfrt_info = bfrt_info
 
-        # check that this job can be configured
-        if len(workers) > 32:
-            logger.error("Sorry, can't support more than 32 workers in the current design.")
-        
+        # set up ports object
+        self.ports = Ports(self.gc, self.bfrt_info)
+
+        # If list of worker objects isn't provided, expect to load worker info from yaml files
+        if workers is None:
+            workers = self.get_workers_from_files(ports_file, job_file)
+
         # capture job state
         self.switch_ip = switch_ip
         self.switch_mac = switch_mac

@@ -17,6 +17,7 @@ const int register_size = 22528;  // 22528 is theoretical max. Must be multiple 
 #endif
 
 const int max_num_workers = 32;  // currently limited to the width of a register
+const int max_num_non_switchml = 1024; 
 
 const int num_slots = register_size / 2; // Each slot has two registers
 

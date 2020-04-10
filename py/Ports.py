@@ -28,6 +28,32 @@ class Ports(object):
 
         return dev_port
 
+    # get front panel port from dev port
+    def get_fp_port(self, dev_port):
+        # if we haven't filled the reverse mapping dict yet, do so
+        if self.dev_port_to_fp_port is None:
+            self.dev_port_to_fp_port = {}
+
+            # target all pipes on device 0
+            target = self.gc.Target(device_id=0, pipe_id=0xffff)
+            
+            port_hdl_info_table = self.bfrt_info.table_get("$PORT_HDL_INFO")
+            
+            # get all ports
+            resp = port_hdl_info_table.entry_get(
+                target,
+                [],
+                {"from_hw": False})
+
+            # fill in dictionary
+            for v, k in resp:
+                v = v.to_dict()
+                k = k.to_dict()
+                self.dev_port_to_fp_port[v['$DEV_PORT']] = (k['$CONN_ID']['value'], k['$CHNL_ID']['value'])
+
+        # look up front panel port/lane from dev port
+        return self.dev_port_to_fp_port[dev_port]
+
 
     # add ports
     #
@@ -95,3 +121,5 @@ class Ports(object):
         self.logger = logging.getLogger('Ports')
         self.gc = gc
         self.bfrt_info = bfrt_info
+
+        self.dev_port_to_fp_port = None

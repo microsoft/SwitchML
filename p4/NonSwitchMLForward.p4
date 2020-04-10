@@ -45,7 +45,7 @@ control NonSwitchMLForward(
             flood;
         }
         
-        size = max_num_workers;
+        size = max_num_non_switchml;
     }
 
     apply {

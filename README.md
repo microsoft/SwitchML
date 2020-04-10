@@ -52,7 +52,9 @@ Instructions
 * Clone the switchml repo.
 * Build the P4 code with a command like ```p4_build.sh p4/switchml.p4``` or the equivalent.
 * Make a copy of and/or edit ```py/switchml.py``` for your job configuration.
+  * You can also use the ```--ports``` and ```--job``` arguments to specify YAML files configuring the job; then you don't need to modify ```switchml.py```.
 * Run your modified control plane in a shell with the $SDE environment variable set: ```python py/switchml.py```
+  * If you are using YAML files, run like ```python py/switchml.py --ports <FIB file> --job <job file>```
 * Run your job using the SwitchML server-side code.
 
 Testing
