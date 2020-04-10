@@ -69,6 +69,8 @@ const udp_port_t UDP_PORT_SWITCHML_MASK = 0xfff0;
 // SwitchML header
 //@pa_container_size("ingress", "hdr.switchml.pool_index", 32)
 header switchml_h {
+    bit<4> msgType;
+    bit<12> unused;
     bit<32> tsi;
     bit<16> pool_index;
 }

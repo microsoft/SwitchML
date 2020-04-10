@@ -13,6 +13,8 @@ from scapy.all import *
 class SwitchML(Packet):
     name = "SwitchML"
     fields_desc=[
+        BitField(     "msgType", 0, 4),
+        BitField(      "unused", 0, 12),
         IntField(         "tsi", 0),
         ShortField("pool_index", 2),
     ]
