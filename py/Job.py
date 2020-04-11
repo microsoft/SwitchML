@@ -217,12 +217,12 @@ class Job(Cmd, object):
 
         # get worker ports involved in SwitchML job
         with open(job_file) as f:
-            job = yaml.full_load(f)
+            job = yaml.safe_load(f)
             worker_ports = job['switch']['switchML']['workers_ports']
 
         # get info on all ports
         with open(ports_file) as f:
-            ports = yaml.full_load(f)
+            ports = yaml.safe_load(f)
 
         # create list of Worker objects from ports
         for dev_port, v in ports['switch']['forward'].items():

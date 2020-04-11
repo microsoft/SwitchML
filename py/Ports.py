@@ -87,6 +87,7 @@ class Ports(object):
                 [port_table.make_key([gc.KeyTuple('$DEV_PORT', self.get_dev_port(front_panel_port, lane))])],
                 [port_table.make_data([gc.DataTuple('$SPEED', str_val=speed_conversion_table[speed]),
                                        gc.DataTuple('$FEC', str_val=fec_conversion_table[fec]),
+                                       gc.DataTuple('$AUTO_NEGOTIATION', 2), # disable autonegotiation
                                        gc.DataTuple('$PORT_ENABLE', bool_val=True)])])
             
     # add one port
