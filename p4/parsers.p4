@@ -81,9 +81,9 @@ parser SwitchMLIngressParser(
         pkt.extract(hdr.ethernet);
         transition select(hdr.ethernet.ether_type) {
             ETHERTYPE_ARP                                       : parse_arp;
-            ETHERTYPE_ROCEv1                                    : parse_ib_grh;
+            // ETHERTYPE_ROCEv1                                    : parse_ib_grh;
             ETHERTYPE_IPV4                                      : parse_ipv4;
-            ETHERTYPE_SWITCHML_BASE &&& ETHERTYPE_SWITCHML_MASK : parse_switchml;
+            // ETHERTYPE_SWITCHML_BASE &&& ETHERTYPE_SWITCHML_MASK : parse_switchml;
             default : accept_non_switchml;
         }
     }
@@ -129,10 +129,10 @@ parser SwitchMLIngressParser(
         }
     }
 
-    state parse_ib_grh {
-        pkt.extract(hdr.ib_grh);
-        transition parse_ib_bth;
-    }
+    // state parse_ib_grh {
+    //     pkt.extract(hdr.ib_grh);
+    //     transition parse_ib_bth;
+    // }
 
     state parse_ib_bth {
         pkt.extract(hdr.ib_bth);
@@ -285,7 +285,7 @@ parser SwitchMLEgressParser(
     state parse_ethernet {
         pkt.extract(hdr.ethernet);
         transition select(hdr.ethernet.ether_type) {
-            ETHERTYPE_ROCEv1                                    : parse_ib_grh;
+            // ETHERTYPE_ROCEv1                                    : parse_ib_grh;
             ETHERTYPE_IPV4                                      : parse_ipv4;
             ETHERTYPE_SWITCHML_BASE &&& ETHERTYPE_SWITCHML_MASK : parse_switchml;
             default                                             : accept;
@@ -313,10 +313,10 @@ parser SwitchMLEgressParser(
         }
     }
 
-    state parse_ib_grh {
-        pkt.extract(hdr.ib_grh);
-        transition parse_ib_bth;
-    }
+    // state parse_ib_grh {
+    //     pkt.extract(hdr.ib_grh);
+    //     transition parse_ib_bth;
+    // }
 
     state parse_ib_bth {
         pkt.extract(hdr.ib_bth);

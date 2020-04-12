@@ -75,19 +75,20 @@ header switchml_h {
     bit<16> pool_index;
 }
 
-// InfiniBand-RoCE Global Routing Header
-header ib_grh_h {
-    bit<4>   ipver;
-    bit<8>   tclass;
-    bit<20>  flowlabel;
-    bit<16>  paylen;
-    bit<8>   nxthdr;
-    bit<8>   hoplmt;
-    ib_gid_t sgid;
-    ib_gid_t dgid;
-}
+// // InfiniBand-RoCE Global Routing Header
+// header ib_grh_h {
+//     bit<4>   ipver;
+//     bit<8>   tclass;
+//     bit<20>  flowlabel;
+//     bit<16>  paylen;
+//     bit<8>   nxthdr;
+//     bit<8>   hoplmt;
+//     ib_gid_t sgid;
+//     ib_gid_t dgid;
+// }
 
 // InfiniBand-RoCE Base Transport Header
+//@pa_container_size("ingress", "hdr.ib_bth.dst_qp", 16, 16)
 header ib_bth_h {
     ib_opcode_t       opcode;
     bit<1>            se;
@@ -175,7 +176,7 @@ struct header_t {
     icmp_h         icmp;
     udp_h          udp;
     switchml_h     switchml;
-    ib_grh_h       ib_grh;
+    // ib_grh_h       ib_grh;
     ib_bth_h       ib_bth;
     ib_reth_h      ib_reth;
     ib_immediate_h ib_immediate;
