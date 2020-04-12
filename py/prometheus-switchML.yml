@@ -1,0 +1,7 @@
+switch:
+    switchML:
+       workers_ports: [4, 8]
+
+       # Ratio of packets to drop [0,100]
+       drop_ingress : 0
+       drop_egress : 0

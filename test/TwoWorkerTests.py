@@ -84,6 +84,21 @@ class TwoWorkerTest(SwitchMLTest):
          (self.pktW1S1x3, self.expected_pktW1S1x3)) = self.make_switchml_packets(self.switchml_workers,
                                                                                  0x8000, 3, self.switch_udp_port)
 
+        # make packets for the next slot with different ports
+        ((self.pktW0S0p1, self.expected_pktW0S0p1),
+         (self.pktW1S0p1, self.expected_pktW1S0p1)) = self.make_switchml_packets(self.switchml_workers,
+                                                                                 0x0001, 1, self.switch_udp_port+1)
+        ((self.pktW0S1p1, self.expected_pktW0S1p1),
+         (self.pktW1S1p1, self.expected_pktW1S1p1)) = self.make_switchml_packets(self.switchml_workers,
+                                                                                 0x8001, 1, self.switch_udp_port+1)
+        self.pktW0S0p1['UDP'].sport          = self.pktW0S0p1['UDP'].sport + 1
+        self.pktW1S0p1['UDP'].sport          = self.pktW1S0p1['UDP'].sport + 1
+        self.pktW0S1p1['UDP'].sport          = self.pktW0S1p1['UDP'].sport + 1
+        self.pktW1S1p1['UDP'].sport          = self.pktW1S1p1['UDP'].sport + 1
+        self.expected_pktW0S0p1['UDP'].dport = self.expected_pktW0S0p1['UDP'].dport + 1
+        self.expected_pktW1S0p1['UDP'].dport = self.expected_pktW1S0p1['UDP'].dport + 1
+        self.expected_pktW0S1p1['UDP'].dport = self.expected_pktW0S1p1['UDP'].dport + 1
+        self.expected_pktW1S1p1['UDP'].dport = self.expected_pktW1S1p1['UDP'].dport + 1
  
 class BasicReduction(TwoWorkerTest):
     """
@@ -353,3 +368,32 @@ class NonSwitchML(TwoWorkerTest):
         send_packet(self, 2, q)
         verify_packet(self, q, 2)
 
+class DifferentPortsReduction(TwoWorkerTest):
+    """
+    Test reductions leveraging port masks in the switch to do core steering.
+    """
+
+    def runTest(self):
+        # do a straightforward reduction in the first set of slot 0
+        send_packet(self, 0, self.pktW0S0)
+        verify_no_other_packets(self)
+
+        send_packet(self, 1, self.pktW1S0)
+
+        verify_packet(self, self.expected_pktW0S0, 0)
+        verify_packet(self, self.expected_pktW1S0, 1)
+
+        # do a straightforward reduction in the first set of slot 1 with different ports
+        send_packet(self, 0, self.pktW0S0p1)
+        verify_no_other_packets(self)
+
+        send_packet(self, 1, self.pktW1S0p1)
+
+        verify_packet(self, self.expected_pktW0S0p1, 0)
+        verify_packet(self, self.expected_pktW1S0p1, 1)
+        
+        self.pktW0S0p1.show()
+        self.pktW1S0p1.show()
+        self.expected_pktW0S0p1.show()
+        self.expected_pktW1S0p1.show()
+        

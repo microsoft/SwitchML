@@ -79,6 +79,28 @@ class Job(Cmd, object):
         'Reinitialize all switch state.'
         self.configure_job()
 
+    def do_bitmaps(self, arg):
+        'Show the bitmaps for the first n slots. 8 is default, or specify a count.'
+
+        try:
+            start = 0
+            count = 8
+            
+            args = arg.split(' ')
+            
+            if len(args) == 1 and args[0] is not '':
+                count = int(args[0], 0)
+                if count <= 0:
+                    count = 1
+            elif len(args) == 2:
+                start = int(args[0], 0)
+                count = int(args[1], 0)
+                    
+            if self.update_and_check_worker_bitmap is not None:
+                self.update_and_check_worker_bitmap.show_bitmaps(start=start, count=count)
+        except:
+            print "Didn't understand that. Continuing...."
+
     #
     # state management for job
     #

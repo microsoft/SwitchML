@@ -179,10 +179,11 @@ struct header_t {
     ib_bth_h       ib_bth;
     ib_reth_h      ib_reth;
     ib_immediate_h ib_immediate;
-    exponents_h    exponents;
     // two 128-byte data headers to support harvesting 256 bytes with recirculation.
     data_h         d0;
     data_h         d1;
+    // TODO: move exponents before data once daiet code supports it
+    exponents_h    exponents;
     ib_icrc_h      ib_icrc;
 }
 

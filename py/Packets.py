@@ -13,10 +13,10 @@ from scapy.all import *
 class SwitchML(Packet):
     name = "SwitchML"
     fields_desc=[
-        BitField(     "msgType", 0, 4),
-        BitField(      "unused", 0, 12),
-        IntField(         "tsi", 0),
-        ShortField("pool_index", 2),
+        XBitField(     "msgType", 0, 4),
+        XBitField(      "unused", 0, 12),
+        XIntField(         "tsi", 0),
+        XShortField("pool_index", 2),
     ]
 
 class SwitchMLExponent(Packet):
@@ -62,6 +62,12 @@ class SwitchMLData(Packet):
         IntField("d31", 31),
     ]
 
+class SwitchMLData64(Packet):
+    name = "SwitchMLData64"
+    fields_desc=[
+        FieldListField("significands", [], IntField("", 0), count_from=lambda pkt: 64)
+    ]
+    
 
 def make_switchml_udp(src_mac, src_ip, dst_mac, dst_ip, src_port, dst_port, pool_index,
                       value_multiplier=1, checksum=None):
@@ -69,9 +75,9 @@ def make_switchml_udp(src_mac, src_ip, dst_mac, dst_ip, src_port, dst_port, pool
          IP(dst=dst_ip, src=src_ip)/
          UDP(sport=src_port, dport=dst_port)/
          SwitchML(pool_index=pool_index) /
-         SwitchMLExponent() /
          SwitchMLData() /
-         SwitchMLData())
+         SwitchMLData() /
+         SwitchMLExponent())  # TODO: move exponents before data once daiet code supports it
 
     # initialize data
     for i in range(32):

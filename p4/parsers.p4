@@ -181,13 +181,15 @@ parser SwitchMLIngressParser(
     
     state parse_switchml {
         pkt.extract(hdr.switchml);
-        transition parse_exponents;
-    }
-
-    state parse_exponents {
-        pkt.extract(hdr.exponents);
+        // TODO: move exponents before data once daiet code supports it
         transition parse_data0;
     }
+
+    // TODO: move exponents back here once daiet code supports it
+    // state parse_exponents {
+    //     pkt.extract(hdr.exponents);
+    //     transition parse_data0;
+    // }
 
     // mark as @critical to ensure minimum cycles for extraction
     // TODO: BUG: re-enable after compiler bug fix
@@ -206,11 +208,13 @@ parser SwitchMLIngressParser(
     //@critical
     state parse_data1 {
         pkt.extract(hdr.d1);
+        pkt.extract(hdr.exponents); // TODO: move exponents before data once daiet code supports it
         // at this point we know this is a SwitchML packet that wasn't recirculated, so mark it for consumption.
         ig_md.switchml_md.setValid();
         ig_md.switchml_md.packet_type = packet_type_t.CONSUME;
         transition accept;
     }
+
 
     state accept_non_switchml {
         ig_md.switchml_md.setValid();

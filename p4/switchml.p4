@@ -88,6 +88,12 @@ control SwitchMLIngress(
                 
                 // detect when we have received all the packets for a slot
                 count_workers.apply(hdr, ig_md, ig_dprsr_md);
+
+                // TODO: move exponents back to CONSUME/HARVES once daiet code supports it
+                // update max exponents
+                // for now, we'll stick with the original SwitchML design and use 1 16-bit exponent
+                // (using just half of the register unit). 
+                exponent_max.apply(hdr.exponents.e0, hdr.exponents.e0, hdr.exponents.e0, _, hdr, ig_md);
             }
         }
 
@@ -95,10 +101,6 @@ control SwitchMLIngress(
             // if it's a SwitchML packet that should be processed in ingress, do so
             if ((ig_md.switchml_md.packet_type == packet_type_t.CONSUME) ||
                 (ig_md.switchml_md.packet_type == packet_type_t.HARVEST)) {
-                // update max exponents
-                // for now, we'll stick with the original SwitchML design and use 1 16-bit exponent
-                // (using just half of the register unit). 
-                exponent_max.apply(hdr.exponents.e0, hdr.exponents.e0, hdr.exponents.e0, _, hdr, ig_md);
                 
                 // aggregate significands
                 // use a macro to reduce a little typing.

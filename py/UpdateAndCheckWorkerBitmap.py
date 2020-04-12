@@ -37,20 +37,31 @@ class UpdateAndCheckWorkerBitmap(Table):
     def clear_registers(self):
         self.logger.info("Clearing bitmap registers...")
 
-        # target all pipes on device 0
-        target = gc.Target(device_id=0, pipe_id=0xffff)
-
         # clear all register entries
-        self.register.entry_del(target)
+        self.register.entry_del(self.target)
         
         
     def add_default_entries(self):
-        # target all pipes on device 0
-        target = gc.Target(device_id=0, pipe_id=0xffff)
-
         # all these are set in the p4 code now
         pass
     
 
+    def show_bitmaps(self, start=0, count=8):
+        resp = self.register.entry_get(
+            self.target,
+            [self.register.make_key([gc.KeyTuple('$REGISTER_INDEX', i)])
+             for i in range(start, count)],
+            flags={"from_hw": True})
+
+        for v, k in resp:
+            v = v.to_dict()
+            k = k.to_dict()
+
+            #print k, v
+            pool_index = k['$REGISTER_INDEX']['value']
+            set0 = v['SwitchMLIngress.update_and_check_worker_bitmap.worker_bitmap.first'][0]
+            set1 = v['SwitchMLIngress.update_and_check_worker_bitmap.worker_bitmap.second'][0]
+            print("Pool index 0x{:04x}: set 0: 0x{:08x} set 1:0x{:08x}".format(pool_index, set0, set1))
+        
 
 

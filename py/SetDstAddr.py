@@ -51,7 +51,7 @@ class SetDstAddr(Table):
 
     # Add SwitchML UDP entry to table
     def add_udp_entry(self, worker_rid, worker_mac, worker_ip):
-        self.logger.info("Adding worker {} {}at rid {}".format(worker_mac, worker_ip, worker_rid))
+        self.logger.info("Adding worker {} {} at rid {}".format(worker_mac, worker_ip, worker_rid))
 
         # target all pipes on device 0
         target = gc.Target(device_id=0, pipe_id=0xffff)
