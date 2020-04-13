@@ -19,18 +19,22 @@ control GetWorkerBitmap(
     in ingress_intrinsic_metadata_from_parser_t ig_prsr_md,
     inout ingress_intrinsic_metadata_for_deparser_t ig_dprsr_md,
     inout ingress_intrinsic_metadata_for_tm_t ig_tm_md) {
-
+    
+    DirectCounter<counter_t>(CounterType_t.PACKETS_AND_BYTES) receive_counter;
+    
     // packet was received with errors; set drop bit in deparser metadata
     action drop() {
         // ignore this packet and drop when it leaves pipeline
         ig_dprsr_md.drop_ctl = ig_dprsr_md.drop_ctl | 0x1;
         ig_md.switchml_md.packet_type = packet_type_t.IGNORE;
+        receive_counter.count();
     }
 
     // packet is not a SwitchML packet; just foward
     action forward() {
         // forward this packet
         ig_md.switchml_md.packet_type = packet_type_t.IGNORE;
+        receive_counter.count();
     }
 
     action set_bitmap(
@@ -44,6 +48,9 @@ control GetWorkerBitmap(
         pool_index_t pool_base,
         worker_pool_index_t pool_size_minus_1) {
 
+        // count received packet
+        receive_counter.count();
+        
         // bitmap representation for this worker
         ig_md.worker_bitmap   = worker_bitmap;
         ig_md.num_workers     = num_workers;
@@ -110,6 +117,9 @@ control GetWorkerBitmap(
         
         // create some extra table space to support parser error entries
         size = max_num_workers + 16;
+
+        // count received packets
+        counters = receive_counter;
     }
 
     apply {

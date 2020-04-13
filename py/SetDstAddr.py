@@ -64,3 +64,48 @@ class SetDstAddr(Table):
                                    gc.DataTuple('ip_dst_addr', worker_ip)],
                                   'SwitchMLEgress.set_dst_addr.set_dst_addr_for_SwitchML_UDP')])
 
+    def print_counters(self):
+        self.table.operations_execute(self.target, 'SyncCounters')
+        resp = self.table.entry_get(
+            self.target,
+            flags={"from_hw": False})
+
+        for v, k in resp:
+            v = v.to_dict()
+            k = k.to_dict()
+            
+            worker_id = k['eg_md.switchml_md.worker_id']['value']
+            worker_ip = v['ip_dst_addr']
+            worker_packets = v['$COUNTER_SPEC_PKTS']
+            worker_bytes = v['$COUNTER_SPEC_BYTES']
+            
+            print("Sent to worker       {:2} at {:15}: {:10} packets, {:10} bytes".format(worker_id, worker_ip, worker_packets, worker_bytes))
+            #print("key {}: value {}".format(pformat(k), pformat(v)))
+            
+    def clear_counters(self):
+        self.logger.info("Clearing set_dst_addr counters...")
+        self.table.operations_execute(self.target, 'SyncCounters')
+        resp = self.table.entry_get(
+            self.target,
+            flags={"from_hw": False})
+
+        keys = []
+        values = []
+        
+        for v, k in resp:
+            keys.append(k)
+
+            v = v.to_dict()
+            k = k.to_dict()
+
+            values.append(
+                self.table.make_data(
+                    [gc.DataTuple('$COUNTER_SPEC_BYTES', 0),
+                     gc.DataTuple('$COUNTER_SPEC_PKTS', 0)],
+                    v['action_name']))
+
+        self.table.entry_mod(
+            self.target,
+            keys,
+            values)
+            

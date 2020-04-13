@@ -106,3 +106,47 @@ class GetWorkerBitmap(Table):
                                    gc.DataTuple('pool_size_minus_1', pool_size - 1)],
                              'SwitchMLIngress.get_worker_bitmap.set_bitmap')])
 
+    def print_counters(self):
+        self.table.operations_execute(self.target, 'SyncCounters')
+        resp = self.table.entry_get(
+            self.target,
+            flags={"from_hw": False})
+
+        for v, k in resp:
+            v = v.to_dict()
+            k = k.to_dict()
+
+            worker_ip = k['hdr.ipv4.src_addr']['value']
+            worker_id = v['worker_id']
+            worker_packets = v['$COUNTER_SPEC_PKTS']
+            worker_bytes = v['$COUNTER_SPEC_BYTES']
+
+            print("Received from worker {:2} at {:15}: {:10} packets, {:10} bytes".format(worker_id, worker_ip, worker_packets, worker_bytes))
+            #print("key {}: value {}".format(pformat(k), pformat(v)))
+
+    def clear_counters(self):
+        self.logger.info("Clearing get_worker_bitmap counters...")
+        self.table.operations_execute(self.target, 'SyncCounters')
+        resp = self.table.entry_get(
+            self.target,
+            flags={"from_hw": False})
+
+        keys = []
+        values = []
+        
+        for v, k in resp:
+            keys.append(k)
+
+            v = v.to_dict()
+            k = k.to_dict()
+
+            values.append(
+                self.table.make_data(
+                    [gc.DataTuple('$COUNTER_SPEC_BYTES', 0),
+                     gc.DataTuple('$COUNTER_SPEC_PKTS', 0)],
+                    v['action_name']))
+
+        self.table.entry_mod(
+            self.target,
+            keys,
+            values)

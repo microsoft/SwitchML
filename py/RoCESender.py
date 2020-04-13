@@ -164,3 +164,59 @@ class RoCESender(Table):
                                                 'SwitchMLEgress.roce_sender.add_qpn_and_psn')])
 
         # now, reset initial PSN
+
+
+
+
+
+
+
+
+
+    def print_counters(self):
+        self.create_roce_packet.operations_execute(self.target, 'SyncCounters')
+        resp = self.create_roce_packet.entry_get(
+            self.target,
+            flags={"from_hw": False})
+
+        for v, k in resp:
+            v = v.to_dict()
+            k = k.to_dict()
+                
+            #print("key {}: value {}".format(pformat(k), pformat(v)))
+
+            worker_id = k['eg_md.switchml_md.worker_id']['value']
+            worker_ip = v['dest_ip']
+            worker_packets = v['$COUNTER_SPEC_PKTS']
+            worker_bytes = v['$COUNTER_SPEC_BYTES']
+
+            print("Sent to worker       {:2} at {:15}: {:10} packets, {:10} bytes".format(worker_id, worker_ip, worker_packets, worker_bytes))
+
+
+    def clear_counters(self):
+        self.logger.info("Clearing roce_sender counters...")
+        self.create_roce_packet.operations_execute(self.target, 'SyncCounters')
+        resp = self.create_roce_packet.entry_get(
+            self.target,
+            flags={"from_hw": False})
+
+        keys = []
+        values = []
+        
+        for v, k in resp:
+            keys.append(k)
+
+            v = v.to_dict()
+            k = k.to_dict()
+
+            values.append(
+                self.create_roce_packet.make_data(
+                    [gc.DataTuple('$COUNTER_SPEC_BYTES', 0),
+                     gc.DataTuple('$COUNTER_SPEC_PKTS', 0)],
+                    v['action_name']))
+
+        self.create_roce_packet.entry_mod(
+            self.target,
+            keys,
+            values)
+        

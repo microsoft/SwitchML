@@ -50,7 +50,7 @@ class UpdateAndCheckWorkerBitmap(Table):
         resp = self.register.entry_get(
             self.target,
             [self.register.make_key([gc.KeyTuple('$REGISTER_INDEX', i)])
-             for i in range(start, count)],
+             for i in range(start, start+count)],
             flags={"from_hw": True})
 
         for v, k in resp:
@@ -62,6 +62,20 @@ class UpdateAndCheckWorkerBitmap(Table):
             set0 = v['SwitchMLIngress.update_and_check_worker_bitmap.worker_bitmap.first'][0]
             set1 = v['SwitchMLIngress.update_and_check_worker_bitmap.worker_bitmap.second'][0]
             print("Pool index 0x{:04x}: set 0: 0x{:08x} set 1:0x{:08x}".format(pool_index, set0, set1))
-        
 
+    def show_weird_bitmaps(self):
+        resp = self.register.entry_get(
+            self.target,
+            [],
+            flags={"from_hw": True})
 
+        for v, k in resp:
+            v = v.to_dict()
+            k = k.to_dict()
+
+            pool_index = k['$REGISTER_INDEX']['value']
+            set0 = v['SwitchMLIngress.update_and_check_worker_bitmap.worker_bitmap.first'][0]
+            set1 = v['SwitchMLIngress.update_and_check_worker_bitmap.worker_bitmap.second'][0]
+
+            if set0 is not 0 and set1 is not 0:
+                print("Pool index 0x{:04x}: set 0: 0x{:08x} set 1:0x{:08x}".format(pool_index, set0, set1))

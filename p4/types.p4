@@ -103,6 +103,8 @@ struct exponent_pair_t {
 
 typedef bit<16> drop_random_value_t;
 
+typedef bit<32> counter_t;
+
 enum bit<3> packet_type_t {
     IGNORE     = 0x0,
     CONSUME    = 0x1,

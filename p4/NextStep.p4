@@ -18,10 +18,19 @@ control NextStep(
     inout ingress_intrinsic_metadata_for_deparser_t ig_dprsr_md,
     inout ingress_intrinsic_metadata_for_tm_t ig_tm_md) {
 
+    //DirectCounter<counter_t>(CounterType_t.PACKETS_AND_BYTES) next_step_counter;
+    Counter<counter_t, pool_index_t>(register_size, CounterType_t.PACKETS) recirculate_counter;
+    Counter<counter_t, pool_index_t>(register_size, CounterType_t.PACKETS) broadcast_counter;
+    Counter<counter_t, pool_index_t>(register_size, CounterType_t.PACKETS) retransmit_counter;
+    Counter<counter_t, pool_index_t>(register_size, CounterType_t.PACKETS) drop_counter;
+
     action drop() {
         // mark for drop
         ig_dprsr_md.drop_ctl = ig_dprsr_md.drop_ctl | 0x1;
-        ig_md.switchml_md.packet_type = packet_type_t.IGNORE;
+        //ig_md.switchml_md.packet_type = packet_type_t.IGNORE;
+
+        //next_step_counter.count();
+        //drop_counter.count(ig_md.switchml_md.pool_index);
     }
 
     action recirculate_for_harvest() {
@@ -33,6 +42,9 @@ control NextStep(
         ig_tm_md.bypass_egress = 1w1;
         ig_dprsr_md.drop_ctl = 0;
         ig_md.switchml_md.packet_type = packet_type_t.HARVEST;
+
+        //next_step_counter.count();
+        recirculate_counter.count(ig_md.switchml_md.pool_index);
     }
 
     action broadcast_eth() {
@@ -46,6 +58,9 @@ control NextStep(
         ig_md.switchml_md.packet_type = packet_type_t.BROADCAST;
         ig_tm_md.bypass_egress = 1w0;
         ig_dprsr_md.drop_ctl = 0;
+
+        //next_step_counter.count();
+        //broadcast_counter.count(ig_md.switchml_md.pool_index);
     }
     
     action broadcast_udp() {
@@ -77,6 +92,9 @@ control NextStep(
         ig_md.switchml_md.packet_type = packet_type_t.RETRANSMIT;
         ig_tm_md.bypass_egress = 1w0;
         ig_dprsr_md.drop_ctl = 0;
+
+        //next_step_counter.count();
+        //retransmit_counter.count(ig_md.switchml_md.pool_index);
     }
     
     action retransmit_udp() {
@@ -124,7 +142,6 @@ control NextStep(
             retransmit_udp;
             broadcast_roce;
             retransmit_roce;
-            NoAction;
         }
         size = 11;
         const entries = {
@@ -152,11 +169,23 @@ control NextStep(
             (packet_type_t.HARVEST,     _,         _,          _) : drop(); // TODO: support other formats
             // ignore other packet types
         }
-        const default_action = NoAction;
+        //counters = next_step_counter;
     }
     
     apply {
         next_step.apply();
+
+        
+        // if (ig_md.switchml_md.packet_type == packet_type_t.HARVEST) {
+        //     recirculate_counter.count(ig_md.switchml_md.pool_index);
+        // } else
+        if (ig_md.switchml_md.packet_type == packet_type_t.BROADCAST) {
+            broadcast_counter.count(ig_md.switchml_md.pool_index);
+        } else if (ig_md.switchml_md.packet_type == packet_type_t.RETRANSMIT) {
+            retransmit_counter.count(ig_md.switchml_md.pool_index);
+        } else {
+            drop_counter.count(ig_md.switchml_md.pool_index);
+        }
     }
 }
 

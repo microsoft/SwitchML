@@ -42,11 +42,15 @@ control RoCEReceiver(
     inout ingress_intrinsic_metadata_for_deparser_t ig_dprsr_md,
     inout ingress_intrinsic_metadata_for_tm_t ig_tm_md) {
     
-    Counter<bit<32>, bool>(2, CounterType_t.PACKETS) message_counter;
-    Counter<bit<32>, bool>(2, CounterType_t.PACKETS_AND_BYTES) packet_counter;
+    DirectCounter<counter_t>(CounterType_t.PACKETS_AND_BYTES) rdma_receive_counter;
 
-    Register<receiver_data_t, index_t>(1024) receiver_data_register;
+    Register<receiver_data_t, index_t>(num_slots) receiver_data_register;
+    Counter<counter_t, index_t>(num_slots, CounterType_t.PACKETS) rdma_message_counter;
+    Counter<counter_t, index_t>(num_slots, CounterType_t.PACKETS) rdma_sequence_violation_counter;
 
+    bool message_possibly_received;
+    bool sequence_violation;
+    
     return_t received_message;
     const return_t true_value  = 0x1;
     const return_t false_value = 0xffffffff;
@@ -61,7 +65,6 @@ control RoCEReceiver(
             value.next_sequence_number = (bit<32>) hdr.ib_bth.psn + 1; // reset sequence number
             value.pool_index = (bit<32>) hdr.ib_bth.dst_qp;   // reset pool index from QP number
             read_value = (return_t) value.pool_index;
-            //read_value = false_value;
         }
     };
 
@@ -125,6 +128,8 @@ control RoCEReceiver(
         
         // // use LSB of pool index to determine which set this packet is targeting.
         // //ig_md.pool_set = hdr.switchml.pool_index[0:0];
+
+        rdma_receive_counter.count();
     }
 
     action middle_packet(
@@ -145,6 +150,8 @@ control RoCEReceiver(
         ig_dprsr_md.drop_ctl[0:0] = result[31:31];
 
         // A message has not yet arrived, since this is a middle packet.
+        message_possibly_received = false;
+        sequence_violation = (bool) result[31:31];
     }
 
     action last_packet(
@@ -166,6 +173,8 @@ control RoCEReceiver(
         ig_dprsr_md.drop_ctl[0:0] = result[31:31];
 
         // A message has arrived if the sequence number matched (sign bit == 0).
+        message_possibly_received = true;
+        sequence_violation = (bool) result[31:31];
     }
 
     action first_packet(
@@ -180,12 +189,13 @@ control RoCEReceiver(
 
         // reset sequence number
         return_t result = receiver_reset_action.execute(INDEX);
-        //received_message = false_value;
 
         // This is a first packet, so there can be no sequence number violation.
         // Don't drop the packet.
 
         // A message has not yet arrived, since this is a first packet.
+        message_possibly_received = false;
+        sequence_violation = (bool) result[31:31];
     }
     
     action only_packet(
@@ -200,19 +210,14 @@ control RoCEReceiver(
 
         // reset sequence number
         return_t result = receiver_reset_action.execute(INDEX);
-
+        
         // This is an only packet, so there can be no sequence number violation.
         // Don't drop the packet.
 
         // A message has arrived, since this is an only packet.
+        message_possibly_received = true;
+        sequence_violation = (bool) result[31:31];
     }
-
-    // packet is not a SwitchML packet; just foward
-    action forward() {
-        // forward this packet
-        ig_md.switchml_md.packet_type = packet_type_t.IGNORE;
-    }
-
 
 
     // The goal for this component is to receive a RoCE RDMA UC packet
@@ -247,21 +252,21 @@ control RoCEReceiver(
             hdr.ipv4.dst_addr        : exact;
             hdr.ib_bth.partition_key : exact;
             hdr.ib_bth.opcode        : exact;
-            hdr.ib_bth.dst_qp[23:16] : ternary; // match on top bits if you want.
+            //hdr.ib_bth.dst_qp[23:16] : ternary; // match on top bits if you want.
+            hdr.ib_bth.dst_qp        : ternary; // match on top 8 bits if you want.
         }
         actions = {
             only_packet;
             first_packet;
             middle_packet;
             last_packet;
-            forward;
         }
-        size = max_num_workers * 4; // each worker needs 4 entries
-
-        const default_action = forward();
+        size = max_num_workers * 6; // each worker needs 6 entries: first, middle, last, only, last immediate, and only immediate
+        counters = rdma_receive_counter;
     }
 
     apply {
+        message_possibly_received = false;
         receive_roce.apply();
 
         // use the SwitchML set bit in the MSB of the 16-bit pool index to switch between sets
@@ -270,6 +275,14 @@ control RoCEReceiver(
             ig_md.pool_set = 1;
         } else {
             ig_md.pool_set = 0;
+        }
+
+        if (sequence_violation) {
+            // count violation
+            rdma_sequence_violation_counter.count(hdr.ib_bth.dst_qp[14:0]);
+        } else if (message_possibly_received) {
+            // count correctly received message
+            rdma_message_counter.count(hdr.ib_bth.dst_qp[14:0]);
         }
     }
 }

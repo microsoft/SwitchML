@@ -19,6 +19,8 @@ control RoCESender(
     rkey_t rdma_rkey;
     bit<31> rdma_message_length;
     
+
+    DirectCounter<counter_t>(CounterType_t.PACKETS_AND_BYTES) rdma_send_counter;
     
     //
     // read switch MAC and IP from table to form output packets
@@ -101,6 +103,9 @@ control RoCESender(
         // TODO: can't do this here because we haven't parsed data. Add a header with 0's in ingress for now.
         // hdr.ib_icrc.setValid();
         // hdr.ib_icrc.icrc = 0; // to be filled in later (or ignored with the right NIC settings)
+
+        // count
+        rdma_send_counter.count();
     }
 
     action fill_in_roce_write_fields(mac_addr_t dest_mac, ipv4_addr_t dest_ip, bit<64> base_addr, rkey_t rkey) {
@@ -120,6 +125,7 @@ control RoCESender(
             fill_in_roce_write_fields;
         }
         size = max_num_workers;
+        counters = rdma_send_counter;
     }
 
     //

@@ -12,6 +12,8 @@ control SetDestinationAddress(
     in egress_intrinsic_metadata_t eg_intr_md,
     inout header_t hdr) {
 
+    DirectCounter<counter_t>(CounterType_t.PACKETS_AND_BYTES) send_counter;
+
     //
     // read switch MAC and IP from table to form output packets
     //
@@ -54,6 +56,9 @@ control SetDestinationAddress(
 
         // update IPv4 checksum
         eg_md.update_ipv4_checksum = true;
+
+        // count send
+        send_counter.count();
     }
     
     table set_dst_addr {
@@ -64,6 +69,8 @@ control SetDestinationAddress(
             set_dst_addr_for_SwitchML_UDP;
         }
         size = max_num_workers;
+
+        counters = send_counter;
     }
 
     apply {

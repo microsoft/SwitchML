@@ -30,6 +30,7 @@ from Ports import Ports
 from ARPandICMP import ARPandICMP
 from RoCESender import RoCESender
 from RoCEReceiver import RoCEReceiver
+from NextStep import NextStep
 
 class Job(Cmd, object):
 
@@ -69,10 +70,11 @@ class Job(Cmd, object):
         return self.do_exit(args)
 
     def do_clear(self, arg):
-        'Clear all registers.'
-        print "Clearing all registers..."
+        'Clear all registers and counters.'
+        print "Clearing all registers and counters..."
         self.clear_registers()
-        print "Registers cleared."
+        self.clear_counters()
+        print "Registers and counters cleared."
 
 
     def do_reset(self, arg):
@@ -101,6 +103,56 @@ class Job(Cmd, object):
         except:
             print "Didn't understand that. Continuing...."
 
+    def do_weird_bitmaps(self, arg):
+        'Show any bitmaps where both sets are nonzero.'
+        
+        if self.update_and_check_worker_bitmap is not None:
+            self.update_and_check_worker_bitmap.show_weird_bitmaps()
+
+    def do_get_counters(self, arg):
+        'Show counters. For pool index counters, we show the first 8 as default; you can specify a count, start point and count.'
+
+        try:
+            # get start and count for pool index counters
+            start = 0
+            count = 8
+            
+            args = arg.split(' ')
+            
+            if len(args) == 1 and args[0] is not '':
+                count = int(args[0], 0)
+                if count <= 0:
+                    count = 1
+            elif len(args) == 2:
+                start = int(args[0], 0)
+                count = int(args[1], 0)
+
+            # now print counters
+            self.get_worker_bitmap.print_counters()
+            self.roce_receiver.print_counters()
+            self.set_dst_addr.print_counters()
+            self.roce_sender.print_counters()
+
+            print("Showing {} pool index counters starting from {}.".format(count, start)) 
+            self.next_step.print_counters(start, count)
+            
+        except Exception as e:
+            print "Oops: {}".format(e)
+
+        
+    def do_clear_counters(self, arg):
+        'Clear counters.'
+        try:
+            for x in self.counters_to_clear:
+                try:
+                    x.clear_counters()
+                    pass
+                except:
+                    print "Oops."
+        except:
+            print "Oops!"
+
+        
     #
     # state management for job
     #
@@ -109,6 +161,13 @@ class Job(Cmd, object):
         for x in self.registers_to_clear:
             x.clear_registers()
 
+    def clear_counters(self):
+        for x in self.counters_to_clear:
+            try:
+                x.clear_counters()
+            except:
+                print "Oops!"
+
     def clear_all(self):
         for x in self.tables_to_clear:
             x.clear()
@@ -116,6 +175,7 @@ class Job(Cmd, object):
     def configure_job(self):
         self.tables_to_clear    = []
         self.registers_to_clear = []
+        self.counters_to_clear = []
 
         # clear and reset everything to defaults
         self.clear_all()
@@ -135,8 +195,10 @@ class Job(Cmd, object):
         # add workers to worker bitmap table
         self.get_worker_bitmap = GetWorkerBitmap(self.gc, self.bfrt_info)
         self.tables_to_clear.append(self.get_worker_bitmap)
+        self.counters_to_clear.append(self.get_worker_bitmap)
         self.roce_receiver = RoCEReceiver(self.gc, self.bfrt_info)
         self.tables_to_clear.append(self.roce_receiver)
+        self.counters_to_clear.append(self.roce_receiver)
                 
         match_priority = 10       # not sure if this matters
         pool_base = 0             # TODO: for now, support only one pool at base index 0
@@ -206,6 +268,9 @@ class Job(Cmd, object):
         self.pre.add_workers(self.switchml_workers_mgid, switchml_workers,
                              self.all_ports_mgid, self.workers)
 
+        # set up counters in next step table
+        self.next_step = NextStep(self.gc, self.bfrt_info)
+        self.tables_to_clear.append(self.next_step)
         
         # add workers to non-switchml forwarding table
         self.non_switchml_forward = NonSwitchMLForward(self.gc, self.bfrt_info, self.ports)
@@ -214,10 +279,12 @@ class Job(Cmd, object):
         # now add workers to set_dst_addr table in egress
         self.set_dst_addr = SetDstAddr(self.gc, self.bfrt_info, self.switch_mac, self.switch_ip)
         self.tables_to_clear.append(self.set_dst_addr)
+        self.counters_to_clear.append(self.set_dst_addr)
         self.roce_sender = RoCESender(self.gc, self.bfrt_info,
                                       self.switch_mac, self.switch_ip,
                                       message_length = 256)#self.message_length)
         self.tables_to_clear.append(self.roce_sender)
+        self.counters_to_clear.append(self.roce_sender)
         for worker in self.workers:
             if worker.worker_type is WorkerType.SWITCHML_UDP:
                 # SwitchML-UDP worker
@@ -229,7 +296,9 @@ class Job(Cmd, object):
             else:
                 # not a SwitchML UDP or RoCE worker, so ignore
                 pass
-                
+
+        # do this last to print more cleanly
+        self.counters_to_clear.append(self.next_step)
 
         # should already be done
         #self.clear_registers()
