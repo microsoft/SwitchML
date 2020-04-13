@@ -142,16 +142,7 @@ class Job(Cmd, object):
         
     def do_clear_counters(self, arg):
         'Clear counters.'
-        try:
-            for x in self.counters_to_clear:
-                try:
-                    x.clear_counters()
-                    pass
-                except:
-                    print "Oops."
-        except:
-            print "Oops!"
-
+        self.clear_counters()
         
     #
     # state management for job
@@ -165,8 +156,8 @@ class Job(Cmd, object):
         for x in self.counters_to_clear:
             try:
                 x.clear_counters()
-            except:
-                print "Oops!"
+            except Exception as e:
+                print("Oops: {}".format(e))
 
     def clear_all(self):
         for x in self.tables_to_clear:

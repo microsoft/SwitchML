@@ -122,26 +122,30 @@ enum bit<3> packet_type_t {
 header switchml_md_h {
     MulticastGroupId_t mgid;
 
-    @padding
-    bit<5> pad2;
+    // @padding
+    // bit<5> pad2;
     
     PortId_t ingress_port;
 
-    @padding
-    bit<5> pad;
+    // @padding
+    // bit<5> pad;
 
     // is this RDMA or UDP?
     worker_type_t worker_type;
     worker_id_t worker_id;
 
     // dest port or QPN to be used for responses
+    bit<16> src_port;
     bit<16> dst_port;
-    
+
     // what should we do with this packet?
     packet_type_t packet_type;
 
     // which pool element are we talking about?
     pool_index_t pool_index; // Index of pool elements, including both sets.
+
+    // 0 if first packet, 1 if last packet
+    num_workers_t first_last_flag;
 
 
     // random number used to simulated packet drops
@@ -150,12 +154,12 @@ header switchml_md_h {
     // 0 if packet is first packet; non-zero if retransmission
     worker_bitmap_t map_result;
 
-    // 0 if first packet, 1 if last packet
-    num_workers_t first_last_flag;
-
     // bitmaps before and after the current worker is ORed in
     worker_bitmap_t worker_bitmap_before;
     worker_bitmap_t worker_bitmap_after;
+
+    // tsi used to fill in switchml header (or RoCE address later)
+    bit<32> tsi;
 }
 //switchml_md_h switchml_md_initializer = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
@@ -200,12 +204,12 @@ struct egress_metadata_t {
     bool checksum_err_ipv4;
     bool update_ipv4_checksum;
 
-    pool_index_t pool_index_mask;
-    pool_index_t masked_pool_index;
+    // pool_index_t pool_index_mask;
+    // pool_index_t masked_pool_index;
     
-    // switch MAC and IP
-    mac_addr_t switch_mac;
-    ipv4_addr_t switch_ip;
+    // // switch MAC and IP
+    // mac_addr_t switch_mac;
+    // ipv4_addr_t switch_ip;
 }
 //const egress_metadata_t egress_metadata_initializer = {{0, 0, true, 0, 0, packet_type_t.IGNORE, 0, 0, 0, 0, 0, 0}, false, false, 0, 0 };
 

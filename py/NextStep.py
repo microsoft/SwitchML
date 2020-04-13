@@ -19,10 +19,12 @@ class NextStep(Table):
 
         self.logger = logging.getLogger('NextStep')
         self.logger.info("Setting up next_step table...")
-        
-        # get table
-        self.table = self.bfrt_info.table_get("pipe.SwitchMLIngress.switchml_next_step.next_step")
-        
+
+        # don't get table, since we don't use it here.
+        # # get table
+        # self.table = self.bfrt_info.table_get("pipe.SwitchMLIngress.switchml_next_step.next_step")
+
+        # get counters
         self.recirculate_counter = self.bfrt_info.table_get("pipe.SwitchMLIngress.switchml_next_step.recirculate_counter")
         self.broadcast_counter = self.bfrt_info.table_get("pipe.SwitchMLIngress.switchml_next_step.broadcast_counter")
         self.retransmit_counter = self.bfrt_info.table_get("pipe.SwitchMLIngress.switchml_next_step.retransmit_counter")
@@ -34,11 +36,30 @@ class NextStep(Table):
 
     def clear_counters(self):
         self.logger.info("Clearing next_step counters...")
+
+        # this should work, but it doesn't.
         self.recirculate_counter.entry_del(self.target)
         self.broadcast_counter.entry_del(self.target)
         self.retransmit_counter.entry_del(self.target)
         self.drop_counter.entry_del(self.target)
-        
+
+        # so we'll clear them manually
+        for counter in [self.recirculate_counter,
+                        self.broadcast_counter,
+                        self.retransmit_counter,
+                        self.drop_counter]:
+            count = counter.info.size
+            self.logger.info(
+                "Clearing {} keys for counter table {}".format(count,
+                                                               counter.info.name_get()))
+            counter.entry_mod(
+                self.target,
+                [counter.make_key([gc.KeyTuple('$COUNTER_INDEX', i)])
+                 for i in range(count)],
+                [counter.make_data(
+                    [gc.DataTuple('$COUNTER_SPEC_PKTS', 0)])] * count)
+
+
     # Print 
     def print_counters(self, start=0, count=8):
         counters = [self.recirculate_counter,

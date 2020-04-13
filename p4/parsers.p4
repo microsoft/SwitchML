@@ -64,7 +64,7 @@ parser SwitchMLIngressParser(
         hdr.d1.setValid(); // this will be filled in by the pipeline
         // now parse the rest of the packet
         transition select(ig_md.switchml_md.worker_type) {
-            worker_type_t.SWITCHML_UDP : parse_ethernet;
+            worker_type_t.SWITCHML_UDP : parse_bare_packet;
             worker_type_t.ROCEv2       : parse_bare_packet; 
             default : parse_ethernet;
         }
@@ -76,7 +76,7 @@ parser SwitchMLIngressParser(
         pkt.extract(hdr.d0);
         transition accept;
     }
-    
+
     state parse_ethernet {
         pkt.extract(hdr.ethernet);
         transition select(hdr.ethernet.ether_type) {
@@ -279,7 +279,8 @@ parser SwitchMLEgressParser(
         // parse switchml metadata and mark as egress
         pkt.extract(eg_md.switchml_md);
         // now parse the rest of the packet
-        transition parse_ethernet;
+        //transition parse_ethernet;
+        transition accept;
     }
 
     state parse_ethernet {

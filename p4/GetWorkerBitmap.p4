@@ -62,7 +62,15 @@ control GetWorkerBitmap(
         ig_md.switchml_md.worker_type = worker_type;
         ig_md.switchml_md.worker_id = worker_id;     // Same as rid for worker; used when retransmitting RDMA packets
         ig_md.switchml_md.dst_port = hdr.udp.src_port;
-        
+        ig_md.switchml_md.src_port = hdr.udp.dst_port;
+        ig_md.switchml_md.tsi = hdr.switchml.tsi;
+
+        // get rid of headers we don't want to recirculate
+        hdr.ethernet.setInvalid();
+        hdr.ipv4.setInvalid();
+        hdr.udp.setInvalid();
+        hdr.switchml.setInvalid();
+
         //
         // Pool parameters
         //

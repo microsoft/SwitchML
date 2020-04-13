@@ -18,7 +18,10 @@ control RoCESender(
     addr_t rdma_base_addr;
     rkey_t rdma_rkey;
     bit<31> rdma_message_length;
-    
+
+    mac_addr_t rdma_switch_mac;
+    ipv4_addr_t rdma_switch_ip;
+
 
     DirectCounter<counter_t>(CounterType_t.PACKETS_AND_BYTES) rdma_send_counter;
     
@@ -31,17 +34,17 @@ control RoCESender(
         pool_index_t first_last_mask) {
 
         // record switch addresses
-        eg_md.switch_mac = switch_mac;
-        eg_md.switch_ip = switch_ip;
+        rdma_switch_mac = switch_mac;
+        rdma_switch_ip = switch_ip;
         
         // record RDMA message length in case we need it for RDMA WRITEs
         rdma_message_length = message_length; // length must be a power of two
         
-        // use masked pool index to choose RDMA opcode: if masked
-        // value is 0, first; equal to mask, last; otherwise middle.
-        // TODO: not currently used
-        eg_md.pool_index_mask   = first_last_mask;
-        eg_md.masked_pool_index = eg_md.switchml_md.pool_index & first_last_mask;
+        // // use masked pool index to choose RDMA opcode: if masked
+        // // value is 0, first; equal to mask, last; otherwise middle.
+        // // TODO: not currently used
+        // eg_md.pool_index_mask   = first_last_mask;
+        // eg_md.masked_pool_index = eg_md.switchml_md.pool_index & first_last_mask;
     }
 
     table switch_mac_and_ip {
@@ -61,7 +64,7 @@ control RoCESender(
 
         hdr.ethernet.setValid();
         hdr.ethernet.dst_addr = dest_mac;
-        hdr.ethernet.src_addr = eg_md.switch_mac;
+        hdr.ethernet.src_addr = rdma_switch_mac;
         hdr.ethernet.ether_type = ETHERTYPE_IPV4;
         
         hdr.ipv4.setValid();
@@ -75,7 +78,7 @@ control RoCESender(
         hdr.ipv4.ttl = 64;
         hdr.ipv4.protocol = ip_protocol_t.UDP;
         hdr.ipv4.hdr_checksum = 0; // To be filled in by deparser
-        hdr.ipv4.src_addr = eg_md.switch_ip;
+        hdr.ipv4.src_addr = rdma_switch_ip;
         hdr.ipv4.dst_addr = dest_ip;
         eg_md.update_ipv4_checksum = true;
 
@@ -159,7 +162,7 @@ control RoCESender(
         void apply(inout bit<32> value, out bit<32> read_value) {
             // emit 24-bit sequence number
             bit<32> masked_sequence_number = value & 0x00ffffff;
-            read_value = masked_sequence_number;;
+            read_value = masked_sequence_number;
 
             // increment sequence number
             value = value + 1;

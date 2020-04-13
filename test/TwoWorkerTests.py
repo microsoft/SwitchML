@@ -392,8 +392,8 @@ class DifferentPortsReduction(TwoWorkerTest):
         verify_packet(self, self.expected_pktW0S0p1, 0)
         verify_packet(self, self.expected_pktW1S0p1, 1)
         
-        self.pktW0S0p1.show()
-        self.pktW1S0p1.show()
-        self.expected_pktW0S0p1.show()
-        self.expected_pktW1S0p1.show()
+        # self.pktW0S0p1.show()
+        # self.pktW1S0p1.show()
+        # self.expected_pktW0S0p1.show()
+        # self.expected_pktW1S0p1.show()
         
