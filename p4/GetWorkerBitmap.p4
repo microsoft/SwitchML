@@ -64,6 +64,7 @@ control GetWorkerBitmap(
         ig_md.switchml_md.dst_port = hdr.udp.src_port;
         ig_md.switchml_md.src_port = hdr.udp.dst_port;
         ig_md.switchml_md.tsi = hdr.switchml.tsi;
+        ig_md.switchml_md.unused = hdr.switchml.unused; // TODO: is this actually unused?
 
         // get rid of headers we don't want to recirculate
         hdr.ethernet.setInvalid();

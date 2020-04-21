@@ -30,13 +30,13 @@ control SetDestinationAddress(
 
         hdr.ethernet.ether_type = ETHERTYPE_IPV4;
 
-#define UDP_BASE_LENGTH (hdr.udp.minSizeInBytes() + hdr.switchml.minSizeInBytes() + hdr.exponents.minSizeInBytes() + hdr.d0.minSizeInBytes() + hdr.d1.minSizeInBytes())
-#define IPV4_BASE_LENGTH (hdr.ipv4.minSizeInBytes() + UDP_BASE_LENGTH);
+#define UDP_LENGTH (hdr.udp.minSizeInBytes() + hdr.switchml.minSizeInBytes() + hdr.exponents.minSizeInBytes() + hdr.d0.minSizeInBytes() + hdr.d1.minSizeInBytes())
+#define IPV4_LENGTH (hdr.ipv4.minSizeInBytes() + UDP_LENGTH);
 
         hdr.ipv4.version = 4;
         hdr.ipv4.ihl = 5;
         hdr.ipv4.diffserv = 0x00;
-        hdr.ipv4.total_len = IPV4_BASE_LENGTH;
+        hdr.ipv4.total_len = IPV4_LENGTH;
         hdr.ipv4.identification = 0x0000;
         hdr.ipv4.flags = 0b000;
         hdr.ipv4.frag_offset = 0;
@@ -46,12 +46,13 @@ control SetDestinationAddress(
         hdr.ipv4.src_addr = switch_ip;
         eg_md.update_ipv4_checksum = true;
 
-        hdr.udp.length = UDP_BASE_LENGTH;
+        hdr.udp.length = UDP_LENGTH;
 
         hdr.switchml.setValid();
         hdr.switchml.msgType = 1;
         hdr.switchml.unused = 1;
         hdr.switchml.tsi = eg_md.switchml_md.tsi;
+        hdr.switchml.unused = eg_md.switchml_md.unused;
 
         // rearrange or in set bit later
         hdr.switchml.pool_index[13:0] = eg_md.switchml_md.pool_index[14:1];
