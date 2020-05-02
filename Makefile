@@ -7,16 +7,16 @@
 
 TARGET=client
 OBJECTS=main.o Endpoint.o #Reducer.o
-LIBRARIES=-libverbs -lgflags
+LIBRARIES=-libverbs -lgflags -lhugetlbfs
 
 $(TARGET): $(OBJECTS)
 main.o: Reducer.hpp Endpoint.hpp
 #Reducer.o: Endpoint.hpp
 
-$(TARGET):
+$(TARGET): 
 	mpicxx --std=c++17 -g -o $@ $^ $(LIBRARIES)
 
-%.o: %.cpp
+%.o: %.cpp Makefile
 	mpicxx --std=c++17 -g -c -o $@ $<
 
 clean::

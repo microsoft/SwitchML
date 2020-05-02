@@ -8,6 +8,10 @@
 #include "Endpoint.hpp"
 #include <sys/mman.h>
 
+extern "C" {
+#include <hugetlbfs.h>
+}
+
 DEFINE_string(device, "mlx5_0", "Name of Verbs device");
 DEFINE_int32(port, 1, "Port on Verbs device (usually 1-indexed, so should usually be 1)");
 DEFINE_int32(gid_index, 3, "Verbs device GID index. 0: RoCEv1 with MAC-based GID, 1: RoCEv2 with MAC-based GID, 2: RoCEv1 with IP-based GID, 3: RoCEv2 with IP-based GIDPort on Verbs device");
@@ -143,6 +147,18 @@ Endpoint::~Endpoint() {
 }
 
 ibv_mr * Endpoint::allocate_at_address(void * requested_address, size_t length) {
+  // convert length from elements to bytes
+  length *= sizeof(int32_t);
+
+  // round up to default huge page size
+  size_t hugepagesize = gethugepagesize();
+  if (hugepagesize < 0) {
+    std::cerr << "Error getting default huge page size" << std::endl;
+    exit(1);
+  }
+  length = (length + (hugepagesize-1)) & ~(hugepagesize-1);
+  
+  // allocate
   void * buf = mmap(requested_address, length,
                     PROT_READ | PROT_WRITE,
                     MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB | MAP_FIXED,
@@ -152,6 +168,7 @@ ibv_mr * Endpoint::allocate_at_address(void * requested_address, size_t length) 
       exit(1);
   }
 
+  // register
   ibv_mr * mr = ibv_reg_mr(protection_domain, buf, length,
                            (IBV_ACCESS_LOCAL_WRITE |
                             IBV_ACCESS_REMOTE_WRITE |
@@ -165,6 +182,18 @@ ibv_mr * Endpoint::allocate_at_address(void * requested_address, size_t length) 
 }
 
 ibv_mr * Endpoint::allocate_zero_based(size_t length) {
+  // convert length from elements to bytes
+  length *= sizeof(int32_t);
+
+  // round up to default huge page size
+  size_t hugepagesize = gethugepagesize();
+  if (hugepagesize < 0) {
+    std::cerr << "Error getting default huge page size" << std::endl;
+    exit(1);
+  }
+  length = (length + (hugepagesize-1)) & ~(hugepagesize-1);
+
+  // allocate
   void * buf = mmap(NULL, length,
                     PROT_READ | PROT_WRITE,
                     MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB,
@@ -174,6 +203,7 @@ ibv_mr * Endpoint::allocate_zero_based(size_t length) {
       exit(1);
   }
 
+  //register
   ibv_mr * mr = ibv_reg_mr(protection_domain, buf, length,
                            (IBV_ACCESS_LOCAL_WRITE |
                             IBV_ACCESS_REMOTE_WRITE |

@@ -13,8 +13,6 @@
 #include <iostream>
 #include <chrono>
 
-DEFINE_int32(cores, 1, "Number of cores used for communication.");
-
 DEFINE_int32(warmup,   0, "Number of warmup iterations to run before timing.");
 DEFINE_int32(iters,    1, "Number of timed iterations to run.");
 DEFINE_int64(size, 65536, "Size of buffer to reduce.");
@@ -28,19 +26,19 @@ int main(int argc, char * argv[]) {
   // Connect to other nodes
   Reducer r(e);
 
+  //
   // allocate buffer that's registered with the NIC
-  //auto mr = e.allocate_zero_based(FLAGS_size);
+  //
+  
+  // allocate buffer at same address on each node
   auto mr = e.allocate_at_address((void*) 0x0000100000000000, FLAGS_size);
 
-  std::cout << "context: " << mr->context
-            << " pd: " << mr->pd
-            << " addr: " << mr->addr
-            << " length: " << mr->length
-            << " handle: " << mr->handle
-            << " lkey: " << mr->lkey
-            << " rkey: " << mr->rkey
-            << "\n";
+  // // allocate buffer using zero-based addressing
+  // // auto mr = e.allocate_zero_based(FLAGS_size);
 
+  //
+  // perform reduction
+  //
   
   // perform warmup iterations
   std::cout << "Starting warmup iterations...\n";
@@ -64,6 +62,10 @@ int main(int argc, char * argv[]) {
               << rate_in_Gbps << " Gbps\n";
   }
 
+  //
+  // shutdown
+  //
+  
   std::cout << "Done.\n";
   e.free(mr);
   return 0;

@@ -15,7 +15,8 @@
 #include <gflags/gflags.h>
 
 class Endpoint {
-private:
+  //private:
+public: // TODO: undo this as much as necessary
   /// list of Verbs-capable devices
   ibv_device ** devices;
   int num_devices;
@@ -31,8 +32,8 @@ private:
   ibv_port_attr port_attributes;
     
   /// GID of port
-  const uint8_t gid_index = 3; // 0: RoCEv1 with MAC-based GID, 1:RoCEv2 with MAC-based GID, 2: RoCEv1 with IP-based GID, 3: RoCEv2 with IP-based GID
-  union ibv_gid gid;
+  uint8_t gid_index; // 0: RoCEv1 with MAC-based GID, 1:RoCEv2 with MAC-based GID, 2: RoCEv1 with IP-based GID, 3: RoCEv2 with IP-based GID
+  ibv_gid gid;
   
   /// device context, used for most Verbs operations
   ibv_context * context;
