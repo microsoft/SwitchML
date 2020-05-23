@@ -107,6 +107,10 @@ Endpoint::Endpoint()
     perror("Error getting GID");
     exit(1);
   }
+  if (0 == gid.global.subnet_prefix && 0 == gid.global.interface_id) {
+    std::cerr << "Selected GID " << gid_index << " was all zeros; is interface down? Maybe try RoCEv1 GID index?" << std::endl;
+    exit(1);
+  }
   
   // create protection domain
   protection_domain = ibv_alloc_pd(context);
