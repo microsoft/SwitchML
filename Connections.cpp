@@ -15,9 +15,73 @@ DEFINE_int32(mtu, 256, "RDMA packet MTU: one of 256, 512, 1024, 2048, or 4096.")
 DEFINE_int32(cores, 1, "Number of cores used for communication."); // TODO: choose sane default
 DEFINE_int32(slots_per_core, 1, "How many slots per core should we use?"); // TODO: choose sane default
 
-DEFINE_string(servers, "", "Comma-separated list of IP addresses (not hostnames) for servers/switches to be used for this reduction.");
 DEFINE_int32(message_size, 4096, "Max size of each RDMA message in bytes");
 DEFINE_int32(packet_size,   256, "Max size of each RDMA packet in bytes");
+
+DEFINE_string(server, "localhost", "Name of GRPC server of coordinator.");
+DEFINE_int32(port, 50099, "GRPC server port on coordinator.");
+
+//
+// some helper functions
+//
+
+
+uint32_t gid_to_ipv4(const ibv_gid gid) {
+  uint32_t ip = 0;
+  ip |= gid.raw[12];
+  ip <<= 8;
+  ip |= gid.raw[13];
+  ip <<= 8;
+  ip |= gid.raw[14];
+  ip <<= 8;
+  ip |= gid.raw[15];
+  return ip;
+}
+
+uint64_t gid_to_mac(const ibv_gid gid) {
+  uint64_t mac = 0;
+  mac |= gid.raw[8];
+  mac <<= 8;
+  mac |= gid.raw[9];
+  mac <<= 8;
+  mac |= gid.raw[10];
+  mac <<= 8;
+  mac |= gid.raw[13];
+  mac <<= 8;
+  mac |= gid.raw[14];
+  mac <<= 8;
+  mac |= gid.raw[15];
+  return mac;
+}
+
+ibv_gid ipv4_to_gid(const int32_t ip) {
+  ibv_gid gid;
+  gid.global.subnet_prefix = 0;
+  gid.global.interface_id = 0;
+  gid.raw[10] = 0xff;
+  gid.raw[11] = 0xff;
+  gid.raw[12] = (ip >> 24) & 0xff;
+  gid.raw[13] = (ip >> 16) & 0xff;
+  gid.raw[14] = (ip >>  8) & 0xff;
+  gid.raw[15] = (ip >>  0) & 0xff;
+  return gid;
+}
+
+ibv_gid mac_to_gid(const uint64_t mac) {
+  ibv_gid gid;
+  gid.global.subnet_prefix = 0x80fe;
+  gid.global.interface_id = 0;
+  gid.raw[ 8] = (mac >> 40) & 0xff;
+  gid.raw[ 9] = (mac >> 32) & 0xff;
+  gid.raw[10] = (mac >> 24) & 0xff;
+  gid.raw[11] = 0xff;
+  gid.raw[12] = 0xfe;
+  gid.raw[13] = (mac >> 16) & 0xff;
+  gid.raw[14] = (mac >>  8) & 0xff;
+  gid.raw[15] = (mac >>  0) & 0xff;
+  return gid;
+}
+
 
 void Connections::set_up_queue_pairs() {
   // See section 3.5 of the RDMA Aware Networks Programming User
@@ -218,187 +282,49 @@ void Connections::move_to_rts(int i) {
   }
 }
 
+
+
+
 // Exchange queue pair information
-// TODO: this is currently a hack for testing. I'm exchanging this
-// data in a more-complex-than-necessary way, since for testing I'm
-// currently limiting this to 2 processes.
 void Connections::exchange_connection_info() {
-  // get MPI job geometry
-  int rank = 0;
-  int size = 0;
-  MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, &rank));
-  MPI_CHECK(MPI_Comm_size(MPI_COMM_WORLD, &size));
-
-  // if (size != 2) {
-  //   std::cerr << "Job size must be 2 for the current codebase." << std::endl;
-  //   exit(1);
-  // }
-
-  std::cout << "Rank " << rank << " of size " << size << " running.\n";
+  std::cout << "Rank " << rank << " of size " << size << " requesting connection to switch.\n";
   
-  // collect my qpns and psns to be exchanged
-  std::vector<uint32_t> local_qpns(queue_pairs.size());
+  // send connection request to coordinator
+  SwitchML::RDMAConnectRequest request;
+  request.set_my_rank(rank);
+  request.set_job_size(size);
+  request.set_mac(endpoint.get_mac());
+  request.set_ipv4(endpoint.get_ipv4());
+  request.set_rkey(memory_region->rkey);
+
   for (int i = 0; i < queue_pairs.size(); ++i) {
-    local_qpns[i] = queue_pairs[i]->qp_num; // assigned by library at creation
+    request.add_qpns(queue_pairs[i]->qp_num);
+    request.add_psns(queue_pairs[i]->qp_num / 2); // for debugging
   }
 
-  // initialize local PSNs to QPN/2 for debugging
-  std::vector<uint32_t> local_psns(queue_pairs.size());
-  for (int i = 0; i < queue_pairs.size(); ++i) {
-    local_psns[i] = queue_pairs[i]->qp_num / 2;
-  }
+  std::cout << "Sending request " << request << std::endl;
 
-  // allocate temporary storage for remote data
-  std::vector<ibv_gid> remote_gids(size);
-  std::vector<int32_t> remote_rkeys(size);
-  std::vector<uint32_t> remote_qpns(size * queue_pairs.size());
-  std::vector<uint32_t> remote_psns(size * queue_pairs.size());
+  SwitchML::RDMAConnectResponse response;
+  grpc_client.RDMAConnect(request, &response);
 
-  // allgather GIDs
-  MPI_CHECK(MPI_Allgather(&endpoint.gid.raw[0],   16, MPI_UINT8_T,
-                          &remote_gids[0].raw[0], 16, MPI_UINT8_T,
-                          MPI_COMM_WORLD));
+  std::cout << "Rank " << rank << " got response " << response << std::endl;
 
-  // allgather rkeys
-  MPI_CHECK(MPI_Allgather(&memory_region->rkey, 1, MPI_UINT32_T,
-                          &remote_rkeys[0],     1, MPI_UINT32_T,
-                          MPI_COMM_WORLD));
-
-  // allgather QPNs
-  MPI_CHECK(MPI_Allgather(&local_qpns[0],  queue_pairs.size(), MPI_UINT32_T,
-                          &remote_qpns[0], queue_pairs.size(), MPI_UINT32_T,
-                          MPI_COMM_WORLD));
-
-  // allgather PSNs
-  MPI_CHECK(MPI_Allgather(&local_psns[0],  queue_pairs.size(), MPI_UINT32_T,
-                          &remote_psns[0], queue_pairs.size(), MPI_UINT32_T,
-                          MPI_COMM_WORLD));
-
-  for (int i = 0; i < local_qpns.size(); ++i) {
-    std::cout << "Local QPN 0x" << std::hex << local_qpns[i]
-              << " PSN 0x" << std::hex << local_psns[i]
-              << std::endl;
-  }
-  
-  for (int i = 0; i < remote_qpns.size(); ++i) {
-    std::cout << "Index " << i
-              << " Remote QPN 0x" << std::hex << remote_qpns[i]
-              << " PSN 0x" << std::hex << remote_psns[i]
-              << std::endl;
-  }
-  
-  std::cout << "Copying\n";
-  std::cout << neighbor_gids.size() << " "
-            << neighbor_qpns.size() << " "
-            << neighbor_psns.size() << " "
-            << size << " "
-            << rank << " "
-            << ((size-1)-rank) << " "
-            << remote_gids.size() << " "
-            << remote_qpns.size() << " "
-            << remote_psns.size() << " "
-            << remote_qpns.size() << " "
-            << remote_psns.size() << " "
-            << std::endl;
-
-  // check received data
-  for (int j = 0; j < size; ++j) {
-    std::cout << "Neighbor " << j
-              << " GID " << (void*) remote_gids[j].global.subnet_prefix
-              << "/" << (void*) remote_gids[j].global.interface_id
-              << " rkey " << std::hex << remote_rkeys[j];
-    for (int i = 0; i < queue_pairs.size(); ++i) {
-      int index = j * queue_pairs.size() + i;
-      std::cout << " index " << index
-                << " QPN " << remote_qpns[index]
-                << " PSN " << remote_psns[index];
-    }
-    std::cout << std::endl;
-  }
-  
   // now, copy remote data to our neigbor arrays to continue queue pair setup
   for (int i = 0; i < queue_pairs.size(); ++i) {
-    int neighbor_rank = (size-1) - rank;
-    int neighbor_index = neighbor_rank * queue_pairs.size() + i;
-    neighbor_gids[i] = remote_gids[neighbor_rank];
-    neighbor_rkeys[i] = remote_rkeys[neighbor_rank];
-    neighbor_qpns[i] = remote_qpns[neighbor_index];
-    neighbor_psns[i] = remote_psns[neighbor_index];
+    if (endpoint.gid_index >= 2) { // IPv4-based GID
+      neighbor_gids[i] = ipv4_to_gid(response.ipv4s(i % response.ipv4s_size()));
+    } else {
+      neighbor_gids[i] = mac_to_gid(response.macs(i % response.macs_size()));
+    }
+    neighbor_rkeys[i] = response.rkeys(i % response.rkeys_size());
+    neighbor_qpns[i] = response.qpns(i);
+    neighbor_psns[i] = response.psns(i);
   }
+
+  exit(1);
 
   std::cout << "Barrier\n";
   MPI_CHECK(MPI_Barrier(MPI_COMM_WORLD));
 }
 
  
-
-// resolve server addresses to IPs and form GUIDs for talking to
-// switch(es) that don't normally generate their own GUIDs.
-//
-// NOTE: this is a hack. all this code is just to parse IP addresses
-// from the command line so we can form GIDs. Eventually we'll need to
-// exchange this data over MPI or some other transport.
-void Connections::resolve_server_addresses_to_gids() {
-  std::stringstream server_stream(FLAGS_servers);
-  std::vector<ibv_gid> server_gids;
-
-  if (endpoint.gid_index != 3) {
-    std::cerr << "Error: don't yet know how to form GIDs for non-UDP or non-IP-based GIDs (indexes other than 3)" << std::endl;
-    exit(1);
-  }
-    
-  while (server_stream.good()) {
-    std::string server_name;
-    std::getline(server_stream, server_name, ',');
-    if (!server_name.empty()) {
-      std::cout << "Found server IP " << server_name << "\n";
-      
-      // convert name to IP
-      const addrinfo hints = {
-        .ai_flags = (AI_V4MAPPED | AI_ADDRCONFIG | AI_NUMERICHOST),
-        .ai_family = AF_INET, // IPv4 only for now
-        .ai_socktype = 0,
-        .ai_protocol = 0,
-        .ai_addrlen = 0,
-        .ai_addr = nullptr,
-        .ai_canonname = nullptr,
-        .ai_next = nullptr
-      };
-      addrinfo * result = nullptr;
-      int retval = getaddrinfo(server_name.c_str(), nullptr, &hints, &result);
-      if (retval != 0) {
-        std::cerr << "Error getting address for " << server_name
-                  << ": " << gai_strerror(retval)
-                  << std::endl;
-        exit(1);
-      }
-      
-      uint64_t addr;
-      for (addrinfo * rp = result; rp != nullptr; rp = rp->ai_next) {
-        if (rp->ai_addr->sa_family == AF_INET) {
-          auto addr_p = (sockaddr_in*) rp->ai_addr;
-          addr = addr_p->sin_addr.s_addr;
-          break;
-          // std::cout << "Got addr len " << rp->ai_addrlen
-          //           << " addr family " << (void*) addr_p->sin_addr.s_addr
-          //           << " next " << rp->ai_next
-          //           << "\n";
-        }
-      }
-      freeaddrinfo(result);
-
-      // convert IP to GID
-      ibv_gid gid = {
-        .global = {
-          .subnet_prefix = 0,
-          .interface_id = (addr << 32) | 0x00000000ffff0000
-        }
-      };
-
-      // std::cout << "Got GID "
-      //           << (void*) gid.global.subnet_prefix << " " << (void*) gid.global.interface_id
-      //           << "\n";
-      server_gids.push_back(gid);
-    }
-  }
-}

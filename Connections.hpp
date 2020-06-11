@@ -25,6 +25,7 @@
 #include <unistd.h>
 
 #include "Endpoint.hpp"
+#include "GRPCClient.hpp"
 
 DECLARE_bool(use_rc);
 DECLARE_int32(mtu);
@@ -32,10 +33,11 @@ DECLARE_int32(mtu);
 DECLARE_int32(cores);
 DECLARE_int32(slots_per_core);
 
-DECLARE_string(servers);
-
 DECLARE_int32(message_size);
 DECLARE_int32(packet_size);
+
+DECLARE_string(server);
+DECLARE_int32(port);
 
 class Connections {
   //private:
@@ -44,6 +46,9 @@ public: // TODO: undo this as much as necessary
   /// information about local NIC
   Endpoint & endpoint;
 
+  /// GRPC client to talk to coordinator
+  GRPCClient grpc_client;
+  
   /// constants for initializing queues
   static const int completion_queue_depth       = 128;    // need to handle concurrent send and receive completions on each queue
   static const int send_queue_depth             = 128;    // need to be able to post a send before we've processed the previous one's completion
@@ -63,6 +68,10 @@ public: // TODO: undo this as much as necessary
 
   /// local memory region
   ibv_mr * memory_region;
+
+  /// job geometry
+  const int rank;
+  const int size;
   
   /// completion queues
   std::vector<ibv_cq*> completion_queues;
@@ -91,8 +100,10 @@ public: // TODO: undo this as much as necessary
 
   
 public:
-  Connections(Endpoint & e, ibv_mr * mr)
+  Connections(Endpoint & e, ibv_mr * mr, const int rank, const int size)
     : endpoint(e)
+    , grpc_client(grpc::CreateChannel(FLAGS_server + ":" + std::to_string(FLAGS_port),
+                                      grpc::InsecureChannelCredentials()))
     , qp_type(FLAGS_use_rc ? IBV_QPT_RC : IBV_QPT_UC) // default to UC; use RC if specified
     , mtu(FLAGS_mtu >= 4096 ? IBV_MTU_4096 :
           FLAGS_mtu >= 2048 ? IBV_MTU_2048 :
@@ -100,13 +111,14 @@ public:
           FLAGS_mtu >=  512 ? IBV_MTU_512 :
           IBV_MTU_256)
     , memory_region(mr)
+    , rank(rank)
+    , size(size)
     , completion_queues(FLAGS_cores, nullptr) // one completion queue per core
     , queue_pairs(FLAGS_cores * FLAGS_slots_per_core, nullptr) // create one queue pair per slot
-    , rkeys(FLAGS_cores * FLAGS_slots_per_core, 0) // create one rkey per slot
-    , neighbor_gids(FLAGS_cores * FLAGS_slots_per_core)
+    , neighbor_rkeys(FLAGS_cores * FLAGS_slots_per_core, 0)  // create one rkey per slot so we can use parameter servers
+    , neighbor_gids(FLAGS_cores * FLAGS_slots_per_core)  // create one gid per slot so we can use parameter servers
     , neighbor_qpns(FLAGS_cores * FLAGS_slots_per_core, 0)
     , neighbor_psns(FLAGS_cores * FLAGS_slots_per_core, 0)
-    , neighbor_rkeys(FLAGS_cores * FLAGS_slots_per_core, 0)
   {
     set_up_queue_pairs();
   }

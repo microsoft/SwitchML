@@ -23,15 +23,23 @@ DEFINE_int64(length, 65536, "Length of buffer to reduce in 4-byte int32.");
 
 DEFINE_bool(wait, false, "Wait after start for debugger to attach.");
 
+DEFINE_bool(test_grpc, false, "Just test GRPC at localhost and exit.");
+
 int main(int argc, char * argv[]) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
 
   if (FLAGS_wait) {
     wait_for_attach();
   }
-  
+
   // Set up MPI context for exchanging RDMA context information.
   MPI_CHECK(MPI_Init(&argc, &argv)); 
+
+  // get MPI job geometry
+  int rank = 0;
+  MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, &rank));
+  int size = 0;
+  MPI_CHECK(MPI_Comm_size(MPI_COMM_WORLD, &size));
 
   // Initialize RDMA NIC
   Endpoint e;
@@ -48,7 +56,7 @@ int main(int argc, char * argv[]) {
   // // auto mr = e.allocate_zero_based(1 << 31);
 
   // Connect to other nodes and exchange memory region info
-  Connections c(e, mr);
+  Connections c(e, mr, rank, size);
 
   //
   // perform reduction

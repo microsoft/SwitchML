@@ -8,7 +8,7 @@
 #ifndef __CLIENTTHREAD__
 #define __CLIENTTHREAD__
 
-#include "Endpoint.hpp"
+//#include "Endpoint.hpp"
 #include "Reducer.hpp"
 
 DECLARE_int32(cores);

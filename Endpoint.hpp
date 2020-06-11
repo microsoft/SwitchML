@@ -34,13 +34,16 @@ public: // TODO: undo this as much as necessary
   /// GID of port
   uint8_t gid_index; // 0: RoCEv1 with MAC-based GID, 1:RoCEv2 with MAC-based GID, 2: RoCEv1 with IP-based GID, 3: RoCEv2 with IP-based GID
   ibv_gid gid;
-  
+
   /// device context, used for most Verbs operations
   ibv_context * context;
 
   /// protection domain to go with context
   ibv_pd * protection_domain;
 
+  uint64_t get_mac();
+  uint32_t get_ipv4();
+  
 public:
   Endpoint();
   ~Endpoint();

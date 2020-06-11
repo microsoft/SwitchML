@@ -13,7 +13,7 @@ extern "C" {
 }
 
 DEFINE_string(device, "mlx5_0", "Name of Verbs device");
-DEFINE_int32(port, 1, "Port on Verbs device (usually 1-indexed, so should usually be 1)");
+DEFINE_int32(device_port, 1, "Port on Verbs device (usually 1-indexed, so should usually be 1)");
 DEFINE_int32(gid_index, 3, "Verbs device GID index. 0: RoCEv1 with MAC-based GID, 1: RoCEv2 with MAC-based GID, 2: RoCEv1 with IP-based GID, 3: RoCEv2 with IP-based GIDPort on Verbs device");
 
 Endpoint::Endpoint()
@@ -23,7 +23,7 @@ Endpoint::Endpoint()
   , device_name(nullptr)
   , device_guid(0)
   , device_attributes() // clear later
-  , port(FLAGS_port) // port is generally 1-indexed
+  , port(FLAGS_device_port) // port is generally 1-indexed
   , port_attributes() // clear later
   , gid_index(FLAGS_gid_index) // use RoCEv2 with IP-based GID
   , gid({.global = {0, 0}})
@@ -76,13 +76,13 @@ Endpoint::Endpoint()
 
   // choose a port on the device and get port attributes
   if (device_attributes.phys_port_cnt > 1)  {
-    std::cout << (int) device_attributes.phys_port_cnt << " ports detected; using port " << (int) FLAGS_port << std::endl;
+    std::cout << (int) device_attributes.phys_port_cnt << " ports detected; using port " << (int) FLAGS_device_port << std::endl;
   }
-  if (device_attributes.phys_port_cnt < FLAGS_port)  {
-    std::cerr << "expected " << (int) FLAGS_port << " ports, but found " << (int) device_attributes.phys_port_cnt;
+  if (device_attributes.phys_port_cnt < FLAGS_device_port)  {
+    std::cerr << "expected " << (int) FLAGS_device_port << " ports, but found " << (int) device_attributes.phys_port_cnt;
     exit(1);
   }
-  port = FLAGS_port;
+  port = FLAGS_device_port;
   retval = ibv_query_port(context, port, &port_attributes);
   if (retval < 0)  {
     perror("Error getting port attributes");
@@ -238,4 +238,47 @@ void Endpoint::free(ibv_mr * mr) {
       perror("Error freeing memory region");
       exit(1);
   }
+}
+
+
+uint64_t Endpoint::get_mac() {
+  ibv_gid mac_gid;
+  int retval = ibv_query_gid(context, port, 2, &mac_gid);
+  if (retval < 0)  {
+    perror("Error getting GID for MAC address");
+    exit(1);
+  }
+
+  uint64_t mac = 0;
+  mac |= mac_gid.raw[8];
+  mac <<= 8;
+  mac |= mac_gid.raw[9];
+  mac <<= 8;
+  mac |= mac_gid.raw[10];
+  mac <<= 8;
+  mac |= mac_gid.raw[13];
+  mac <<= 8;
+  mac |= mac_gid.raw[14];
+  mac <<= 8;
+  mac |= mac_gid.raw[15];
+  return mac;
+}
+
+uint32_t Endpoint::get_ipv4() {
+  ibv_gid ipv4_gid;
+  int retval = ibv_query_gid(context, port, 2, &ipv4_gid);
+  if (retval < 0)  {
+    perror("Error getting GID for IPv4 address");
+    exit(1);
+  }
+
+  uint32_t ip = 0;
+  ip |= ipv4_gid.raw[12];
+  ip <<= 8;
+  ip |= ipv4_gid.raw[13];
+  ip <<= 8;
+  ip |= ipv4_gid.raw[14];
+  ip <<= 8;
+  ip |= ipv4_gid.raw[15];
+  return ip;
 }
