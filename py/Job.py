@@ -11,13 +11,16 @@ import sys
 import os
 import signal
 import yaml
-
+import time
+import traceback
 import readline
 from cmd import Cmd
-
+from concurrent import futures
+import re
 
 # import table definitions
-from GetWorkerBitmap import GetWorkerBitmap, Worker
+from GetWorkerBitmap import GetWorkerBitmap
+from Worker import Worker
 from UpdateAndCheckWorkerBitmap import UpdateAndCheckWorkerBitmap
 from CountWorkers import CountWorkers
 from ExponentMax import ExponentMax
@@ -31,8 +34,16 @@ from ARPandICMP import ARPandICMP
 from RoCESender import RoCESender
 from RoCEReceiver import RoCEReceiver
 from NextStep import NextStep
+#from MACLearning import MACLearning
+
+# import RPC server
+from GRPCServer import GRPCServer
 
 class Job(Cmd, object):
+
+    # initialize constants
+    hex_digit_pair_re = '[0-9a-fA-F][0-9a-fA-F]'
+    mac_address_re = ':'.join([hex_digit_pair_re] * 6)
 
     #
     # command interface helpers
@@ -41,13 +52,29 @@ class Job(Cmd, object):
     def parse_arg(self, arg):
         'Convert arg string to tuple'
         return tuple(arg.split())
-        
-    def run(self):
+
+    def run_command_loop(self):
         while True:
             try:
                 self.cmdloop()
             except KeyboardInterrupt:
                 sys.stdout.write('<KeyboardInterrupt>\n')
+            except Exception as e:
+                print("Got exception: {}".format(traceback.format_exc()))
+                print("Continuing...")
+    
+    def run(self):
+        with futures.ThreadPoolExecutor(max_workers=1) as executor:
+            # start CLI
+            command_loop_future = executor.submit(self.run_command_loop)
+
+            while command_loop_future.running():
+                #self.mac_learning.poll()
+                time.sleep(1)
+
+            # wait for CLI to exit
+            executor.shutdown()
+            
 
     def emptyline(self):
         'Do nothing when empty line entered at command prompt.'
@@ -135,6 +162,8 @@ class Job(Cmd, object):
 
             print("Showing {} pool index counters starting from {}.".format(count, start)) 
             self.next_step.print_counters(start, count)
+
+            self.ports.print_port_stats()
             
         except Exception as e:
             print "Oops: {}".format(e)
@@ -143,7 +172,195 @@ class Job(Cmd, object):
     def do_clear_counters(self, arg):
         'Clear counters.'
         self.clear_counters()
+
+    def do_timing_loop(self, arg):
+        'Time table updates.'
+        self.non_switchml_forward.timing_loop()
+
+    def do_port_add(self, arg):
+        "Add a port. Usage: port_add <front panel port>/<lane> <speed: 10, 25, 40, 50, or 100> <error correction: none, rs, or fc>"
+
+        try:
+            result = re.match('([0-9]+)/?([0-9]?) *([0-9]*) *(.*)', arg)
+
+            if result and result.group(1):
+                port = int(result.group(1))
+                if not (1 <= port and port <= 64): raise Exception("Port number invalid.")
+            else:
+                raise Exception("Port number invalid.")
+
+            if result.group(2):
+                lane = int(result.group(2))
+                if lane not in range(0,4): raise Exception("Lane too big.")
+            else:
+                print("Assuming lane 0.")
+                lane = 0
+
+            if result.group(3):
+                speed = int(result.group(3))
+                if speed not in [10, 25, 40, 50, 100]: raise Exception("Speed invalid.")
+            else:
+                print("Assuming speed 100.")
+                speed = 100
+
+            if result.group(4):
+                fec = result.group(4)
+                if fec not in ['none', 'fc', 'rs']: raise Exception("Error correction invalid.")
+            else:
+                print("Assuming fec none.")
+                fec = 'none'
+
+        except Exception as e:
+            print("Error: {}".format(e))
+            print("Usage:\n   {}".format(self.do_port_add.__doc__))
+            return
+            
+        print("Configuring port {}/{} speed {} fec {}.".format(port, lane, speed, fec))
+        self.port_add(port, lane, speed, fec)
+
         
+    def do_port_del(self, arg):
+        "Delete a port. Usage: port_del <front panel port>/<lane>"
+        
+        try:
+            result = re.match('([0-9]+)/?([0-9]?)', arg)
+
+            if result and result.group(1):
+                port = int(result.group(1))
+                if not (1 <= port and port <= 64): raise Exception("Port number invalid.")
+            else:
+                raise Exception("Port number invalid.")
+
+            if result.group(2):
+                lane = int(result.group(2))
+                if lane not in range(0,4): raise Exception("Lane too big.")
+            else:
+                print("Assuming lane 0.")
+                lane = 0
+
+        except Exception as e:
+            print("Error: {}".format(e))
+            print("Usage:\n   {}".format(self.do_port_del.__doc__))
+            return
+            
+        print("Deleting port {}/{}.".format(port, lane))
+        self.port_del(port, lane)
+    
+        
+    def do_port_list(self, arg):
+        "List active ports."
+
+        port = None
+        lane = None
+
+        if arg != '':
+            try:
+                result = re.match('([0-9]+)/?([0-9]?)', arg)
+
+                if result and result.group(1):
+                    port = int(result.group(1))
+                    if not (1 <= port and port <= 64): raise Exception("Port number invalid.")
+                else:
+                    raise Exception("Port number invalid.")
+
+                if result.group(2):
+                    lane = int(result.group(2))
+                    if lane not in range(0,4): raise Exception("Lane too big.")
+                else:
+                    print("Assuming lane 0.")
+                    lane = 0
+                
+            except Exception as e:
+                print("Error: {}".format(e))
+                print("Usage:\n   {}".format(self.do_port_list.__doc__))
+                return
+            
+        self.ports.list_ports(port, lane)
+
+    def do_port_file(self, arg):
+        "Add ports from yaml file. Does not clear ports before adding. Usage: do_port_load_file <filename>"
+
+        try:
+            self.port_load_file(arg)
+
+        except Exception as e:
+            print("Error: {}".format(e))
+            print("Usage:\n   {}".format(self.do_port_file.__doc__))
+            return
+
+        
+    def do_set_switch_address(self, arg):
+        "Set switch MAC and IP to be used for SwitchML. Usage: set_address <MAC address> <IPv4 address>"
+
+        try:
+            mac, ip = arg.split()
+            
+            self.arp_and_icmp.print_switch_mac_and_ip(mac, ip)
+            
+        except Exception as e:
+            print("Error: {}".format(e))
+            print("Usage:\n   {}".format(self.do_port_list.__doc__))
+            return
+
+                
+
+    def do_get_switch_address(self, arg):
+        "Print switch MAC and IP used for SwitchML."
+        self.arp_and_icmp.print_switch_mac_and_ip()
+        
+
+    def do_mac_address_add(self, arg):
+        "Add non-SwitchML MAC address forwarding entry to the switch. Usage: mac_address_add <MAC address> <Front-panel port>/<lane>"
+
+        try:
+            result = re.match('({}) +([0-9]+)/?([0-3]?)'.format(self.mac_address_re), arg)
+
+            if result and result.group(1):
+                mac_address = result.group(1)
+            else:
+                raise Exception("MAC address invalid: '{}'".format(arg))
+            
+            if result.group(2):
+                port = int(result.group(2))
+                if not (1 <= port and port <= 64): raise Exception("Port number invalid.")
+            else:
+                raise Exception("MAC address invalid.")
+
+            if result.group(3):
+                lane = int(result.group(3))
+                if lane not in range(0,4): raise Exception("Lane too big.")
+            else:
+                print("Assuming lane 0.")
+                lane = 0
+            
+        except Exception as e:
+            print("Error: {}".format(e))
+            print("Usage:\n   {}".format(self.do_mac_address_add.__doc__))
+            return
+
+        self.mac_address_add(mac_address, port, lane)
+        
+    
+    def do_mac_address_del(self, arg):
+        "Remove non-SwitchML MAC address forwarding entry from the switch. Usage: mac_address_del <MAC address>"
+
+        try:
+            result = re.match('([0-9a-fA-F]:[0-9a-fA-F]:[0-9a-fA-F]:[0-9a-fA-F]:[0-9a-fA-F]:[0-9a-fA-F])', arg)
+
+            if result and result.group(1):
+                mac_address = result.group(1)
+            else:
+                raise Exception("MAC address invalid.")
+            
+        except Exception as e:
+            print("Error: {}".format(e))
+            print("Usage:\n   {}".format(self.do_mac_address_del.__doc__))
+            return
+
+        self.mac_address_del(mac_address)
+
+    
+
     #
     # state management for job
     #
@@ -162,6 +379,68 @@ class Job(Cmd, object):
     def clear_all(self):
         for x in self.tables_to_clear:
             x.clear()
+
+
+                
+
+    def mac_address_add(self, mac, port, lane):
+        self.non_switchml_forward.worker_add(mac, port, lane)
+    
+    def mac_address_del(self, mac):
+        self.non_switchml_forward.worker_del(mac)
+    
+    def mac_address_clear_all(self):
+        self.non_switchml_forward.worker_clear_all(mac)
+        self.pre.worker_clear_all(self.all_ports_mgid, mac, port, lane)
+        pass
+
+    
+    def port_add(self, port, lane, speed, fec):
+        self.ports.port_add(port, lane, speed, fec)
+        self.pre.worker_add(self.all_ports_mgid, port, lane)
+
+    def port_del(self, port, lane):
+        self.ports.port_delete(port, lane)
+        self.pre.worker_del(self.all_ports_mgid, port, lane)
+
+    def port_clear(self):
+        self.ports.delete_all_ports()
+        self.pre.worker_clear_all(self.all_ports_mgid)
+
+    def port_load_file(self, ports_file):
+        with open(ports_file) as f:
+            ports = yaml.safe_load(f)
+            
+            for dev_port, v in ports['switch']['forward'].items():
+                
+                # get front panel port from dev port in file
+                fp_port, fp_lane = self.ports.get_fp_port(dev_port)
+
+                # get speed
+                speed = int(v['speed'].upper().replace('G','').strip())
+
+                # if file has fec information, grab it
+                if 'fec' in v:
+                    fec = v['fec'].lower()
+                else:
+                    fec = 'none'
+
+                # add port
+                self.port_add(fp_port, fp_lane, speed, fec)
+
+                # get MAC
+                mac = v['mac']
+                self.mac_address_add(mac, fp_port, fp_lane)
+    
+    def switchml_add(self):
+        pass
+    
+    def switchml_del(self):
+        pass
+
+    def worker_clear_all(self):
+        pass
+
     
     def configure_job(self):
         self.tables_to_clear    = []
@@ -173,7 +452,8 @@ class Job(Cmd, object):
         
         # first, delete all old ports and add new ports for all workers
         self.ports.delete_all_ports()
-
+        ###self.ports.enable_additional_loopback_ports()
+        
         # we allocate each worker its own rid.
         for index, worker in enumerate(self.workers):
             worker.rid = index
@@ -341,12 +621,11 @@ class Job(Cmd, object):
         self.gc = gc
         self.bfrt_info = bfrt_info
 
+        # set up RPC server
+        self.grpc_server = GRPCServer()
+        
         # set up ports object
         self.ports = Ports(self.gc, self.bfrt_info)
-
-        # If list of worker objects isn't provided, expect to load worker info from yaml files
-        if workers is None:
-            workers = self.get_workers_from_files(ports_file, job_file)
 
         # capture job state
         self.switch_ip = switch_ip
@@ -362,8 +641,86 @@ class Job(Cmd, object):
         # allocate storage
         self.registers_to_clear = []
         self.tables_to_clear    = []
+        self.counters_to_clear = []
+
+        #
+        # create objects for each block
+        #
         
-        # configure job
-        self.configure_job()
+        self.arp_and_icmp = ARPandICMP(self.gc, self.bfrt_info)
+        
+        self.get_worker_bitmap = GetWorkerBitmap(self.gc, self.bfrt_info)
+        self.tables_to_clear.append(self.get_worker_bitmap)
+        self.counters_to_clear.append(self.get_worker_bitmap)
+
+        self.roce_receiver = RoCEReceiver(self.gc, self.bfrt_info)
+        self.tables_to_clear.append(self.roce_receiver)
+        self.counters_to_clear.append(self.roce_receiver)
+
+        # add update rules for bitmap and clear register
+        self.update_and_check_worker_bitmap = UpdateAndCheckWorkerBitmap(self.gc, self.bfrt_info)
+        self.registers_to_clear.append(self.update_and_check_worker_bitmap)
+        
+        # add rules for worker count and clear register
+        self.count_workers = CountWorkers(self.gc, self.bfrt_info)
+        self.registers_to_clear.append(self.count_workers)
+        
+        # add rules for exponent max calculation and clear register
+        self.exponent_max = ExponentMax(self.gc, self.bfrt_info)
+        self.registers_to_clear.append(self.exponent_max)
+        
+        # add rules for data registers and clear registers
+        self.significands_00_01_02_03 = SignificandStage(self.gc, self.bfrt_info,  0,  1,  2,  3)
+        self.registers_to_clear.append(self.significands_00_01_02_03)
+        self.significands_04_05_06_07 = SignificandStage(self.gc, self.bfrt_info,  4,  5,  6,  7)
+        self.registers_to_clear.append(self.significands_04_05_06_07)
+        self.significands_08_09_10_11 = SignificandStage(self.gc, self.bfrt_info,  8,  9, 10, 11)
+        self.registers_to_clear.append(self.significands_08_09_10_11)
+        self.significands_12_13_14_15 = SignificandStage(self.gc, self.bfrt_info, 12, 13, 14, 15)
+        self.registers_to_clear.append(self.significands_12_13_14_15)
+        self.significands_16_17_18_19 = SignificandStage(self.gc, self.bfrt_info, 16, 17, 18, 19)
+        self.registers_to_clear.append(self.significands_16_17_18_19)
+        self.significands_20_21_22_23 = SignificandStage(self.gc, self.bfrt_info, 20, 21, 22, 23)
+        self.registers_to_clear.append(self.significands_20_21_22_23)
+        self.significands_24_25_26_27 = SignificandStage(self.gc, self.bfrt_info, 24, 25, 26, 27)
+        self.registers_to_clear.append(self.significands_24_25_26_27)
+        self.significands_28_29_30_31 = SignificandStage(self.gc, self.bfrt_info, 28, 29, 30, 31)
+        self.registers_to_clear.append(self.significands_28_29_30_31)
+
+        # add workers to multicast groups.
+        self.pre = PRE(self.gc, self.bfrt_info, self.ports, self.switchml_workers_mgid, self.all_ports_mgid)
+
+        # set up counters in next step table
+        self.next_step = NextStep(self.gc, self.bfrt_info)
+        self.tables_to_clear.append(self.next_step)
+        
+        # add workers to non-switchml forwarding table
+        self.non_switchml_forward = NonSwitchMLForward(self.gc, self.bfrt_info, self.ports, self.all_ports_mgid)
+
+        # now add workers to set_dst_addr table in egress
+        self.set_dst_addr = SetDstAddr(self.gc, self.bfrt_info, self.switch_mac, self.switch_ip)
+        self.tables_to_clear.append(self.set_dst_addr)
+        self.counters_to_clear.append(self.set_dst_addr)
+
+        self.roce_sender = RoCESender(self.gc, self.bfrt_info,
+                                      self.switch_mac, self.switch_ip,
+                                      message_length = 256)#self.message_length)
+        self.tables_to_clear.append(self.roce_sender)
+        self.counters_to_clear.append(self.roce_sender)
+
+        # do this last to print more cleanly
+        self.counters_to_clear.append(self.next_step)
+
+        # # configure job
+        # self.configure_job()
+
+        # If list of worker objects isn't provided, expect to load worker info from yaml files
+        if self.workers is None and ports_file is not None:
+            self.workers = self.get_workers_from_files(ports_file, job_file)
+
+        
+            
 
 
+        # start listening for RPCs
+        self.grpc_server.serve()

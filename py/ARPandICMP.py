@@ -14,19 +14,19 @@ from Worker import Worker
 
 class ARPandICMP(Table):
 
-    def __init__(self, client, bfrt_info, switch_mac, switch_ip):
+    def __init__(self, client, bfrt_info):
         # set up base class
         super(ARPandICMP, self).__init__(client, bfrt_info)
 
         self.logger = logging.getLogger('ARPandICMP')
         self.logger.info("Setting up arp_and_icmp table...")
         
-        self.switch_mac = switch_mac
-        self.switch_ip = switch_ip
-        
         # get this table
         self.table = self.bfrt_info.table_get("pipe.SwitchMLIngress.arp_and_icmp.arp_and_icmp")
 
+        self.switch_mac = None
+        self.switch_ip = None
+        
         # add annotations
         self.table.info.key_field_annotation_add("hdr.ipv4.dst_addr", "ipv4")
         self.table.info.key_field_annotation_add("hdr.arp_ipv4.dst_proto_addr", "ipv4")
@@ -37,17 +37,16 @@ class ARPandICMP(Table):
 
         # clear and add defaults
         self.clear()
-        self.add_default_entries()
 
+    
         
+    def add_switch_mac_and_ip(self, switch_mac, switch_ip):
+        self.switch_mac = switch_mac
+        self.switch_ip = switch_ip
         
-    def add_default_entries(self):
-        # target all pipes on device 0
-        target = gc.Target(device_id=0, pipe_id=0xffff)
-
         # add entry to reply to arp requests
         self.table.entry_add(
-            target,
+            self.target,
             [self.table.make_key([gc.KeyTuple('$MATCH_PRIORITY', self.lowest_priority - 2),
                                   gc.KeyTuple('hdr.arp_ipv4.$valid', # 1 bit
                                               0x1),
@@ -71,7 +70,7 @@ class ARPandICMP(Table):
 
         # add entry to reply to icmp echo requests
         self.table.entry_add(
-            target,
+            self.target,
             [self.table.make_key([gc.KeyTuple('$MATCH_PRIORITY', self.lowest_priority - 1),
                                   gc.KeyTuple('hdr.arp_ipv4.$valid', # 1 bit
                                               0x0),
@@ -94,4 +93,7 @@ class ARPandICMP(Table):
                                   'SwitchMLIngress.arp_and_icmp.send_icmp_echo_reply')])
 
 
+        
+    def print_switch_mac_and_ip(self):
+        print("Switch MAC: {} IP: {}".format(self.switch_mac, self.switch_ip))
         

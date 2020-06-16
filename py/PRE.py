@@ -14,46 +14,191 @@ from Worker import Worker
 
 class PRE(Table):
 
-    def __init__(self, client, bfrt_info, ports):
+    def __init__(self, client, bfrt_info, ports, switchml_mgid, all_mgid):
         # set up base class
         super(PRE, self).__init__(client, bfrt_info)
 
         # capture Ports class for front panel port converstion
         self.ports = ports
+
+        self.switchml_mgid = switchml_mgid
+        self.all_mgid = all_mgid
         
         self.logger = logging.getLogger('PRE')
         self.logger.info("Setting up multicast tables...")
         
         # get this table
-        self.mgid_table    = self.bfrt_info.table_get("$pre.mgid")
-        self.node_table    = self.bfrt_info.table_get("$pre.node")
+        self.mgid_table  = self.bfrt_info.table_get("$pre.mgid")
+        self.node_table  = self.bfrt_info.table_get("$pre.node")
+        self.ecmp_table  = self.bfrt_info.table_get("$pre.ecmp")
+        self.lag_table   = self.bfrt_info.table_get("$pre.lag")
+        self.prune_table = self.bfrt_info.table_get("$pre.prune")
+        self.port_table  = self.bfrt_info.table_get("$pre.port")
 
+        # keep port to rid mapping
+        self.rid_counter = 0x80000
+        self.rids = {}
+        self.rids[self.switchml_mgid] = {}
+        self.rids[self.all_mgid] = {}
+        
         # clear and add defaults
-        ###self.clear()
-        ###self.add_default_entries()
+        self.clear()
+        self.add_default_entries()
 
-    def dev_port_to_bitmap(self, dev_port):
-        # get number of bytes for port_count-width bitmap
-        dev_port_count = 288
-        bitmap_byte_count = (dev_port_count + 7) / 8
-        bitmap = [0] * bitmap_byte_count
 
-        # get index of bit to set (convert from dev_port to contiguous)
-        pipe_index    = dev_port >> 7
-        index_in_pipe = dev_port & 0x7f
-        index         = 72 * pipe_index + index_in_pipe
+    def clear(self):
+        # first, clean up old group if they exist
+        #self.mgid_table.entry_del(self.target) # ideally we could do this, but it's not supported.
+        try:
+            self.mgid_table.entry_del(
+                self.target,
+                [self.mgid_table.make_key([gc.KeyTuple('$MGID', self.switchml_mgid)])])
+        except gc.BfruntimeReadWriteRpcException as e:
+            self.logger.info("Multicast group ID {} not found in switch already during delete; this is expected.".format(self.switchml_mgid))
+            
+        try:
+            self.mgid_table.entry_del(
+                self.target,
+                [self.mgid_table.make_key([gc.KeyTuple('$MGID', self.all_mgid)])])
+        except gc.BfruntimeReadWriteRpcException as e:
+            self.logger.info("Multicast group ID {} not found in switch already during delete; this is expected.".format(self.all_mgid))
 
-        # get byte index and index in byte to set
-        byte_index = index / 8
-        bit_index  = index % 8
+        ## now, clean up old nodes.
+        #self.node_table.entry_del(self.target)
         
-        # set bit in array
-        self.logger.debug("Setting bit in PRE bitmap byte {} bit {} for dev_port {}".format(byte_index, bit_index, dev_port))
-        bitmap[byte_index] = bitmap[byte_index] | (1 << bit_index) & 0xff
+        # try:
+        #     self.node_table.entry_del(
+        #         target,
+        #         [self.node_table.make_key([gc.KeyTuple('$MULTICAST_NODE_ID', worker.rid)])])
+        # except gc.BfruntimeReadWriteRpcException as e:
+        #     self.logger.info("Multicast node ID {} not found in switch already during delete; this is expected.".format(worker.rid))
+
+        # # Set -1 as CopyToCPU port
+        # print("Setting port", port, "as CopyToCPU port")
+        # self.port_table.entry_add(
+        #     self.target,
+        #             [self.port_table.make_key([
+        #                 client.KeyTuple('$DEV_PORT', port)])],
+        #             [self.port_table.make_data([
+        #                 client.DataTuple('$COPY_TO_CPU_PORT_ENABLE', bool_val=True)])]
+        #         )
+
+            
         
-        # return byte array
-        return bytearray(bitmap)
+    def add_default_entries(self):
+        # create empty multicast group for switchml
+        self.mgid_table.entry_add(
+            self.target,
+            [self.mgid_table.make_key([gc.KeyTuple('$MGID', self.switchml_mgid)])],
+            [self.mgid_table.make_data([gc.DataTuple('$MULTICAST_NODE_ID',
+                                                     int_arr_val=[]),
+                                        gc.DataTuple('$MULTICAST_NODE_L1_XID_VALID',
+                                                     bool_arr_val=[]),
+                                        gc.DataTuple('$MULTICAST_NODE_L1_XID',
+                                                     int_arr_val=[])])])
+
+        # create empty multicast group for all ports
+        self.mgid_table.entry_add(
+            self.target,
+            [self.mgid_table.make_key([gc.KeyTuple('$MGID', self.all_mgid)])],
+            [self.mgid_table.make_data([gc.DataTuple('$MULTICAST_NODE_ID',
+                                                     int_arr_val=[]),
+                                        gc.DataTuple('$MULTICAST_NODE_L1_XID_VALID',
+                                                     bool_arr_val=[]),
+                                        gc.DataTuple('$MULTICAST_NODE_L1_XID',
+                                                     int_arr_val=[])])])
+
+
+    def worker_add(self, mgid, port, lane):
+        # get dev port for this worker
+        dev_port = self.ports.get_dev_port(port, lane)
+
+        if dev_port in self.rids[mgid]:
+            print("Port {}/{} already added to multicast group {}; skipping.".format(port, lane, mgid))
+            return
         
+        # get rid for this worker
+        if mgid == self.all_mgid:
+            rid = dev_port
+        else:
+            rid = self.rid_counter
+            self.rid_counter += 1 # TODO: deal with overflow
+        
+        # add to rid table for this group
+        self.rids[mgid][dev_port] = rid
+
+        # erase any existing entry
+        try:
+            self.node_table.entry_del(
+                self.target,
+                [self.node_table.make_key([gc.KeyTuple('$MULTICAST_NODE_ID', rid)])])
+        except gc.BfruntimeReadWriteRpcException as e:
+            self.logger.info("Multicast node ID {} not found in switch already during delete; this is expected.".format(rid))
+
+        # add to node table
+        self.node_table.entry_add(
+            self.target,
+            [self.node_table.make_key([gc.KeyTuple('$MULTICAST_NODE_ID', rid)])],
+            [self.node_table.make_data([gc.DataTuple('$MULTICAST_RID', rid),
+                                        gc.DataTuple('$DEV_PORT', int_arr_val=[dev_port])])])
+
+        # now that node is added, extend multicast group
+        self.mgid_table.entry_mod_inc(
+            self.target,
+            [self.mgid_table.make_key([gc.KeyTuple('$MGID', mgid)])],
+            [self.mgid_table.make_data([gc.DataTuple('$MULTICAST_NODE_ID',
+                                                     int_arr_val=[rid]),
+                                        gc.DataTuple('$MULTICAST_NODE_L1_XID_VALID',
+                                                     bool_arr_val=[True]),
+                                        gc.DataTuple('$MULTICAST_NODE_L1_XID',
+                                                     int_arr_val=[rid])])],
+            bfruntime_pb2.TableModIncFlag.MOD_INC_ADD)
+
+
+
+    def worker_del(self, mgid, port, lane):
+        # get dev port for this worker
+        dev_port = self.ports.get_dev_port(port, lane)
+
+        # get rid from table for this group
+        rid = self.rids[mgid][dev_port]
+
+        # remove group entry
+        self.mgid_table.entry_mod_inc(
+            self.target,
+            [self.mgid_table.make_key([gc.KeyTuple('$MGID', mgid)])],
+            [self.mgid_table.make_data([gc.DataTuple('$MULTICAST_NODE_ID', int_arr_val=[rid]),
+                                        gc.DataTuple('$MULTICAST_NODE_L1_XID_VALID',
+                                                     bool_arr_val=[False]),
+                                        gc.DataTuple('$MULTICAST_NODE_L1_XID', int_arr_val=[0])])],
+            bfruntime_pb2.TableModIncFlag.MOD_INC_DELETE)
+
+        # remove node entry
+        self.node_table.entry_del(
+            self.target,
+            [self.node_table.make_key([gc.KeyTuple('$MULTICAST_NODE_ID', rid)])])
+
+        
+    def worker_clear_all(self, mgid):
+        for rid in self.rids[mgid]:
+            # remove group entry
+            self.mgid_table.entry_mod_inc(
+                self.target,
+                [self.mgid_table.make_key([gc.KeyTuple('$MGID', mgid)])],
+                [self.mgid_table.make_data([gc.DataTuple('$MULTICAST_NODE_ID', int_arr_val=[rid]),
+                                            gc.DataTuple('$MULTICAST_NODE_L1_XID_VALID',
+                                                         bool_arr_val=[False]),
+                                            gc.DataTuple('$MULTICAST_NODE_L1_XID', int_arr_val=[0])])],
+            bfruntime_pb2.TableModIncFlag.MOD_INC_DELETE)
+
+            # remove node entry
+            self.node_table.entry_del(
+                self.target,
+                [self.node_table.make_key([gc.KeyTuple('$MULTICAST_NODE_ID', rid)])])
+
+    
+        
+    
     def add_workers(self, switchml_workers_mgid, switchml_workers, all_ports_mgid, all_workers):
         # target all pipes on device 0
         target = gc.Target(device_id=0, pipe_id=0xffff)
