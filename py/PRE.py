@@ -109,21 +109,14 @@ class PRE(Table):
                                                      int_arr_val=[])])])
 
 
-    def worker_add(self, mgid, port, lane):
+    def worker_add(self, mgid, rid, port, lane):
         # get dev port for this worker
         dev_port = self.ports.get_dev_port(port, lane)
 
-        if dev_port in self.rids[mgid]:
+        if rid in self.rids[mgid]:
             print("Port {}/{} already added to multicast group {}; skipping.".format(port, lane, mgid))
             return
-        
-        # get rid for this worker
-        if mgid == self.all_mgid:
-            rid = dev_port
-        else:
-            rid = self.rid_counter
-            self.rid_counter += 1 # TODO: deal with overflow
-        
+
         # add to rid table for this group
         self.rids[mgid][dev_port] = rid
 
@@ -156,13 +149,7 @@ class PRE(Table):
 
 
 
-    def worker_del(self, mgid, port, lane):
-        # get dev port for this worker
-        dev_port = self.ports.get_dev_port(port, lane)
-
-        # get rid from table for this group
-        rid = self.rids[mgid][dev_port]
-
+    def worker_del(self, mgid, rid):
         # remove group entry
         self.mgid_table.entry_mod_inc(
             self.target,
@@ -178,25 +165,36 @@ class PRE(Table):
             self.target,
             [self.node_table.make_key([gc.KeyTuple('$MULTICAST_NODE_ID', rid)])])
 
+        # delete from rid table
+        dev_port = self.ports.get_dev_port(port, lane)
+        del self.rids[mgid][dev_port]
+
         
     def worker_clear_all(self, mgid):
-        for rid in self.rids[mgid]:
-            # remove group entry
-            self.mgid_table.entry_mod_inc(
-                self.target,
-                [self.mgid_table.make_key([gc.KeyTuple('$MGID', mgid)])],
-                [self.mgid_table.make_data([gc.DataTuple('$MULTICAST_NODE_ID', int_arr_val=[rid]),
-                                            gc.DataTuple('$MULTICAST_NODE_L1_XID_VALID',
-                                                         bool_arr_val=[False]),
-                                            gc.DataTuple('$MULTICAST_NODE_L1_XID', int_arr_val=[0])])],
-            bfruntime_pb2.TableModIncFlag.MOD_INC_DELETE)
+        for dev_port, rid in self.rids[mgid].items():
+            try:
+                # remove group entry
+                self.mgid_table.entry_mod_inc(
+                    self.target,
+                    [self.mgid_table.make_key([gc.KeyTuple('$MGID', mgid)])],
+                    [self.mgid_table.make_data([gc.DataTuple('$MULTICAST_NODE_ID', int_arr_val=[rid]),
+                                                gc.DataTuple('$MULTICAST_NODE_L1_XID_VALID',
+                                                             bool_arr_val=[False]),
+                                                gc.DataTuple('$MULTICAST_NODE_L1_XID', int_arr_val=[0])])],
+                    bfruntime_pb2.TableModIncFlag.MOD_INC_DELETE)
+            except gc.BfruntimeReadWriteRpcException as e:
+                self.logger.info("Multicast node ID {} remove from group {} failed; maybe it's already deleted?".format(rid, mgid))
 
-            # remove node entry
-            self.node_table.entry_del(
-                self.target,
-                [self.node_table.make_key([gc.KeyTuple('$MULTICAST_NODE_ID', rid)])])
 
-    
+            try:
+                # remove node entry
+                self.node_table.entry_del(
+                    self.target,
+                    [self.node_table.make_key([gc.KeyTuple('$MULTICAST_NODE_ID', rid)])])
+            except gc.BfruntimeReadWriteRpcException as e:
+                self.logger.info("Multicast node ID {} delete failed; maybe it's already deleted?".format(rid))
+
+            del self.rids[mgid][dev_port]
         
     
     def add_workers(self, switchml_workers_mgid, switchml_workers, all_ports_mgid, all_workers):

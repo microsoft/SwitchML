@@ -49,6 +49,9 @@ class SetDstAddr(Table):
                                               gc.DataTuple('switch_ip', self.switch_ip)],
                                              'SwitchMLEgress.set_dst_addr.set_switch_mac_and_ip'))
 
+    def clear_udp_entries(self):
+        self.table.entry_del(self.target)
+
     # Add SwitchML UDP entry to table
     def add_udp_entry(self, worker_rid, worker_mac, worker_ip):
         self.logger.info("Adding worker {} {} at rid {}".format(worker_mac, worker_ip, worker_rid))

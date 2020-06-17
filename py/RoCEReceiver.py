@@ -7,7 +7,7 @@ from pprint import pprint, pformat
 import bfrt_grpc.bfruntime_pb2 as bfruntime_pb2
 import bfrt_grpc.client as gc
 import grpc
-
+import struct
 
 from Table import Table
 from Worker import Worker, WorkerType
@@ -43,14 +43,23 @@ class RoCEReceiver(Table):
             self.table.entry_del(self.target)
         if self.rdma_message_counter is not None:
             self.rdma_message_counter.entry_del(self.target)
+        if self.rdma_sequence_violation_counter is not None:
+            self.rdma_sequence_violation_counter.entry_del(self.target)
 
         
     # Add SwitchML RoCE v2 entry to table
-    def add_entry(self, switch_mac, switch_ip, switch_udp_port, switch_udp_mask,
-                  worker, worker_bitmap, num_workers,
-                  switch_mgid):
-        self.logger.info("Adding RoCE worker {}".format(worker.ip))
+    def add_entry(self, switch_mac, switch_ip, switch_partition_key, switch_mgid,
+                  worker_ip, worker_rid, worker_bitmap, num_workers):
+        self.logger.info("Adding RoCE worker {}".format(worker_ip))
 
+        if worker_rid >= 0x8000:
+            self.logger.error("Worker RID {} too large; only 32K workers supported by this code.".format(worker_rid))
+
+        if num_workers > 0x8000:
+            self.logger.error("Worker count {} too large; only 32K workers supported by this code.".format(num_workers))
+
+        worker_rid
+            
         # doesn't matter
         match_priority = 10
         
@@ -68,21 +77,27 @@ class RoCEReceiver(Table):
                 (roce_opcode_s2n['UC_RDMA_WRITE_ONLY'],   'SwitchMLIngress.roce_receiver.only_packet'),
                 (roce_opcode_s2n['UC_RDMA_WRITE_LAST_IMMEDIATE'],   'SwitchMLIngress.roce_receiver.last_packet'),
                 (roce_opcode_s2n['UC_RDMA_WRITE_ONLY_IMMEDIATE'],   'SwitchMLIngress.roce_receiver.only_packet')]:
+            qpn_top_bits = (worker_rid & 0xff) << 16
             self.table.entry_add(
                 self.target,
                 [self.table.make_key([gc.KeyTuple('$MATCH_PRIORITY', match_priority),
                                       # match on Ethernet addrs, IPs and port
                                       gc.KeyTuple('hdr.ipv4.src_addr',
-                                                  worker.ip),
+                                                  worker_ip),
                                       gc.KeyTuple('hdr.ipv4.dst_addr',
                                                   switch_ip),
                                       gc.KeyTuple('hdr.ib_bth.partition_key',
-                                                  worker.roce_partition_key),
+                                                  switch_partition_key),
                                       gc.KeyTuple('hdr.ib_bth.opcode',
-                                                  opcode)])],
+                                                  opcode),
+                                      gc.KeyTuple('hdr.ib_bth.dst_qp',
+                                                  qpn_top_bits,   # match on top bits of QP to allow for multiple clients on same machine.
+                                                  0xff0000)])],
                 [self.table.make_data([gc.DataTuple('mgid', switch_mgid),
-                                       gc.DataTuple('worker_type', worker.worker_type.value),
-                                       gc.DataTuple('worker_id', worker.rid),
+                                       gc.DataTuple('worker_type', WorkerType.ROCEv2),
+                                       # gc.DataTuple('worker_id', struct.pack('@H', worker_rid)),
+                                       # gc.DataTuple('num_workers', struct.pack('@H', num_workers)),
+                                       gc.DataTuple('worker_id',  worker_rid),
                                        gc.DataTuple('num_workers', num_workers),
                                        gc.DataTuple('worker_bitmap', worker_bitmap)],
                                       action)])

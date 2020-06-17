@@ -44,6 +44,7 @@ class Job(Cmd, object):
     # initialize constants
     hex_digit_pair_re = '[0-9a-fA-F][0-9a-fA-F]'
     mac_address_re = ':'.join([hex_digit_pair_re] * 6)
+    ipv4_address_re = '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+'
 
     #
     # command interface helpers
@@ -130,7 +131,7 @@ class Job(Cmd, object):
         except:
             print "Didn't understand that. Continuing...."
 
-    def do_weird_bitmaps(self, arg):
+    def do_bitmaps_weirdness_search(self, arg):
         'Show any bitmaps where both sets are nonzero.'
         
         if self.update_and_check_worker_bitmap is not None:
@@ -166,7 +167,7 @@ class Job(Cmd, object):
             self.ports.print_port_stats()
             
         except Exception as e:
-            print "Oops: {}".format(e)
+            print "Oops: {}".format(traceback.format_exc())
 
         
     def do_clear_counters(self, arg):
@@ -177,6 +178,11 @@ class Job(Cmd, object):
         'Time table updates.'
         self.non_switchml_forward.timing_loop()
 
+
+    #
+    # commands to manipulate ports
+    #
+        
     def do_port_add(self, arg):
         "Add a port. Usage: port_add <front panel port>/<lane> <speed: 10, 25, 40, 50, or 100> <error correction: none, rs, or fc>"
 
@@ -211,7 +217,7 @@ class Job(Cmd, object):
                 fec = 'none'
 
         except Exception as e:
-            print("Error: {}".format(e))
+            print("Error: {}".format(traceback.format_exc()))
             print("Usage:\n   {}".format(self.do_port_add.__doc__))
             return
             
@@ -239,7 +245,7 @@ class Job(Cmd, object):
                 lane = 0
 
         except Exception as e:
-            print("Error: {}".format(e))
+            print("Error: {}".format(traceback.format_exc()))
             print("Usage:\n   {}".format(self.do_port_del.__doc__))
             return
             
@@ -271,7 +277,7 @@ class Job(Cmd, object):
                     lane = 0
                 
             except Exception as e:
-                print("Error: {}".format(e))
+                print("Error: {}".format(traceback.format_exc()))
                 print("Usage:\n   {}".format(self.do_port_list.__doc__))
                 return
             
@@ -284,31 +290,48 @@ class Job(Cmd, object):
             self.port_load_file(arg)
 
         except Exception as e:
-            print("Error: {}".format(e))
+            print("Error: {}".format(traceback.format_exc()))
             print("Usage:\n   {}".format(self.do_port_file.__doc__))
             return
 
+    def do_port_clear_all(self, arg):
+        "Clear all active ports."
+
+        try:
+            self.port_clear_all()
+
+        except Exception as e:
+            print("Error: {}".format(traceback.format_exc()))
+            print("Usage:\n   {}".format(self.do_port_clear_all.__doc__))
+            return
+
         
+    #
+    # commands to manipulate switch address
+    #
+    
     def do_set_switch_address(self, arg):
         "Set switch MAC and IP to be used for SwitchML. Usage: set_address <MAC address> <IPv4 address>"
 
         try:
-            mac, ip = arg.split()
+            self.switch_mac, self.switch_ip = arg.split()
             
-            self.arp_and_icmp.print_switch_mac_and_ip(mac, ip)
+            self.arp_and_icmp.print_switch_mac_and_ip(self.switch_mac, self.switch_ip)
             
         except Exception as e:
-            print("Error: {}".format(e))
+            print("Error: {}".format(traceback.format_exc()))
             print("Usage:\n   {}".format(self.do_port_list.__doc__))
             return
-
-                
 
     def do_get_switch_address(self, arg):
         "Print switch MAC and IP used for SwitchML."
         self.arp_and_icmp.print_switch_mac_and_ip()
         
 
+    #
+    # commands to manipulate non-switchml endpoints
+    #
+        
     def do_mac_address_add(self, arg):
         "Add non-SwitchML MAC address forwarding entry to the switch. Usage: mac_address_add <MAC address> <Front-panel port>/<lane>"
 
@@ -334,7 +357,7 @@ class Job(Cmd, object):
                 lane = 0
             
         except Exception as e:
-            print("Error: {}".format(e))
+            print("Error: {}".format(traceback.format_exc()))
             print("Usage:\n   {}".format(self.do_mac_address_add.__doc__))
             return
 
@@ -344,23 +367,81 @@ class Job(Cmd, object):
     def do_mac_address_del(self, arg):
         "Remove non-SwitchML MAC address forwarding entry from the switch. Usage: mac_address_del <MAC address>"
 
-        try:
-            result = re.match('([0-9a-fA-F]:[0-9a-fA-F]:[0-9a-fA-F]:[0-9a-fA-F]:[0-9a-fA-F]:[0-9a-fA-F])', arg)
+        self.mac_address_del(arg)
 
-            if result and result.group(1):
-                mac_address = result.group(1)
-            else:
-                raise Exception("MAC address invalid.")
-            
+    def do_mac_address_list(self, arg):
+        "Print MAC addresses. Usage: mac_address_del [<MAC address>]"
+
+        self.mac_address_list(arg)
+        
+    #
+    # commands to manipulate switchml  enpoints
+    #
+
+    def do_worker_clear_all(self, arg):
+        "Clear all active SwitchML workers."
+
+        try:
+            self.worker_clear_all()
+
         except Exception as e:
-            print("Error: {}".format(e))
-            print("Usage:\n   {}".format(self.do_mac_address_del.__doc__))
+            print("Error: {}".format(traceback.format_exc()))
+            print("Usage:\n   {}".format(self.do_worker_clear_all.__doc__))
             return
 
-        self.mac_address_del(mac_address)
 
-    
+    def do_worker_add_udp(self, arg):
+        'Add a UDP SwitchML worker. Usage: worker_add_udp <worker rank> <total number of workers> <MAC address> <IP address>'
+        try:
+            result = arg.split()
 
+            rank = int(result[0], 0)
+            count = int(result[1], 0)
+            mac = result[2]
+            ip = result[3]
+            
+            self.worker_add_udp(rank, count, mac, ip)
+
+        except Exception as e:
+            print("Error: {}".format(traceback.format_exc()))
+            print("Usage:\n   {}".format(self.do_worker_add_udp.__doc__))
+            return
+
+        
+    def do_worker_add_roce(self, arg):
+        'Add a RoCEv2 SwitchML worker. Usage: worker_add_roce <worker rank> <total number of workers> <MAC address> <IP address> <Rkey> <list of QPN and PSNs>'
+        try:
+            result = arg.split()
+            
+            rank = int(result[0], 0)
+            count = int(result[1], 0)
+            mac = result[2]
+            ip = result[3]
+            rkey = int(result[4], 0)
+
+            # read rest of arg list, constructing tuples of alternating arguments
+            qpns_and_psns = [(int(qpn, 0), int(psn, 0)) for qpn, psn in zip(result[5::2], result[6::2])]
+
+            # add worker
+            self.worker_add_roce(rank, count, mac, ip, rkey, qpns_and_psns)
+
+        except Exception as e:
+            print("Error: {}".format(traceback.format_exc()))
+            print("Usage:\n   {}".format(self.do_worker_add_roce.__doc__))
+            return
+
+    def do_worker_list(self, arg):
+        'List all workers.'
+        self.worker_list()
+
+    def do_worker_file(self, arg):
+        'Load SwitchML job configuration from file. Usage: worker_file <filename>'
+        self.worker_load_file(arg)
+
+    def do_worker_del(self, arg):
+        'Remove worker. Usage: worker_del <worker id>'
+        self.worker_del(int(arg, 0))
+        
     #
     # state management for job
     #
@@ -374,7 +455,7 @@ class Job(Cmd, object):
             try:
                 x.clear_counters()
             except Exception as e:
-                print("Oops: {}".format(e))
+                print("Oops: {}".format(traceback.format_exc()))
 
     def clear_all(self):
         for x in self.tables_to_clear:
@@ -389,21 +470,26 @@ class Job(Cmd, object):
     def mac_address_del(self, mac):
         self.non_switchml_forward.worker_del(mac)
     
+    def mac_address_list(self, mac):
+        self.non_switchml_forward.worker_print(mac)
+    
     def mac_address_clear_all(self):
         self.non_switchml_forward.worker_clear_all(mac)
-        self.pre.worker_clear_all(self.all_ports_mgid, mac, port, lane)
-        pass
 
+
+    
     
     def port_add(self, port, lane, speed, fec):
         self.ports.port_add(port, lane, speed, fec)
-        self.pre.worker_add(self.all_ports_mgid, port, lane)
+        dev_port = self.ports.get_dev_port(port, lane)
+        self.pre.worker_add(self.all_ports_mgid, 0x8000 + dev_port, port, lane)
 
     def port_del(self, port, lane):
         self.ports.port_delete(port, lane)
-        self.pre.worker_del(self.all_ports_mgid, port, lane)
+        dev_port = self.ports.get_dev_port(port, lane)
+        self.pre.worker_del(self.all_ports_mgid, 0x8000 + dev_port)
 
-    def port_clear(self):
+    def port_clear_all(self):
         self.ports.delete_all_ports()
         self.pre.worker_clear_all(self.all_ports_mgid)
 
@@ -432,15 +518,145 @@ class Job(Cmd, object):
                 mac = v['mac']
                 self.mac_address_add(mac, fp_port, fp_lane)
     
-    def switchml_add(self):
-        pass
+    def worker_add_udp(self,
+                       worker_rank, worker_count,
+                       worker_mac, worker_ip):
+        
+        if worker_count > 32:
+            print("Current design supports only 32 SwitchML workers per job; you requested {}".format(worker_count))
+            return
+
+        worker_rid = worker_rank
+        worker_mask = 1 << worker_rank
+        worker_type = WorkerType.SWITCHML_UDP
+
+        # add to ingress pipeline
+        self.get_worker_bitmap.add_udp_entry(
+            # destination address for packets
+            self.switch_mac,
+            self.switch_ip,
+            self.switch_udp_port,
+            self.switch_udp_port_mask,
+            
+            # worker info
+            worker_rid,
+            worker_mac,
+            worker_ip,
+            worker_mask,
+            
+            # total number of workers
+            worker_count,
+            
+            # match priority. TODO: remove, since it's not important
+            10,
+            
+            # multicast group for switchml
+            self.switchml_workers_mgid,
+            
+            # pool base and size. TODO: fix when supported by design
+            0, 22528)
+        
+        # add to multicast group
+        port, lane = self.non_switchml_forward.worker_port_get(worker_mac)
+        self.pre.worker_add(self.switchml_workers_mgid, worker_rid, port, lane)
+        
+        # add to egress pipeline
+        self.set_dst_addr.add_udp_entry(worker_rid, worker_mac, worker_ip)
+
+
+    # add a ROCEv2 worker.
+    # worker_qpns_and_psns is a list of qpn, psn tuples
+    def worker_add_roce(self,
+                        worker_rank, worker_count,
+                        worker_mac, worker_ip, worker_rkey,
+                        worker_qpns_and_psns):
+
+        if worker_count > 32:
+            print("Current design supports only 32 SwitchML workers per job; you requested {}".format(worker_count))
+            return
+
+        worker_rid = worker_rank
+        worker_mask = 1 << worker_rank
+        worker_type = WorkerType.SWITCHML_UDP
+
+        # add to ingress pipeline
+        self.roce_receiver.add_entry(
+            # destination address for packets
+            self.switch_mac,
+            self.switch_ip,
+            self.switch_partition_key,
+            self.switchml_workers_mgid,
+
+            # worker info
+            worker_ip,
+            worker_rid,
+            worker_mask,
+
+            # total number of workers
+            worker_count)
+
+        # add to multicast group
+        port, lane = self.non_switchml_forward.worker_port_get(worker_mac)
+        self.pre.worker_add(self.switchml_workers_mgid, worker_rid, port, lane)
+
+        pprint(worker_mac)
+        pprint(worker_ip)
+        pprint(worker_qpns_and_psns)
+        
+        # add to egress pipeline
+        self.roce_sender.add_write_worker(worker_rid, worker_mac, worker_ip, worker_rkey,
+                                          worker_qpns_and_psns)
+
+        
     
-    def switchml_del(self):
-        pass
+    def worker_del(self):
+        print("Unimplemented.")
+
+
+    def worker_list(self):
+        self.get_worker_bitmap.print_counters()
+        self.roce_receiver.print_counters()
+        self.set_dst_addr.print_counters()
+        self.roce_sender.print_counters()
+
 
     def worker_clear_all(self):
-        pass
+        self.get_worker_bitmap.clear()
+        self.roce_receiver.clear()
+        self.pre.worker_clear_all(self.switchml_workers_mgid)
+        self.set_dst_addr.clear_udp_entries()
+        self.roce_sender.clear_workers()
 
+
+    def worker_load_file(self, filename):
+        # clear out previous job
+        self.worker_clear_all()
+
+        # load current job
+        with open(filename) as f:
+            job = yaml.safe_load(f)
+            switchml = job['switch']['switchML']
+
+            # are we using the dev_port list format?
+            if 'workers_ports' in switchml:
+                ports = job['switch']['switchML']['workers_ports']
+                for i, dev_port in enumerate(ports):
+                    fp_port, fp_lane = self.ports.get_fp_port(dev_port)            
+                    macs = self.non_switchml_forward.get_macs_on_port(fp_port, fp_lane)
+
+                    if not macs:
+                        print("Port {}/{} (dev_port {}) not currently configured.".format(fp_port, fp_lane, dev_port))
+                        return
+                    
+                    # assume we only have one mac per port
+                    mac = macs[0]
+
+                    # add with no IP
+                    self.worker_add_udp(i, len(ports), mac, '0.0.0.0')
+                    
+    #
+    # old code to set up job
+    #
     
     def configure_job(self):
         self.tables_to_clear    = []
@@ -628,10 +844,13 @@ class Job(Cmd, object):
         self.ports = Ports(self.gc, self.bfrt_info)
 
         # capture job state
-        self.switch_ip = switch_ip
         self.switch_mac = switch_mac
+        self.switch_ip = switch_ip
         self.switch_udp_port = switch_udp_port
         self.switch_udp_port_mask = switch_udp_port_mask
+        self.switch_partition_key = 0xffff
+
+        
         self.workers = workers
 
         # set swithcml MGID and all nodes MGID
@@ -715,12 +934,12 @@ class Job(Cmd, object):
         # self.configure_job()
 
         # If list of worker objects isn't provided, expect to load worker info from yaml files
-        if self.workers is None and ports_file is not None:
-            self.workers = self.get_workers_from_files(ports_file, job_file)
-
-        
-            
-
+        if self.workers:
+            for worker in self.workers:
+                self.port_add(worker.front_panel_port, worker.lane, worker.speed, worker.fec)
+                self.mac_address_add(worker.mac, worker.front_panel_port, worker.lane)
+        elif ports_file:
+            self.port_load_file(ports_file)
 
         # start listening for RPCs
-        self.grpc_server.serve()
+        self.grpc_server.serve(self)

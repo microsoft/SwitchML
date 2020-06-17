@@ -50,20 +50,26 @@ class GetWorkerBitmap(Table):
 
     # Add SwitchML UDP entry to table
     def add_udp_entry(self, switch_mac, switch_ip, switch_udp_port, switch_udp_mask,
-                      worker_id, worker_type, worker_mac, worker_ip, worker_bitmap, num_workers,
+                      worker_id, worker_mac, worker_ip, worker_bitmap, num_workers,
                       match_priority, switch_mgid, pool_base, pool_size):
         self.logger.info("Adding worker {} {}".format(worker_mac, worker_ip))
 
         # target all pipes on device 0
         target = gc.Target(device_id=0, pipe_id=0xffff)
 
+        # if IP address is all zeros, don't use
+        if worker_ip == '0.0.0.0':
+            worker_ip_mask = self.all_zeros_ip_address
+        else:
+            worker_ip_mask = self.all_ones_ip_address
+            
         self.table.entry_add(
             target,
             [self.table.make_key([gc.KeyTuple('$MATCH_PRIORITY', match_priority),
                                   # match on Ethernet addrs, IPs and port
                                   gc.KeyTuple('hdr.ipv4.src_addr',
                                               worker_ip,
-                                              self.all_ones_ip_address),
+                                              worker_ip_mask),
                                   gc.KeyTuple('hdr.ipv4.dst_addr',
                                               switch_ip,
                                               self.all_ones_ip_address),
@@ -96,7 +102,7 @@ class GetWorkerBitmap(Table):
                                               0x000000, # 24 bits
                                               0x000000)])],
             [self.table.make_data([gc.DataTuple('mgid', switch_mgid),
-                                   gc.DataTuple('worker_type', worker_type.value),
+                                   gc.DataTuple('worker_type', WorkerType.SWITCHML_UDP),
                                    gc.DataTuple('worker_id', worker_id),
                                    gc.DataTuple('packet_type', 0x1), # packet_type_t.CONSUME
                                    gc.DataTuple('num_workers', num_workers),
@@ -105,6 +111,7 @@ class GetWorkerBitmap(Table):
                                    gc.DataTuple('pool_base', pool_base), 
                                    gc.DataTuple('pool_size_minus_1', pool_size - 1)],
                              'SwitchMLIngress.get_worker_bitmap.set_bitmap')])
+
 
     def print_counters(self):
         self.table.operations_execute(self.target, 'SyncCounters')

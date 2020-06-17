@@ -98,6 +98,14 @@ class RoCESender(Table):
         self.set_opcodes.default_entry_reset(self.target);
 
         
+    def clear_workers(self):
+        self.create_roce_packet.entry_del(self.target);
+        self.create_roce_packet.default_entry_reset(self.target);
+
+        self.fill_in_qpn_and_psn.entry_del(self.target);
+        self.fill_in_qpn_and_psn.default_entry_reset(self.target);
+
+        
     def add_default_entries(self):
 
         # set switch MAC/IP and message size and mask
@@ -145,7 +153,7 @@ class RoCESender(Table):
 
 
     # simple version first, with one QP per worker
-    def add_worker(self, rid, mac, ip, qpn, initial_psn, rkey=None):
+    def add_send_worker(self, rid, mac, ip, qpn, initial_psn, rkey=None):
         # first, add entry to fill in headers for RoCE packet
         self.create_roce_packet.entry_add(
         self.target,
@@ -163,7 +171,34 @@ class RoCESender(Table):
                                                  gc.DataTuple('SwitchMLEgress.roce_sender.psn_register.f1', initial_psn)],
                                                 'SwitchMLEgress.roce_sender.add_qpn_and_psn')])
 
-        # now, reset initial PSN
+
+    # RDMA write capable version
+    # qpns_and_psns is a list of qpn, psn tuples
+    def add_write_worker(self, rid, mac, ip, rkey, qpns_and_psns):
+        # first, add entry to fill in headers for RoCE packet
+        self.create_roce_packet.entry_add(
+        self.target,
+            [self.create_roce_packet.make_key([gc.KeyTuple('eg_md.switchml_md.worker_id', rid)])],
+            [self.create_roce_packet.make_data([gc.DataTuple('dest_mac', mac),
+                                                gc.DataTuple('dest_ip', ip),
+                                                gc.DataTuple('base_addr', 0), # TODO: shouldn't need this when using 0-based addressing
+                                                gc.DataTuple('rkey', rkey)],                                                
+                                               'SwitchMLEgress.roce_sender.fill_in_roce_write_fields')])
+
+        # now, add entry to add QPN and PSN to packet
+        # each QPN handles both sets of a slot in the pool
+        for index, (qpn, initial_psn) in enumerate(qpns_and_psns):
+            print("Adding qpn {} and psn {} for index {}".format(qpn, initial_psn, index))
+            self.fill_in_qpn_and_psn.entry_add(
+                self.target,
+                [self.fill_in_qpn_and_psn.make_key([gc.KeyTuple('eg_md.switchml_md.worker_id', rid),
+                                                    gc.KeyTuple('eg_md.switchml_md.pool_index',
+                                                                index << 1,
+                                                                0x7ffe)])], # handle both sets of slot
+                [self.fill_in_qpn_and_psn.make_data([gc.DataTuple('qpn', qpn),
+                                                     gc.DataTuple('SwitchMLEgress.roce_sender.psn_register.f1', initial_psn)],
+                                                    'SwitchMLEgress.roce_sender.add_qpn_and_psn')])
+
 
 
 

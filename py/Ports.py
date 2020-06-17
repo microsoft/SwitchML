@@ -141,6 +141,9 @@ class Ports(object):
             [self.port_table.make_key([self.gc.KeyTuple('$DEV_PORT', i)])
              for i in dev_ports])
 
+        # clear active ports list
+        self.active_ports = []
+
     # delete one port
     def port_delete(self, front_panel_port, lane):
         # get dev port
@@ -187,9 +190,6 @@ class Ports(object):
              for i in dev_ports],
             {"from_hw": True})
 
-        pprint(dev_ports)
-        pprint(stats_result)
-        
         # construct stats dict indexed by dev_port
         stats = {}
         for v, k in stats_result:

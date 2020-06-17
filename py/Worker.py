@@ -8,9 +8,9 @@ import bfrt_grpc.bfruntime_pb2 as bfruntime_pb2
 import bfrt_grpc.client as gc
 import grpc
 
-from enum import Enum
+from enum import IntEnum
 
-class WorkerType(Enum):
+class WorkerType(IntEnum):
     FORWARD_ONLY = 0
     SWITCHML_UDP = 1
     ROCEv2       = 2

@@ -33,7 +33,7 @@ class NonSwitchMLForward(Table):
         self.table.info.key_field_annotation_add("hdr.ethernet.dst_addr", "mac")
 
         # keep set of mac addresses so we can delete them all without deleting the flood rule
-        self.mac_addresses = set()
+        self.mac_addresses = {}
         
         # clear and add defaults
         self.clear()
@@ -52,13 +52,16 @@ class NonSwitchMLForward(Table):
 
     def worker_add(self, mac_address, front_panel_port, lane):
         dev_port = self.ports.get_dev_port(front_panel_port, lane)
-        self.table.entry_add(
-            self.target,
-            [self.table.make_key([gc.KeyTuple('hdr.ethernet.dst_addr',
-                                              mac_address)])],
-            [self.table.make_data([gc.DataTuple('egress_port', dev_port)],
-                                  'SwitchMLIngress.non_switchml_forward.set_egress_port')])
-        self.mac_addresses.add(mac_address)
+        try:
+            self.table.entry_add(
+                self.target,
+                [self.table.make_key([gc.KeyTuple('hdr.ethernet.dst_addr',
+                                                  mac_address)])],
+                [self.table.make_data([gc.DataTuple('egress_port', dev_port)],
+                                      'SwitchMLIngress.non_switchml_forward.set_egress_port')])
+            self.mac_addresses[mac_address] = front_panel_port, lane
+        except Exception as e:
+            print("Error adding {} at {}/{}: {}".format(mac_address, front_panel_port, lane, e))
 
         
     def worker_del(self, mac_address):
@@ -66,9 +69,27 @@ class NonSwitchMLForward(Table):
             self.target,
             [self.table.make_key([gc.KeyTuple('hdr.ethernet.dst_addr',
                                               mac_address)])])
-        self.mac_addresses.remove(mac_address)
+        del self.mac_addresses[mac_address]
 
-        
+    def worker_print(self, requested_mac_address=None):
+        print("  MAC address       Front panel port")
+
+        if requested_mac_address:
+            port, lane = self.mac_addresses[requested_mac_address]
+            print("  {:>17} {:>2}/{}".format(requested_mac_address, port, lane))
+        else:
+            for mac_address, (port, lane) in self.mac_addresses.items():
+                print("  {:>17} {:>2}/{}".format(mac_address, port, lane))
+
+    def get_macs_on_port(self, fp_port, fp_lane):
+        results = []
+        for mac_address, (port, lane) in self.mac_addresses.items():
+            print('checking {} {}/{} against {}/{}'.format(mac_address, port, lane, fp_port, fp_lane))
+            if port == fp_port and lane == fp_lane:
+                results.append(mac_address)
+
+        return results
+    
     def worker_clear_all(self):
         self.table.entry_add(
             self.target,
@@ -77,6 +98,8 @@ class NonSwitchMLForward(Table):
              for mac_address in self.mac_addresses])
         self.mac_addresses.clear()
 
+    def worker_port_get(self, mac):
+        return self.mac_addresses[mac]
     
     def add_workers(self, switch_mgid, workers):
         for worker in workers:
