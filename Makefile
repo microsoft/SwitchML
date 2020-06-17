@@ -55,6 +55,9 @@ ARGS=
 run:: $(TARGET)
 	mpirun --host $(HOSTS) -np 2 --tag-output ./$< $(ARGS)
 
+runswitch:: $(TARGET)
+	mpirun --host $(HOSTS) -np 2 --tag-output ./$< --server 7170c $(ARGS)
+
 
 debug:: $(TARGET)
 	mpirun -mca mpi_abort_delay 10 --host $(HOSTS) -np 2 --tag-output ./$< $(ARGS)

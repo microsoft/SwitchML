@@ -115,6 +115,7 @@ public:
     , size(size)
     , completion_queues(FLAGS_cores, nullptr) // one completion queue per core
     , queue_pairs(FLAGS_cores * FLAGS_slots_per_core, nullptr) // create one queue pair per slot
+    , rkeys(queue_pairs.size(), 0) // one rkey per queue pair to support parameter servers
     , neighbor_rkeys(FLAGS_cores * FLAGS_slots_per_core, 0)  // create one rkey per slot so we can use parameter servers
     , neighbor_gids(FLAGS_cores * FLAGS_slots_per_core)  // create one gid per slot so we can use parameter servers
     , neighbor_qpns(FLAGS_cores * FLAGS_slots_per_core, 0)

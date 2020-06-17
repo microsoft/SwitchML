@@ -243,14 +243,14 @@ void Endpoint::free(ibv_mr * mr) {
 
 uint64_t Endpoint::get_mac() {
   ibv_gid mac_gid;
-  int retval = ibv_query_gid(context, port, 2, &mac_gid);
+  int retval = ibv_query_gid(context, port, 0, &mac_gid);
   if (retval < 0)  {
     perror("Error getting GID for MAC address");
     exit(1);
   }
-
+  
   uint64_t mac = 0;
-  mac |= mac_gid.raw[8];
+  mac |= mac_gid.raw[8] ^ 2;
   mac <<= 8;
   mac |= mac_gid.raw[9];
   mac <<= 8;

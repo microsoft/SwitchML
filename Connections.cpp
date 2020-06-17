@@ -8,6 +8,7 @@
 #include "common.hpp"
 #include "Connections.hpp"
 #include <mpi.h>
+#include <chrono>
 
 DEFINE_bool(use_rc, false, "RDMA connection type: if set, use RC; otherwise default to UC.");
 DEFINE_int32(mtu, 256, "RDMA packet MTU: one of 256, 512, 1024, 2048, or 4096.");
@@ -40,7 +41,7 @@ uint32_t gid_to_ipv4(const ibv_gid gid) {
 
 uint64_t gid_to_mac(const ibv_gid gid) {
   uint64_t mac = 0;
-  mac |= gid.raw[8];
+  mac |= gid.raw[8]^ 2;
   mac <<= 8;
   mac |= gid.raw[9];
   mac <<= 8;
@@ -71,7 +72,7 @@ ibv_gid mac_to_gid(const uint64_t mac) {
   ibv_gid gid;
   gid.global.subnet_prefix = 0x80fe;
   gid.global.interface_id = 0;
-  gid.raw[ 8] = (mac >> 40) & 0xff;
+  gid.raw[ 8] = ((mac >> 40) & 0xff) ^ 2;
   gid.raw[ 9] = (mac >> 32) & 0xff;
   gid.raw[10] = (mac >> 24) & 0xff;
   gid.raw[11] = 0xff;
@@ -288,9 +289,26 @@ void Connections::move_to_rts(int i) {
 // Exchange queue pair information
 void Connections::exchange_connection_info() {
   std::cout << "Rank " << rank << " of size " << size << " requesting connection to switch.\n";
+
+  // compute ID for this job
+  uint64_t job_id = 0;
+
+  // combine timestamp + host GID
+  if (0 == rank) {
+    job_id = endpoint.gid.global.subnet_prefix;
+    auto current_time = std::chrono::high_resolution_clock::now();
+    auto time_since_epoch = current_time.time_since_epoch();
+    auto nanoseconds_since_epoch = std::chrono::duration_cast<std::chrono::nanoseconds>(time_since_epoch);
+    job_id ^= nanoseconds_since_epoch.count();
+    std::cout << "Job id is " << (void*) job_id << std::endl;
+  }
+
+  // broadcast job id to other nodes in job
+  MPI_CHECK(MPI_Bcast(&job_id, 1, MPI_UINT64_T, 0, MPI_COMM_WORLD));
   
   // send connection request to coordinator
   SwitchML::RDMAConnectRequest request;
+  request.set_job_id(job_id);
   request.set_my_rank(rank);
   request.set_job_size(size);
   request.set_mac(endpoint.get_mac());
@@ -305,10 +323,19 @@ void Connections::exchange_connection_info() {
   std::cout << "Sending request " << request << std::endl;
 
   SwitchML::RDMAConnectResponse response;
-  grpc_client.RDMAConnect(request, &response);
+  if (0 == rank) { // first worker clears switch state before processing the request
+    grpc_client.RDMAConnect(request, &response);
+    MPI_CHECK(MPI_Barrier(MPI_COMM_WORLD));
+  } else { // remaining workers process switch state after the first one is done.
+    MPI_CHECK(MPI_Barrier(MPI_COMM_WORLD));
+    grpc_client.RDMAConnect(request, &response);
+  }
 
   std::cout << "Rank " << rank << " got response " << response << std::endl;
 
+  // ensure switch has gotten all workers' job state before proceeding.
+  MPI_CHECK(MPI_Barrier(MPI_COMM_WORLD));
+  
   // now, copy remote data to our neigbor arrays to continue queue pair setup
   for (int i = 0; i < queue_pairs.size(); ++i) {
     if (endpoint.gid_index >= 2) { // IPv4-based GID
@@ -320,8 +347,6 @@ void Connections::exchange_connection_info() {
     neighbor_qpns[i] = response.qpns(i);
     neighbor_psns[i] = response.psns(i);
   }
-
-  exit(1);
 
   std::cout << "Barrier\n";
   MPI_CHECK(MPI_Barrier(MPI_COMM_WORLD));
