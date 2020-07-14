@@ -90,15 +90,17 @@ Endpoint::Endpoint()
   }
 
   // print GIDs
-  for (int i = 0; i < 4; ++i) {
+  for (int i = 0; i < port_attributes.gid_tbl_len; ++i) {
     retval = ibv_query_gid(context, port, i, &gid);
     if (retval < 0)  {
       perror("Error getting GID");
       exit(1);
     }
-    std::cout << "GID " << i << " is "
-              << (void*) gid.global.subnet_prefix << " " << (void*) gid.global.interface_id
-              << "\n";
+    if (gid.global.subnet_prefix != 0 || gid.global.interface_id !=0) {
+      std::cout << "GID " << i << " is "
+                << (void*) gid.global.subnet_prefix << " " << (void*) gid.global.interface_id
+                << "\n";
+    }
   }
 
   // get selected gid
@@ -167,7 +169,7 @@ ibv_mr * Endpoint::allocate_at_address(void * requested_address, size_t length) 
                     PROT_READ | PROT_WRITE,
                     MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB | MAP_FIXED,
                     -1, 0);
-  if (buf != requested_address) {
+  if (MAP_FAILED == buf || buf != requested_address) {
       perror("Error allocating memory region");
       exit(1);
   }
@@ -202,12 +204,13 @@ ibv_mr * Endpoint::allocate_zero_based(size_t length) {
                     PROT_READ | PROT_WRITE,
                     MAP_PRIVATE | MAP_ANONYMOUS | MAP_HUGETLB,
                     -1, 0);
-  if (!buf) {
+  if (MAP_FAILED == buf) {
       perror("Error allocating memory region");
       exit(1);
   }
 
-  //register
+  std::cout << "Buffer " << buf << " length " << length << std::endl;
+  // register
   ibv_mr * mr = ibv_reg_mr(protection_domain, buf, length,
                            (IBV_ACCESS_LOCAL_WRITE |
                             IBV_ACCESS_REMOTE_WRITE |

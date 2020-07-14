@@ -184,7 +184,7 @@ ibv_qp * Connections::create_queue_pair(ibv_cq * completion_queue) {
   }
 
   std::cout << "Created queue pair " << queue_pair
-            << " QPN 0x" << std::hex << queue_pair->qp_num
+            << " QPN 0x" << std::hex << queue_pair->qp_num << std::dec
             << ".\n";
 
   return queue_pair;
@@ -213,8 +213,8 @@ void Connections::move_to_init(int i) {
 
 // now, move queue pair to Ready-To-Receive (RTR) state
 void Connections::move_to_rtr(int i) {
-  std::cout << "Connecting QP 0x" << std::hex << queue_pairs[i]->qp_num
-            << " with remote QP 0x" << std::hex << neighbor_qpns[i]
+  std::cout << "Connecting QP 0x" << std::hex << queue_pairs[i]->qp_num << std::dec
+            << " with remote QP 0x" << std::hex << neighbor_qpns[i] << std::dec
             << " initial PSN " << neighbor_psns[i]
             << std::endl;
   

@@ -31,7 +31,7 @@ private:
   
   std::vector<int64_t> indices;
   std::vector<float *> pointers;
-
+  
   float * base_pointer;
   float * thread_start_pointer;
   float * thread_end_pointer;

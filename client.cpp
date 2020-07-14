@@ -17,6 +17,8 @@
 #include <iostream>
 #include <chrono>
 
+#include <arpa/inet.h>
+
 DEFINE_int32(warmup,     0, "Number of warmup iterations to run before timing.");
 DEFINE_int32(iters,      1, "Number of timed iterations to run.");
 DEFINE_int64(length, 65536, "Length of buffer to reduce in 4-byte int32.");
@@ -48,13 +50,30 @@ int main(int argc, char * argv[]) {
   // allocate buffer that's registered with the NIC
   //
   
-  // allocate 2GB buffer at same address on each node
+  // allocate buffer at same address on each node
+  const size_t buffer_length = 1L << 28; // # of floats
   auto mr = e.allocate_at_address((void*) 0x0000100000000000,
-                                  (1L << 31));
+                                  buffer_length);
 
   // // allocate buffer using zero-based addressing
-  // // auto mr = e.allocate_zero_based(1 << 31);
+  // auto mr = e.allocate_zero_based(1L << 28);
 
+  // initialize vector with something easy to identify
+  int * buf = (int*) mr->addr;
+  for (size_t i = 0; i < buffer_length; ++i) {
+    if (0 == (i % (FLAGS_packet_size / sizeof(int)))) {
+      buf[i] = 0x11223344;
+    } else if (0 == (i % 2)) {
+      buf[i] = i / (FLAGS_packet_size / sizeof(int));
+    } else {
+      buf[i] = -i / (FLAGS_packet_size / sizeof(int));
+    }
+
+    // convert to network byte order
+    buf[i] = htonl(buf[i]);
+  }
+
+  
   // Connect to other nodes and exchange memory region info
   Connections c(e, mr, rank, size);
 
@@ -62,7 +81,7 @@ int main(int argc, char * argv[]) {
   // perform reduction
   //
   Reducer r(c);
-  
+
   // perform warmup iterations
   std::cout << "Starting warmup iterations...\n";
   for (int i = 0; i < FLAGS_warmup; ++i) {

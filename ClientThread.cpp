@@ -74,9 +74,21 @@ ClientThread::ClientThread(Reducer * reducer, int64_t thread_id)
     send_wrs[i].num_sge = 1;
     send_wrs[i].opcode = IBV_WR_RDMA_WRITE_WITH_IMM;
     //send_wrs[i].send_flags = IBV_SEND_SIGNALED; // TODO: do this periodically
-    send_wrs[i].send_flags = IBV_SEND_SIGNALED | IBV_SEND_FENCE; // TODO: do signal periodically
-    send_wrs[i].wr.rdma.remote_addr = 0;
-    send_wrs[i].wr.rdma.rkey = rkeys[i];    
+    //send_wrs[i].send_flags = IBV_SEND_SIGNALED | IBV_SEND_FENCE; // TODO: do signal periodically
+    send_wrs[i].send_flags = IBV_SEND_SIGNALED; // TODO: do signal periodically
+
+    send_wrs[i].wr.rdma.remote_addr = 0; // will be filled in later
+
+    // write shifted pool index into lower 15 bits of rkey. LSB is
+    // slot flag. Set slot flag to 1 initially; will be flipped to 0
+    // before the first message is posted.
+    send_wrs[i].wr.rdma.rkey = (((FLAGS_slots_per_core * thread_id + i)     // base message-sized pool index
+                                 * (FLAGS_message_size / FLAGS_packet_size) // shifted to convert to packet-sized pool index
+                                 * 2)                                       // leave space for slot bit
+                                | 1);                                       // set slot bit initially
+
+    
+    send_wrs[i].imm_data = 0x01020304; // will be filled in later
   }  
 }
 
@@ -105,7 +117,7 @@ void ClientThread::operator()() {
        << " sending from " << thread_start_pointer
        << " to " << thread_end_pointer
        << " of " << reducer->src_buffer
-       << " length " << (void*) reducer->length
+       << " length " << (void*) reducer->length << " floats"
        << std::endl;
     std::cout << ss.str();
 
@@ -131,20 +143,6 @@ void ClientThread::post_initial_writes() {
 
 void ClientThread::post_next_send_wr(int i) {
   if (pointers[i] < thread_end_pointer) {
-    // send_sges[i].lkey = reducer->connections.memory_region->lkey;
-
-    // // initialize WR
-    // std::memset(&send_wrs[i], 0, sizeof(ibv_send_wr));
-    // send_wrs[i].wr_id = (thread_id << 16) | i;
-    // send_wrs[i].next = nullptr;
-    // send_wrs[i].sg_list = &send_sges[i];
-    // send_wrs[i].num_sge = 1;
-    // send_wrs[i].opcode = IBV_WR_RDMA_WRITE_WITH_IMM;
-    // send_wrs[i].send_flags = IBV_SEND_SIGNALED; // TODO: do this periodically
-    // send_wrs[i].wr.rdma.rkey = rkeys[i];    
-
-
-
     // point at start of this message's data
     send_sges[i].addr = (intptr_t) pointers[i];
 
@@ -153,23 +151,37 @@ void ClientThread::post_next_send_wr(int i) {
     send_sges[i].length = std::min((uint32_t) FLAGS_message_size,
                                    truncated_message_length);
 
+    // set packet-scale pool index in lower 15 bits of rkey. The pool
+    // index is calculated in construtor; here we just flip the slot
+    // bit. (slot bit is initialized to 1 in constructor, so first
+    // packet will have slot 0 after this flip)
+    send_wrs[i].wr.rdma.rkey ^= 1; // flip slot bit in LSB
+
+
     //set destination address
     // if we use buffers allocated at the same address on each node
     send_wrs[i].wr.rdma.remote_addr = (intptr_t) pointers[i];
     // // if we use 0-indexed memory regions
     // send_wrs[i].wr.remote_addr = (intptr_t) indices[i];
+
+    
     
     // post
-    std::cout << "Posting send from " << (void*) send_sges[i].addr
-              << " len " << send_sges[i].length
+    std::cout << ">>>>>>>>>>>>>>>>              Thread " << thread_id
+              << " QP " << queue_pairs[i]->qp_num
+              << " posting send from " << (void*) send_sges[i].addr
+              << " len " << (void*) send_sges[i].length
+              << " slot " << (void*) (send_wrs[i].wr.rdma.rkey & 1)
+              << " rkey " << (void*) send_wrs[i].wr.rdma.rkey
       //<< " qp " << send_wrs[i].
               << std::endl;
     reducer->connections.post_send(queue_pairs[i], &send_wrs[i]);
     std::cout << "Posting send successful...." << std::endl;
     
     // increment pointer and indices
-    pointers[i] += (FLAGS_message_size / sizeof(float));
-    indices[i]  += (FLAGS_message_size / sizeof(float));
+    // increment by number of floats per message * number of slots this core is handling
+    pointers[i] += FLAGS_slots_per_core * (FLAGS_message_size / sizeof(float)); // TODO: correct?
+    indices[i]  += FLAGS_slots_per_core * (FLAGS_message_size / sizeof(float));
   }
 }
 
@@ -228,7 +240,7 @@ void ClientThread::run() {
           // success! 
           if (completions[i].opcode & IBV_WC_RECV) { // match on any RECV completion
             handle_recv_completion(completions[i]);
-          } else if (completions[i].opcode == IBV_WC_RDMA_WRITE) {
+          } else if (completions[i].opcode == IBV_WC_RDMA_WRITE) { // this includes RDMA_WRITE_WITH_IMM
             handle_write_completion(completions[i]);
           } else {
             std::cerr << "Got unknown successful completion with ID " << (void*) completions[i].wr_id
@@ -249,11 +261,14 @@ void ClientThread::compute_thread_pointers() {
   // round up message count for non-multiple-of-message-size buffers,
   // and send 1 message even if length is 0 for barrier
   const int64_t total_messages = ((reducer->length * (int64_t) sizeof(float) - 1) / FLAGS_message_size) + 1;
-    
+
+
+  const int64_t total_slots = FLAGS_cores * FLAGS_slots_per_core;
+  
   // threads send a base number of messages, plus an adjustment
   // to capture non-FLAGS_cores-divisible message counts
-  const int64_t base_messages_per_thread = total_messages / FLAGS_cores;
-  const int64_t adjustment               = total_messages % FLAGS_cores;
+  const int64_t base_messages_per_thread = total_messages / total_slots;
+  const int64_t adjustment               = total_messages % total_slots;
         
   // this thread sends total_messages / FLAGS_cores messages,
   // plus one more to spread the adjustment evenly over threads
@@ -280,6 +295,21 @@ void ClientThread::compute_thread_pointers() {
   for (int i = 0; i < FLAGS_slots_per_core; ++i) {
     indices[i] = start_message_index + i;
     pointers[i] = thread_start_pointer + i * FLAGS_message_size / sizeof(float);
+
+    std::cout << " thread_id: " << thread_id
+              << " total_messages: " << total_messages
+              << " base_messages_per_thread: " << base_messages_per_thread
+              << " adjustment: " << adjustment
+              << " adjusted_messages_per_thread: " << adjusted_messages_per_thread
+              << " start_message_index: " << start_message_index
+              << " end_message_index: " << end_message_index
+              << " outstanding_operations: " << outstanding_operations
+              << " slot: " << i
+              << " index: " << indices[i]
+              << " start_pointer: " << pointers[i]
+              << " end pointer: " << thread_end_pointer
+              << std::endl;
+
   }
 
   // initialize count of expected sends and receives

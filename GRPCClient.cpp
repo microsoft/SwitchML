@@ -49,7 +49,7 @@ std::ostream & operator<<(std::ostream & s, const SwitchML::RDMAConnectRequest &
   for (int i = 0; i < r.qpns_size(); ++i) {
     s << " qpn=0x" << r.qpns(i) << " psn=0x" << r.psns(i);
   }
-  return s << ">";
+  return s << ">" << std::dec;
 }
 
 std::ostream & operator<<(std::ostream & s, const SwitchML::RDMAConnectResponse & r) {
@@ -62,5 +62,5 @@ std::ostream & operator<<(std::ostream & s, const SwitchML::RDMAConnectResponse 
   for (int i = 0; i < r.qpns_size(); ++i) {
     s << " qpn=0x" << r.qpns(i) << " psn=0x" << r.psns(i);
   }
-  return s << ">";
+  return s << ">" << std::dec;
 }
