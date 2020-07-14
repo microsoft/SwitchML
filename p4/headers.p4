@@ -116,6 +116,9 @@ header ib_reth_h {
     bit<32> len;
 }
 
+
+@pa_container_size("egress", "hdr.ib_immediate.immediate", 16, 8, 8)
+
 // InfiniBand-RoCE Immediate Header
 header ib_immediate_h {
     bit<32> immediate;

@@ -15,10 +15,22 @@
 typedef pool_index_t index_t;
 
 // // 256-byte slots
-// #define INDEX (hdr.ib_bth.dst_qp[14:1] ++ hdr.ib_bth.dst_qp[15:15])
+// #define INDEX (hdr.ib_bth.dst_qp[14:0] ++ hdr.ib_bth.dst_qp[15:15])
 
-// 512-byte slots
-#define INDEX (hdr.ib_bth.dst_qp[13:1] ++ 1w0 ++ hdr.ib_bth.dst_qp[15:15])
+// // 512-byte slots
+// #define INDEX (hdr.ib_bth.dst_qp[12:0] ++ 2w0 ++ hdr.ib_bth.dst_qp[15:15])
+
+// 256-byte slots and 1024-byte messages
+////#define INDEX (hdr.ib_bth.dst_qp[11:0] ++ 2w0 ++ hdr.ib_bth.dst_qp[15:15])
+//#define INDEX (hdr.ib_bth.dst_qp[11:0] ++ 2w0 ++ hdr.ib_reth.r_key[0:0])
+
+//#define INDEX (hdr.ib_bth.dst_qp[13:0] ++ hdr.ib_reth.r_key[0:0])
+#define INDEX (hdr.ib_bth.dst_qp[14:0])
+//#define INDEX (hdr.ib_reth.r_key[14:0])
+
+//#define POOL_INDEX (hdr.ib_bth.dst_qp[23:0] ++ 2w0 ++ hdr.ib_reth.r_key[0:0])
+//#define POOL_INDEX (hdr.ib_bth.dst_qp)
+#define POOL_INDEX (hdr.ib_reth.r_key)
 
 //#define INDEX (hdr.ib_bth.dst_qp[14:1] ++ hdr.ib_bth.dst_qp[15:15])
 
@@ -45,6 +57,7 @@ control RoCEReceiver(
     DirectCounter<counter_t>(CounterType_t.PACKETS_AND_BYTES) rdma_receive_counter;
 
     Register<receiver_data_t, index_t>(num_slots) receiver_data_register;
+    Counter<counter_t, index_t>(num_slots, CounterType_t.PACKETS) rdma_packet_counter;
     Counter<counter_t, index_t>(num_slots, CounterType_t.PACKETS) rdma_message_counter;
     Counter<counter_t, index_t>(num_slots, CounterType_t.PACKETS) rdma_sequence_violation_counter;
 
@@ -58,12 +71,16 @@ control RoCEReceiver(
     
     const pool_index_t base_pool_index      = 0;
     const pool_index_t pool_index_increment = 2;
+
+    //pool_index_t pool_index_result;
+    bit<32> pool_index_result;
     
     // use with _FIRST and _ONLY packets
     RegisterAction<receiver_data_t, index_t, return_t>(receiver_data_register) receiver_reset_action = {
         void apply(inout receiver_data_t value, out return_t read_value) {
             value.next_sequence_number = (bit<32>) hdr.ib_bth.psn + 1; // reset sequence number
-            value.pool_index = (bit<32>) hdr.ib_bth.dst_qp;   // reset pool index from QP number
+            //value.pool_index = (bit<32>) hdr.ib_bth.dst_qp;   // reset pool index from QP number
+            value.pool_index = (bit<32>) POOL_INDEX;   // reset pool index from QP number
             read_value = (return_t) value.pool_index;
         }
     };
@@ -104,6 +121,9 @@ control RoCEReceiver(
         ig_md.switchml_md.worker_id = worker_id;     // Same as rid for worker; used when retransmitting RDMA packets
         ig_md.switchml_md.dst_port = hdr.udp.src_port;
 
+
+        ig_md.switchml_md.rdma_addr = hdr.ib_reth.addr;
+        
         // TODO: copy immediate to exponents
         // TODO: copy address
         
@@ -132,6 +152,24 @@ control RoCEReceiver(
         rdma_receive_counter.count();
     }
 
+    action assign_pool_index(bit<32> result) {
+        //ig_md.switchml_md.pool_index = result[13:0] ++ hdr.ib_reth.r_key[0:0];
+        //ig_md.switchml_md.pool_index = result[14:0] + hdr.ib_reth.r_key[14:0];
+        //ig_md.switchml_md.pool_index = result[13:0] ++ 1w0;
+        //ig_md.switchml_md.pool_index = result[14:0] << 1;
+
+        ig_md.switchml_md.pool_index = result[14:0];
+    }
+
+    action assign_pool_index_subtracted(bit<32> result) {
+        //ig_md.switchml_md.pool_index = result[13:0] ++ hdr.ib_reth.r_key[0:0];
+        //ig_md.switchml_md.pool_index = result[14:0] + hdr.ib_reth.r_key[14:0];
+        //ig_md.switchml_md.pool_index = result[13:0] ++ 1w0;
+        //ig_md.switchml_md.pool_index = result[14:0] << 1;
+
+        ig_md.switchml_md.pool_index = result[14:0];
+    }
+    
     action middle_packet(
         MulticastGroupId_t mgid,
         worker_type_t worker_type,
@@ -149,6 +187,8 @@ control RoCEReceiver(
         //ig_dprsr_md.drop_ctl[0:0] = ig_dprsr_md.drop_ctl[0:0] | result[31:31];
         ig_dprsr_md.drop_ctl[0:0] = result[31:31];
 
+        assign_pool_index(result);
+        
         // A message has not yet arrived, since this is a middle packet.
         message_possibly_received = false;
         sequence_violation = (bool) result[31:31];
@@ -172,6 +212,8 @@ control RoCEReceiver(
         //ig_dprsr_md.drop_ctl[0:0] = ig_dprsr_md.drop_ctl[0:0] | result[31:31];
         ig_dprsr_md.drop_ctl[0:0] = result[31:31];
 
+        assign_pool_index(result);
+
         // A message has arrived if the sequence number matched (sign bit == 0).
         message_possibly_received = true;
         sequence_violation = (bool) result[31:31];
@@ -190,6 +232,8 @@ control RoCEReceiver(
         // reset sequence number
         return_t result = receiver_reset_action.execute(INDEX);
 
+        assign_pool_index(result);
+        
         // This is a first packet, so there can be no sequence number violation.
         // Don't drop the packet.
 
@@ -210,6 +254,8 @@ control RoCEReceiver(
 
         // reset sequence number
         return_t result = receiver_reset_action.execute(INDEX);
+
+        assign_pool_index(result);
         
         // This is an only packet, so there can be no sequence number violation.
         // Don't drop the packet.
@@ -266,24 +312,31 @@ control RoCEReceiver(
     }
 
     apply {
-        message_possibly_received = false;
-        receive_roce.apply();
-
-        // use the SwitchML set bit in the MSB of the 16-bit pool index to switch between sets
-        //ig_md.pool_set = hdr.ib_bth.dst_qp[15:15];
-        if (hdr.ib_bth.dst_qp[15:15] == 1w1) {
-            ig_md.pool_set = 1;
-        } else {
-            ig_md.pool_set = 0;
+        if (receive_roce.apply().hit) {
+            // // use the SwitchML set bit in the MSB of the 16-bit pool index to switch between sets
+            // //ig_md.pool_set = hdr.ib_bth.dst_qp[15:15];
+            // if (hdr.ib_bth.dst_qp[15:15] == 1w1) {
+                //     ig_md.pool_set = 1;
+                // } else {
+                //     ig_md.pool_set = 0;
+                // }
+            rdma_packet_counter.count(hdr.ib_bth.dst_qp[14:0]);
+            
+            if (sequence_violation) {
+                // count violation
+                rdma_sequence_violation_counter.count(hdr.ib_bth.dst_qp[14:0]);
+                
+                // drop bit is already set; copy to CPU too
+                ig_tm_md.copy_to_cpu = 1;
+                
+            } else if (message_possibly_received) {
+                // count correctly received message
+                rdma_message_counter.count(hdr.ib_bth.dst_qp[14:0]);
+            }
         }
 
-        if (sequence_violation) {
-            // count violation
-            rdma_sequence_violation_counter.count(hdr.ib_bth.dst_qp[14:0]);
-        } else if (message_possibly_received) {
-            // count correctly received message
-            rdma_message_counter.count(hdr.ib_bth.dst_qp[14:0]);
-        }
+        // //pool_index_result = result;
+        // ig_md.switchml_md.pool_index = pool_index_result[14:0];
     }
 }
 

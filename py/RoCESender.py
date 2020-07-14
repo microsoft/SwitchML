@@ -8,6 +8,7 @@ import bfrt_grpc.bfruntime_pb2 as bfruntime_pb2
 import bfrt_grpc.client as gc
 import grpc
 
+import struct
 
 from Table import Table
 from Worker import Worker
@@ -18,6 +19,7 @@ class RoCESender(Table):
     def __init__(self, client, bfrt_info,
                  switch_mac, switch_ip,
                  message_length, # must be a power of 2
+                 packet_length, # must be a power of 2
                  use_rdma_write = True, 
                  use_immediate  = True):
         # set up base class
@@ -29,8 +31,21 @@ class RoCESender(Table):
         self.switch_mac = switch_mac
         self.switch_ip = switch_ip
         self.message_length = message_length      # must be a power of 2
-        self.first_last_mask = message_length - 1 # for this to work
+        self.packet_length = packet_length
 
+        self.packets_per_message = message_length / packet_length
+        
+        # first last mask is used with the slot number to decide
+        # whether message is a first, last, or middle message.  It
+        # should be the message size in bytes divided by the
+        # per-packet payload size, shifted left once to skip the slot
+        # bit.
+        #self.first_last_mask = ((message_length / packet_length) - 1) << 1
+        self.first_last_mask = 0x6 # for 4-slot messages
+
+        print(type(self.first_last_mask))
+        pprint(self.first_last_mask)
+        
         self.use_rdma_write = use_rdma_write
         self.use_immediate = use_immediate
         
@@ -134,22 +149,26 @@ class RoCESender(Table):
             # if masked value is zero, it's a _FIRST packet
             self.set_opcodes.entry_add(
                 self.target,
-                [self.set_opcodes.make_key([gc.KeyTuple('eg_md.switchml_md.pool_index', 0x00000, self.first_last_mask)])],
+                [self.set_opcodes.make_key([gc.KeyTuple('eg_md.switchml_md.pool_index',
+                                                        0x00000,
+                                                        self.first_last_mask)])],
                 [self.set_opcodes.make_data([gc.DataTuple('opcode', self.first_opcode)],
                                             self.first_action)])
 
             # if masked value is equal to the mask, it's a _LAST packet
             self.set_opcodes.entry_add(
                 self.target,
-                [self.set_opcodes.make_key([gc.KeyTuple('eg_md.switchml_md.pool_index', 0x1ffff, self.first_last_mask)])],
+                [self.set_opcodes.make_key([gc.KeyTuple('eg_md.switchml_md.pool_index',
+                                                        0x7fff,
+                                                        self.first_last_mask)])],
                 [self.set_opcodes.make_data([gc.DataTuple('opcode', self.last_opcode)],
                                             self.last_action)])
 
             # default is _MIDDLE
-            self.set_opcodes.entry_add(
+            self.set_opcodes.default_entry_set(
                 self.target,
-                [self.set_opcodes.make_data([gc.DataTuple('opcode', self.middle_opcode)],
-                                            self.middle_action)])
+                self.set_opcodes.make_data([gc.DataTuple('opcode', self.middle_opcode)],
+                                            self.middle_action))
 
 
     # simple version first, with one QP per worker
@@ -188,13 +207,15 @@ class RoCESender(Table):
         # now, add entry to add QPN and PSN to packet
         # each QPN handles both sets of a slot in the pool
         for index, (qpn, initial_psn) in enumerate(qpns_and_psns):
-            print("Adding qpn {} and psn {} for index {}".format(qpn, initial_psn, index))
+            shifted_index = index << 3;
+            mask = 0x7ff8;
+            print("Adding qpn {} and psn {} for index {:x} mask {:x}".format(qpn, initial_psn, shifted_index, mask))
             self.fill_in_qpn_and_psn.entry_add(
                 self.target,
                 [self.fill_in_qpn_and_psn.make_key([gc.KeyTuple('eg_md.switchml_md.worker_id', rid),
                                                     gc.KeyTuple('eg_md.switchml_md.pool_index',
-                                                                index << 1,
-                                                                0x7ffe)])], # handle both sets of slot
+                                                                shifted_index,
+                                                                mask)])],
                 [self.fill_in_qpn_and_psn.make_data([gc.DataTuple('qpn', qpn),
                                                      gc.DataTuple('SwitchMLEgress.roce_sender.psn_register.f1', initial_psn)],
                                                     'SwitchMLEgress.roce_sender.add_qpn_and_psn')])

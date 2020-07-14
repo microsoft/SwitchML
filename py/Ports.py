@@ -243,7 +243,27 @@ class Ports(object):
         print(format_string.format(**header))
         for v in values:
             print(format_string.format(**v))
+
+
+            
+    def clear_counters(self):
+        self.port_stats_table.entry_mod(
+            self.target,
+            [self.port_stats_table.make_key([gc.KeyTuple('$DEV_PORT', i)])
+             for i in self.active_ports],
+            [self.port_stats_table.make_data([gc.DataTuple('$FramesReceivedOK', 0),
+                                              gc.DataTuple('$FramesReceivedAll', 0),
+                                              gc.DataTuple('$OctetsReceivedinGoodFrames', 0),
+                                              gc.DataTuple('$FrameswithanyError', 0),
+                                              gc.DataTuple('$FramesReceivedwithFCSError', 0),
+                                              gc.DataTuple('$FramesTransmittedOK', 0),
+                                              gc.DataTuple('$FramesTransmittedAll', 0),
+                                              gc.DataTuple('$OctetsTransmittedwithouterror', 0),
+                                              gc.DataTuple('$FramesTransmittedwithError', 0)])] * len(self.active_ports))
+
         
+
+            
     def enable_additional_loopback_ports(self):
         # self.logger.info(pformat(self.bfrt_info.table_dict))
         # self.logger.info("------")

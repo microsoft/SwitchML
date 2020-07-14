@@ -65,7 +65,7 @@ class SwitchMLData(Packet):
 class SwitchMLData64(Packet):
     name = "SwitchMLData64"
     fields_desc=[
-        FieldListField("significands", [], IntField("", 0), count_from=lambda pkt: 64)
+        FieldListField("significands", [], SignedIntField("", 0), count_from=lambda pkt: 64)
     ]
     
 
@@ -161,31 +161,67 @@ class IB_BTH(Packet):
         X3BytesField("psn", 0)
         ]
 
+class IB_RETH(Packet):
+    name = "IB_RETH"
+    fields_desc = [
+        XLongField("addr", 0),
+        XIntField("rkey", 0),
+        XIntField("len", 0),
+        ]
+
 class IB_IMM(Packet):
-    name = "IB_Immediate"
+    name = "IB_IMM"
     fields_desc = [
         XIntField("imm", 0)
     ]
     
-bind_layers(UDP, IB_BTH, dport=4791)
-bind_layers(IB_BTH, IB_IMM, opcode="UC_SEND_LAST_IMMEDIATE")
-bind_layers(IB_BTH, IB_IMM, opcode="UC_SEND_ONLY_IMMEDIATE")
-bind_layers(IB_BTH, IB_IMM, opcode="UC_RDMA_WRITE_LAST_IMMEDIATE")
-bind_layers(IB_BTH, IB_IMM, opcode="UC_RDMA_WRITE_ONLY_IMMEDIATE")
-bind_layers(IB_BTH, SwitchMLData, opcode="UC_SEND_FIRST")
-bind_layers(IB_BTH, SwitchMLData, opcode="UC_SEND_MIDDLE")
-bind_layers(IB_BTH, SwitchMLData, opcode="UC_SEND_LAST")
-bind_layers(IB_BTH, SwitchMLData, opcode="UC_SEND_ONLY")
-bind_layers(IB_BTH, SwitchMLData, opcode="UC_RDMA_WRITE_FIRST")
-bind_layers(IB_BTH, SwitchMLData, opcode="UC_RDMA_WRITE_MIDDLE")
-bind_layers(IB_BTH, SwitchMLData, opcode="UC_RDMA_WRITE_LAST")
-bind_layers(IB_BTH, SwitchMLData, opcode="UC_RDMA_WRITE_ONLY")
+class IB_GRH(Packet):
+    name = "IB_GRH"
+    fields_desc = [
+        XBitField("ipver", 6, 4),
+        XBitField("tclass", 2, 8),
+        XBitField("flowlabel", 0, 20),
+        XShortField("paylen", 0),
+        XByteField("nxthdr", 27),
+        XByteField("hoplmt", 64),
+        IP6Field("sgid", "::1"),
+        IP6Field("dgid", "::1")
+        ]
 
 class IB_ICRC(Packet):
     name = "IB_ICRC"
     fields_desc = [
         XIntField("icrc", None)
     ]
+
+bind_layers(UDP, IB_BTH, dport=4791)
+bind_layers(IB_BTH, IB_IMM, opcode="UC_SEND_LAST_IMMEDIATE")
+bind_layers(IB_BTH, IB_IMM, opcode="UC_SEND_ONLY_IMMEDIATE")
+bind_layers(IB_BTH, SwitchMLData, opcode="UC_SEND_FIRST")
+bind_layers(IB_BTH, SwitchMLData, opcode="UC_SEND_MIDDLE")
+bind_layers(IB_BTH, SwitchMLData, opcode="UC_SEND_LAST")
+bind_layers(IB_BTH, SwitchMLData, opcode="UC_SEND_ONLY")
+
+# bind_layers(IB_BTH, SwitchMLData, opcode="UC_RDMA_WRITE_FIRST")
+# bind_layers(IB_BTH, SwitchMLData, opcode="UC_RDMA_WRITE_MIDDLE")
+# bind_layers(IB_BTH, SwitchMLData, opcode="UC_RDMA_WRITE_LAST")
+# bind_layers(IB_BTH, SwitchMLData, opcode="UC_RDMA_WRITE_ONLY")
+# bind_layers(IB_BTH, IB_IMM, opcode="UC_RDMA_WRITE_LAST_IMMEDIATE")
+# bind_layers(IB_BTH, IB_IMM, opcode="UC_RDMA_WRITE_ONLY_IMMEDIATE")
+
+bind_layers(IB_BTH, IB_RETH, opcode=roce_opcode_s2n["UC_RDMA_WRITE_FIRST"])
+bind_layers(IB_BTH, SwitchMLData64, opcode=roce_opcode_s2n["UC_RDMA_WRITE_MIDDLE"])
+bind_layers(IB_BTH, SwitchMLData64, opcode=roce_opcode_s2n["UC_RDMA_WRITE_LAST"])
+bind_layers(IB_BTH, IB_RETH, opcode=roce_opcode_s2n["UC_RDMA_WRITE_ONLY"])
+bind_layers(IB_BTH, IB_IMM, opcode=roce_opcode_s2n["UC_RDMA_WRITE_LAST_IMMEDIATE"])
+bind_layers(IB_BTH, IB_IMM, opcode=roce_opcode_s2n["UC_RDMA_WRITE_ONLY_IMMEDIATE"])
+
+bind_layers(IB_RETH, SwitchMLData64)
+
+bind_layers(IB_IMM, SwitchMLData64)
+
+bind_layers(SwitchMLData64, IB_ICRC)
+
 
 
 def make_switchml_rdma(src_mac, src_ip, dst_mac, dst_ip, src_port, dst_qp, opcode="UC_SEND_ONLY", psn=0, icrc=None, value_multiplier=1):
@@ -208,6 +244,21 @@ def make_switchml_rdma(src_mac, src_ip, dst_mac, dst_ip, src_port, dst_qp, opcod
     return p
 
 if __name__ == '__main__':
-    p = make_switchml_udp(src_mac="b8:83:03:73:a6:a0", src_ip="198.19.200.49", dst_mac="06:00:00:00:00:01", dst_ip="198.19.200.200", src_port=1234, dst_port=0xbee0, pool_index=0)
-    pprint(p)
-    
+    #p = make_switchml_udp(src_mac="b8:83:03:73:a6:a0", src_ip="198.19.200.49", dst_mac="06:00:00:00:00:01", dst_ip="198.19.200.200", src_port=1234, dst_port=0xbee0, pool_index=0)
+    #pprint(p)
+
+    for i, pkt in enumerate(PcapReader('/u/jacob/c50a.pcap')):
+        #print("Packet {}:".format(i))
+        #pkt.show()
+
+        dst_ip = pkt[IP].dst
+        src_port = pkt[UDP].sport
+        opcode = roce_opcode_n2s[pkt[IB_BTH].opcode]
+        qp     = pkt[IB_BTH].dst_qp
+        psn    = pkt[IB_BTH].psn
+        if IB_RETH in pkt:
+            addr   = pkt[IB_RETH].addr
+        else:
+            addr   = 0
+            
+        print("{:>2}: {:>15} {:>5} {:>30} 0x{:x} 0x{:x} 0x{:x}".format(i, dst_ip, src_port, opcode, qp, psn, addr))

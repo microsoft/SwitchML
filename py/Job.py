@@ -98,12 +98,18 @@ class Job(Cmd, object):
         return self.do_exit(args)
 
     def do_clear(self, arg):
+        'Clear all registers.'
+        print "Clearing all registers..."
+        self.clear_registers()
+        print "Registers cleared."
+
+    def do_clear_all(self, arg):
         'Clear all registers and counters.'
         print "Clearing all registers and counters..."
         self.clear_registers()
         self.clear_counters()
         print "Registers and counters cleared."
-
+        
 
     def do_reset(self, arg):
         'Reinitialize all switch state.'
@@ -114,7 +120,7 @@ class Job(Cmd, object):
 
         try:
             start = 0
-            count = 8
+            count = 16
             
             args = arg.split(' ')
             
@@ -143,7 +149,7 @@ class Job(Cmd, object):
         try:
             # get start and count for pool index counters
             start = 0
-            count = 8
+            count = 16
             
             args = arg.split(' ')
             
@@ -169,10 +175,31 @@ class Job(Cmd, object):
         except Exception as e:
             print "Oops: {}".format(traceback.format_exc())
 
+    def do_queue_pair_counters(self, arg):
+        'Show queue pair counters. We show the first 8 as default; you can specify a count, start point and count.'
+
+        # get start and count for pool index counters
+        start = 0
+        count = 8
+            
+        args = arg.split(' ')
+            
+        if len(args) == 1 and args[0] is not '':
+            count = int(args[0], 0)
+            if count <= 0:
+                count = 1
+        elif len(args) == 2:
+            start = int(args[0], 0)
+            count = int(args[1], 0)
+
+        print("Showing {} queue pair counters starting from {}.".format(count, start))
+        self.roce_receiver.get_queue_pair_counters(start, count)
+                
         
     def do_clear_counters(self, arg):
         'Clear counters.'
         self.clear_counters()
+        self.port_clear_counters()
 
     def do_timing_loop(self, arg):
         'Time table updates.'
@@ -306,6 +333,18 @@ class Job(Cmd, object):
             return
 
         
+    def do_port_clear_counters(self, arg):
+        "Clear counters on ports."
+
+        try:
+            self.port_clear_counters()
+
+        except Exception as e:
+            print("Error: {}".format(traceback.format_exc()))
+            print("Usage:\n   {}".format(self.do_port_clear_counters.__doc__))
+            return
+
+        
     #
     # commands to manipulate switch address
     #
@@ -409,7 +448,7 @@ class Job(Cmd, object):
 
         
     def do_worker_add_roce(self, arg):
-        'Add a RoCEv2 SwitchML worker. Usage: worker_add_roce <worker rank> <total number of workers> <MAC address> <IP address> <Rkey> <list of QPN and PSNs>'
+        'Add a RoCEv2 SwitchML worker. Usage: worker_add_roce <worker rank> <total number of workers> <MAC address> <IP address> <Rkey> <Message size> <list of QPN and PSNs>'
         try:
             result = arg.split()
             
@@ -418,12 +457,13 @@ class Job(Cmd, object):
             mac = result[2]
             ip = result[3]
             rkey = int(result[4], 0)
+            message_size = int(result[4], 0)
 
             # read rest of arg list, constructing tuples of alternating arguments
-            qpns_and_psns = [(int(qpn, 0), int(psn, 0)) for qpn, psn in zip(result[5::2], result[6::2])]
+            qpns_and_psns = [(int(qpn, 0), int(psn, 0)) for qpn, psn in zip(result[6::2], result[7::2])]
 
             # add worker
-            self.worker_add_roce(rank, count, mac, ip, rkey, qpns_and_psns)
+            self.worker_add_roce(rank, count, mac, ip, rkey, message_size, qpns_and_psns)
 
         except Exception as e:
             print("Error: {}".format(traceback.format_exc()))
@@ -492,6 +532,9 @@ class Job(Cmd, object):
     def port_clear_all(self):
         self.ports.delete_all_ports()
         self.pre.worker_clear_all(self.all_ports_mgid)
+
+    def port_clear_counters(self):
+        self.ports.clear_counters()
 
     def port_load_file(self, ports_file):
         with open(ports_file) as f:
@@ -568,7 +611,7 @@ class Job(Cmd, object):
     # worker_qpns_and_psns is a list of qpn, psn tuples
     def worker_add_roce(self,
                         worker_rank, worker_count,
-                        worker_mac, worker_ip, worker_rkey,
+                        worker_mac, worker_ip, worker_rkey, worker_message_size,
                         worker_qpns_and_psns):
 
         if worker_count > 32:
@@ -607,7 +650,6 @@ class Job(Cmd, object):
         self.roce_sender.add_write_worker(worker_rid, worker_mac, worker_ip, worker_rkey,
                                           worker_qpns_and_psns)
 
-        
     
     def worker_del(self):
         print("Unimplemented.")
@@ -623,6 +665,8 @@ class Job(Cmd, object):
     def worker_clear_all(self):
         self.get_worker_bitmap.clear()
         self.roce_receiver.clear()
+        self.clear_registers()
+        self.clear_counters()
         self.pre.worker_clear_all(self.switchml_workers_mgid)
         self.set_dst_addr.clear_udp_entries()
         self.roce_sender.clear_workers()
@@ -769,7 +813,8 @@ class Job(Cmd, object):
         self.counters_to_clear.append(self.set_dst_addr)
         self.roce_sender = RoCESender(self.gc, self.bfrt_info,
                                       self.switch_mac, self.switch_ip,
-                                      message_length = 256)#self.message_length)
+                                      message_length = 1024,
+                                      packet_length = 256)
         self.tables_to_clear.append(self.roce_sender)
         self.counters_to_clear.append(self.roce_sender)
         for worker in self.workers:
@@ -907,7 +952,10 @@ class Job(Cmd, object):
         self.registers_to_clear.append(self.significands_28_29_30_31)
 
         # add workers to multicast groups.
-        self.pre = PRE(self.gc, self.bfrt_info, self.ports, self.switchml_workers_mgid, self.all_ports_mgid)
+        self.cpu_port = 0
+        self.pre = PRE(self.gc, self.bfrt_info, self.ports,
+                       self.switchml_workers_mgid, self.all_ports_mgid,
+                       self.cpu_port)
 
         # set up counters in next step table
         self.next_step = NextStep(self.gc, self.bfrt_info)
@@ -923,7 +971,8 @@ class Job(Cmd, object):
 
         self.roce_sender = RoCESender(self.gc, self.bfrt_info,
                                       self.switch_mac, self.switch_ip,
-                                      message_length = 256)#self.message_length)
+                                      message_length = 1024,
+                                      packet_length = 256)
         self.tables_to_clear.append(self.roce_sender)
         self.counters_to_clear.append(self.roce_sender)
 
@@ -941,5 +990,9 @@ class Job(Cmd, object):
         elif ports_file:
             self.port_load_file(ports_file)
 
+        if self.switch_mac and self.switch_ip:
+            self.arp_and_icmp.add_switch_mac_and_ip(self.switch_mac, self.switch_ip)
+
+            
         # start listening for RPCs
         self.grpc_server.serve(self)

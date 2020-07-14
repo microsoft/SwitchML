@@ -118,6 +118,9 @@ enum bit<3> packet_type_t {
 //@pa_container_size("ingress", "ig_md.switchml_md.dst_port_qpn", 16, 16)
 //@pa_container_size("egress", "eg_md.switchml_md.dst_port_qpn", 16, 16)
 
+//@pa_container_size("egress", "eg_md.switchml_md.pool_index", 32)
+//@pa_container_size("ingress", "ig_md.switchml_md.pool_index", 16)
+
 @flexible
 header switchml_md_h {
     MulticastGroupId_t mgid;
@@ -148,18 +151,21 @@ header switchml_md_h {
     num_workers_t first_last_flag;
 
 
-    // random number used to simulated packet drops
-    drop_random_value_t drop_random_value;
+    // // random number used to simulated packet drops
+    //drop_random_value_t drop_random_value;
 
     // 0 if packet is first packet; non-zero if retransmission
     worker_bitmap_t map_result;
 
     // bitmaps before and after the current worker is ORed in
     worker_bitmap_t worker_bitmap_before;
-    worker_bitmap_t worker_bitmap_after;
+    //worker_bitmap_t worker_bitmap_after;
 
     // tsi used to fill in switchml header (or RoCE address later)
     bit<32> tsi;
+    bit<12> unused;
+
+    bit<64> rdma_addr;
 }
 //switchml_md_h switchml_md_initializer = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 

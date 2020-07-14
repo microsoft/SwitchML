@@ -14,7 +14,7 @@ from Worker import Worker
 
 class PRE(Table):
 
-    def __init__(self, client, bfrt_info, ports, switchml_mgid, all_mgid):
+    def __init__(self, client, bfrt_info, ports, switchml_mgid, all_mgid, cpu_port):
         # set up base class
         super(PRE, self).__init__(client, bfrt_info)
 
@@ -23,6 +23,7 @@ class PRE(Table):
 
         self.switchml_mgid = switchml_mgid
         self.all_mgid = all_mgid
+        self.cpu_port = cpu_port
         
         self.logger = logging.getLogger('PRE')
         self.logger.info("Setting up multicast tables...")
@@ -82,6 +83,16 @@ class PRE(Table):
         #             [self.port_table.make_data([
         #                 client.DataTuple('$COPY_TO_CPU_PORT_ENABLE', bool_val=True)])]
         #         )
+
+        # set CPU port
+        print("Setting port", self.cpu_port, "as CopyToCPU port")
+        self.port_table.entry_add(
+            self.target,
+            [self.port_table.make_key([
+                gc.KeyTuple('$DEV_PORT', self.cpu_port)])],
+            [self.port_table.make_data([
+                gc.DataTuple('$COPY_TO_CPU_PORT_ENABLE', bool_val=True)])]
+        )
 
             
         

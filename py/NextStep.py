@@ -86,10 +86,10 @@ class NextStep(Table):
                 value = v['$COUNTER_SPEC_PKTS']
                 values[counter_id][pool_index] = value
 
-        print("                   Recirculated      Broadcast  Retransmitted        Dropped")
+        print("                         Recirculated      Broadcast  Retransmitted        Dropped")
         for index in range(start, start+count):
-            print("Pool index {:5}: {:13}  {:13}  {:13}  {:13}".format(index,
-                                                                       values[0][index],
-                                                                       values[1][index],
-                                                                       values[2][index],
-                                                                       values[3][index]))
+            print("Pool index {:5} set {}: {:13}  {:13}  {:13}  {:13}".format(index >> 1, index & 1,
+                                                                              values[0][index],
+                                                                              values[1][index],
+                                                                              values[2][index],
+                                                                              values[3][index]))

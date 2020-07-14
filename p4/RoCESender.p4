@@ -206,13 +206,16 @@ control RoCESender(
     action set_immediate() {
         hdr.ib_immediate.setValid();
         // TODO: put something here
+        //hdr.ib_immediate.immediate = 17w0 ++ eg_md.switchml_md.pool_index;
+        hdr.ib_immediate.immediate = 17w0 ++ eg_md.switchml_md.pool_index;
     }
 
     action set_rdma() {
         hdr.ib_reth.setValid();
         hdr.ib_reth.r_key = rdma_rkey;
         hdr.ib_reth.len = 1w0 ++ rdma_message_length;
-        hdr.ib_reth.addr = rdma_base_addr + 0; // TODO: ???
+        //hdr.ib_reth.addr = rdma_base_addr + 0; //eg_md.switchml_md.rdma_addr; // TODO: ???
+        hdr.ib_reth.addr = eg_md.switchml_md.rdma_addr; // TODO: ???
     }
     
     action set_opcode(ib_opcode_t opcode) {
@@ -276,6 +279,9 @@ control RoCESender(
         
         // fill in opcode based on pool index
         set_opcodes.apply();
+
+        //hdr.ib_immediate.immediate = 17w0 ++ eg_md.switchml_md.pool_index;
+
     }
     
 }
