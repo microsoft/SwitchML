@@ -9,10 +9,27 @@
 
 /*
 
+new design:
+
+register: 1 entry per QP for PSN and pool index
+
+register: 64-bit address
+   cache on first message
+   read on rest
+
+(register: message length? or store in PSN or address?)
+
+on first or only: 
+   write to 
+
+on last or only:
+   read from register
+   if PSN matches, generate multicast 
 
 */
 
-typedef pool_index_t index_t;
+//typedef pool_index_t index_t;
+typedef bit<17> index_t;
 
 // // 256-byte slots
 // #define INDEX (hdr.ib_bth.dst_qp[14:0] ++ hdr.ib_bth.dst_qp[15:15])
@@ -25,8 +42,17 @@ typedef pool_index_t index_t;
 //#define INDEX (hdr.ib_bth.dst_qp[11:0] ++ 2w0 ++ hdr.ib_reth.r_key[0:0])
 
 //#define INDEX (hdr.ib_bth.dst_qp[13:0] ++ hdr.ib_reth.r_key[0:0])
-#define INDEX (hdr.ib_bth.dst_qp[14:0])
-//#define INDEX (hdr.ib_reth.r_key[14:0])
+
+// broken queue pair indexing; everyone uses same slot number
+//#define INDEX (hdr.ib_bth.dst_qp[14:0])
+
+// // queue pair indexing with worker ID, max 17 workers (5 bits worker id, 12 bits QPN)
+// #define QP_INDEX (hdr.ib_bth.dst_qp[20:16] ++ hdr.ib_bth.dst_qp[11:0])
+
+// queue pair indexing with worker ID, max 4 workers (2 bits worker id, 12 bits QPN)
+#define QP_INDEX (3w0 ++ hdr.ib_bth.dst_qp[17:16] ++ hdr.ib_bth.dst_qp[11:0])
+
+
 
 //#define POOL_INDEX (hdr.ib_bth.dst_qp[23:0] ++ 2w0 ++ hdr.ib_reth.r_key[0:0])
 //#define POOL_INDEX (hdr.ib_bth.dst_qp)
@@ -56,10 +82,10 @@ control RoCEReceiver(
     
     DirectCounter<counter_t>(CounterType_t.PACKETS_AND_BYTES) rdma_receive_counter;
 
-    Register<receiver_data_t, index_t>(num_slots) receiver_data_register;
-    Counter<counter_t, index_t>(num_slots, CounterType_t.PACKETS) rdma_packet_counter;
-    Counter<counter_t, index_t>(num_slots, CounterType_t.PACKETS) rdma_message_counter;
-    Counter<counter_t, index_t>(num_slots, CounterType_t.PACKETS) rdma_sequence_violation_counter;
+    Register<receiver_data_t, index_t>(max_num_queue_pairs) receiver_data_register;
+    Counter<counter_t, index_t>(max_num_queue_pairs, CounterType_t.PACKETS) rdma_packet_counter;
+    Counter<counter_t, index_t>(max_num_queue_pairs, CounterType_t.PACKETS) rdma_message_counter;
+    Counter<counter_t, index_t>(max_num_queue_pairs, CounterType_t.PACKETS) rdma_sequence_violation_counter;
 
     bool message_possibly_received;
     bool sequence_violation;
@@ -122,7 +148,8 @@ control RoCEReceiver(
         ig_md.switchml_md.dst_port = hdr.udp.src_port;
 
 
-        ig_md.switchml_md.rdma_addr = hdr.ib_reth.addr;
+        ig_md.switchml_rdma_md.setValid();
+        ig_md.switchml_rdma_md.rdma_addr = hdr.ib_reth.addr;
         
         // TODO: copy immediate to exponents
         // TODO: copy address
@@ -181,7 +208,7 @@ control RoCEReceiver(
         set_bitmap(mgid, worker_type, worker_id,  num_workers, worker_bitmap);
 
         // process sequence number
-        return_t result = receiver_increment_action.execute(INDEX);
+        return_t result = receiver_increment_action.execute(QP_INDEX);
         
         // if sign bit of result is set, there was a sequence violation, so ignore this packet.
         //ig_dprsr_md.drop_ctl[0:0] = ig_dprsr_md.drop_ctl[0:0] | result[31:31];
@@ -205,7 +232,7 @@ control RoCEReceiver(
         set_bitmap(mgid, worker_type, worker_id,  num_workers, worker_bitmap);
 
         // process sequence number
-        return_t result = receiver_increment_action.execute(INDEX);
+        return_t result = receiver_increment_action.execute(QP_INDEX);
         //received_message = result;
 
         // if sign bit of result is set, there was a sequence violation, so ignore this packet.
@@ -230,7 +257,7 @@ control RoCEReceiver(
         set_bitmap(mgid, worker_type, worker_id,  num_workers, worker_bitmap);
 
         // reset sequence number
-        return_t result = receiver_reset_action.execute(INDEX);
+        return_t result = receiver_reset_action.execute(QP_INDEX);
 
         assign_pool_index(result);
         
@@ -253,7 +280,7 @@ control RoCEReceiver(
         set_bitmap(mgid, worker_type, worker_id,  num_workers, worker_bitmap);
 
         // reset sequence number
-        return_t result = receiver_reset_action.execute(INDEX);
+        return_t result = receiver_reset_action.execute(QP_INDEX);
 
         assign_pool_index(result);
         
@@ -263,6 +290,15 @@ control RoCEReceiver(
         // A message has arrived, since this is an only packet.
         message_possibly_received = true;
         sequence_violation = (bool) result[31:31];
+        
+        //ig_md.switchml_md.packet_type = ((bool) result[31:31]) ? packet_type_t.IGNORE : ig_md.switchml_md.packet_type;
+    }
+
+    // packet is not a SwitchML packet; just foward
+    action forward() {
+        // forward this packet
+        ig_md.switchml_md.packet_type = packet_type_t.IGNORE;
+        rdma_receive_counter.count();
     }
 
 
@@ -306,12 +342,17 @@ control RoCEReceiver(
             first_packet;
             middle_packet;
             last_packet;
+            @defaultonly forward;
         }
+        const default_action = forward;
         size = max_num_workers * 6; // each worker needs 6 entries: first, middle, last, only, last immediate, and only immediate
         counters = rdma_receive_counter;
     }
 
     apply {
+        // sequence_violation = false;
+        // message_possibly_received = false;
+        
         if (receive_roce.apply().hit) {
             // // use the SwitchML set bit in the MSB of the 16-bit pool index to switch between sets
             // //ig_md.pool_set = hdr.ib_bth.dst_qp[15:15];
@@ -320,21 +361,47 @@ control RoCEReceiver(
                 // } else {
                 //     ig_md.pool_set = 0;
                 // }
-            rdma_packet_counter.count(hdr.ib_bth.dst_qp[14:0]);
+            rdma_packet_counter.count(QP_INDEX);
             
             if (sequence_violation) {
                 // count violation
-                rdma_sequence_violation_counter.count(hdr.ib_bth.dst_qp[14:0]);
+                rdma_sequence_violation_counter.count(QP_INDEX);
                 
-                // drop bit is already set; copy to CPU too
-                ig_tm_md.copy_to_cpu = 1;
+                // drop bit is already set; copy/mirror to CPU too
+                //ig_tm_md.copy_to_cpu = 1;
+                //ig_dprsr_md.digest_type
+                ig_md.mirror_session = 1;
+                ig_dprsr_md.mirror_type = MIRROR_TYPE_I2E;
+                //hdr.ethernet.setValid(); // re-enable ethernet header for mirror header
+                ig_md.mirror_ether_type = 0x88b6; // local experimental ethertype
+
+
+                // if (sequence_violation) {
+                    //ig_md.switchml_md.packet_type = packet_type_t.IGNORE;
+                    //     ig_tm_md.ucast_egress_port = 4;
+                    //     ig_tm_md.bypass_egress = 1w1;
+                    //     ig_dprsr_md.drop_ctl[0:0] = 0;
+                    
+                    // }    
                 
             } else if (message_possibly_received) {
                 // count correctly received message
-                rdma_message_counter.count(hdr.ib_bth.dst_qp[14:0]);
+                rdma_message_counter.count(QP_INDEX);
             }
         }
 
+
+        // if (ig_dprsr_md.drop_ctl[0:0] == 1) {
+        //     if (sequence_violation) {
+        //         ig_md.switchml_md.packet_type = packet_type_t.IGNORE;
+        //         ig_tm_md.ucast_egress_port = 4;
+        //         ig_tm_md.bypass_egress = 1w1;
+        //         ig_dprsr_md.drop_ctl[0:0] = 0;
+        //     }
+        // }    
+                
+
+        
         // //pool_index_result = result;
         // ig_md.switchml_md.pool_index = pool_index_result[14:0];
     }

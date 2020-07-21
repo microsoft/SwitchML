@@ -34,6 +34,7 @@ from ARPandICMP import ARPandICMP
 from RoCESender import RoCESender
 from RoCEReceiver import RoCEReceiver
 from NextStep import NextStep
+from Mirror import Mirror
 #from MACLearning import MACLearning
 
 # import RPC server
@@ -952,10 +953,12 @@ class Job(Cmd, object):
         self.registers_to_clear.append(self.significands_28_29_30_31)
 
         # add workers to multicast groups.
-        self.cpu_port = 0
+        self.cpu_port = 4 # dev port for CPU mirroring
         self.pre = PRE(self.gc, self.bfrt_info, self.ports,
                        self.switchml_workers_mgid, self.all_ports_mgid,
                        self.cpu_port)
+
+        self.mirror = Mirror(self.gc, self.bfrt_info, self.cpu_port)
 
         # set up counters in next step table
         self.next_step = NextStep(self.gc, self.bfrt_info)

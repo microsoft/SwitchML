@@ -26,7 +26,7 @@ control NextStep(
 
     action drop() {
         // mark for drop
-        ig_dprsr_md.drop_ctl = ig_dprsr_md.drop_ctl | 0x1;
+        ig_dprsr_md.drop_ctl[0:0] = 1;
         //ig_md.switchml_md.packet_type = packet_type_t.IGNORE;
 
         //next_step_counter.count();
@@ -40,7 +40,7 @@ control NextStep(
         // recirculate for harvest
         ig_tm_md.ucast_egress_port = ig_md.switchml_md.ingress_port[8:7] ++ 7w68; // TODO: use both recirc ports
         ig_tm_md.bypass_egress = 1w1;
-        ig_dprsr_md.drop_ctl = 0;
+        ig_dprsr_md.drop_ctl[0:0] = 0;
         ig_md.switchml_md.packet_type = packet_type_t.HARVEST;
 
         //next_step_counter.count();
@@ -57,7 +57,7 @@ control NextStep(
         ig_tm_md.level1_exclusion_id = null_level1_exclusion_id; // don't exclude any nodes
         ig_md.switchml_md.packet_type = packet_type_t.BROADCAST;
         ig_tm_md.bypass_egress = 1w0;
-        ig_dprsr_md.drop_ctl = 0;
+        ig_dprsr_md.drop_ctl[0:0] = 0;
 
         //next_step_counter.count();
         //broadcast_counter.count(ig_md.switchml_md.pool_index);
@@ -91,7 +91,7 @@ control NextStep(
         ig_tm_md.ucast_egress_port = ig_md.switchml_md.ingress_port;
         ig_md.switchml_md.packet_type = packet_type_t.RETRANSMIT;
         ig_tm_md.bypass_egress = 1w0;
-        ig_dprsr_md.drop_ctl = 0;
+        ig_dprsr_md.drop_ctl[0:0] = 0;
 
         //next_step_counter.count();
         //retransmit_counter.count(ig_md.switchml_md.pool_index);

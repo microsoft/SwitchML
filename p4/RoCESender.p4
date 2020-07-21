@@ -215,7 +215,7 @@ control RoCESender(
         hdr.ib_reth.r_key = rdma_rkey;
         hdr.ib_reth.len = 1w0 ++ rdma_message_length;
         //hdr.ib_reth.addr = rdma_base_addr + 0; //eg_md.switchml_md.rdma_addr; // TODO: ???
-        hdr.ib_reth.addr = eg_md.switchml_md.rdma_addr; // TODO: ???
+        hdr.ib_reth.addr = eg_md.switchml_rdma_md.rdma_addr; // TODO: ???
     }
     
     action set_opcode(ib_opcode_t opcode) {

@@ -224,6 +224,25 @@ bind_layers(SwitchMLData64, IB_ICRC)
 
 
 
+
+
+# SwitchML debug tunnel protocol
+
+class SwitchMLDebug(Packet):
+    name = "SwitchMLDebug"
+    fields_desc = [
+        XShortField("worker_id", 0),
+        XShortField("pool_index", 0),
+        XByteField("first_last_flag", 0)
+    ]
+
+bind_layers(Ether, SwitchMLDebug, type=0x88b6)
+bind_layers(SwitchMLDebug, Ether)
+
+
+
+
+
 def make_switchml_rdma(src_mac, src_ip, dst_mac, dst_ip, src_port, dst_qp, opcode="UC_SEND_ONLY", psn=0, icrc=None, value_multiplier=1):
     p = (Ether(dst=dst_mac, src=src_mac) /
          IP(dst=dst_ip, src=src_ip, tos=2, flags="DF") /
@@ -247,18 +266,32 @@ if __name__ == '__main__':
     #p = make_switchml_udp(src_mac="b8:83:03:73:a6:a0", src_ip="198.19.200.49", dst_mac="06:00:00:00:00:01", dst_ip="198.19.200.200", src_port=1234, dst_port=0xbee0, pool_index=0)
     #pprint(p)
 
-    for i, pkt in enumerate(PcapReader('/u/jacob/c50a.pcap')):
-        #print("Packet {}:".format(i))
-        #pkt.show()
+    if len(sys.argv) <= 1:
+        print("Usage: {} <PCAP fiale>".format(sys.argv[0]))
+        sys.exit(1)
+    else:
+        print("{} reading packets from {}...".format(sys.argv[0], sys.argv[1]))
 
-        dst_ip = pkt[IP].dst
-        src_port = pkt[UDP].sport
-        opcode = roce_opcode_n2s[pkt[IB_BTH].opcode]
-        qp     = pkt[IB_BTH].dst_qp
-        psn    = pkt[IB_BTH].psn
-        if IB_RETH in pkt:
-            addr   = pkt[IB_RETH].addr
-        else:
-            addr   = 0
+        conf.color_theme = BrightTheme()
+
+        for i, pkt in enumerate(PcapReader(sys.argv[1])):
+            print("Packet {}:".format(i))
+            pkt.show()
+
+        sys.exit(0)
+        
+        for i, pkt in enumerate(PcapReader('/u/jacob/c50a.pcap')):
+            #print("Packet {}:".format(i))
+            #pkt.show()
+
+            dst_ip = pkt[IP].dst
+            src_port = pkt[UDP].sport
+            opcode = roce_opcode_n2s[pkt[IB_BTH].opcode]
+            qp     = pkt[IB_BTH].dst_qp
+            psn    = pkt[IB_BTH].psn
+            if IB_RETH in pkt:
+                addr   = pkt[IB_RETH].addr
+            else:
+                addr   = 0
             
-        print("{:>2}: {:>15} {:>5} {:>30} 0x{:x} 0x{:x} 0x{:x}".format(i, dst_ip, src_port, opcode, qp, psn, addr))
+            print("{:>2}: {:>15} {:>5} {:>30} 0x{:x} 0x{:x} 0x{:x}".format(i, dst_ip, src_port, opcode, qp, psn, addr))

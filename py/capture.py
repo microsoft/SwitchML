@@ -23,14 +23,16 @@ if __name__ == '__main__':
     bind_layers(SwitchML, SwitchMLData64)
     bind_layers(SwitchMLData64, SwitchMLExponent)
 
-    conf.color_theme = BrightTheme()
-
     argparser = argparse.ArgumentParser(description="SwitchML packet capture/parser")
+    argparser.add_argument('--force-color', action='store_true', help="If true, output in color even if output is not a TTY")
     arggroup = argparser.add_mutually_exclusive_group(required=True)
     arggroup.add_argument('--pcap',      type=str, default=None, help='Path to pcap file to parse instead of capturing')
     arggroup.add_argument('--interface', type=str, default=None, help='Interface to capture from')
     args = argparser.parse_args()
 
+    if sys.stdout.isatty() or args.force_color:
+        conf.color_theme = BrightTheme()
+        
     def output_packet(p):
         print("======================================================================")
         p.show()

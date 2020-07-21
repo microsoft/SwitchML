@@ -78,8 +78,11 @@ control SwitchMLIngress(
             } else {
                 get_worker_bitmap.apply(hdr, ig_md, ig_intr_md, ig_prsr_md, ig_dprsr_md, ig_tm_md);
             }
+        }
 
-            if (ig_dprsr_md.drop_ctl[0:0] == 1w0) {
+        // if it's still a SwitchML packet, continue processing.
+        if (ig_dprsr_md.drop_ctl[0:0] == 1w0) {
+            if (ig_md.switchml_md.packet_type == packet_type_t.CONSUME) {
                 // // support dropping packets with some probability by commputing random number here
                 // drop_rng.apply(ig_md.switchml_md.drop_random_value);
                 
@@ -165,6 +168,16 @@ control SwitchMLEgress(
 
             // // simulate packet drops
             // egress_drop_sim.apply(eg_md.switchml_md, eg_intr_dprs_md);
+        } else if (eg_md.switchml_md.packet_type == packet_type_t.MIRROR) {
+            hdr.switchml_debug.setValid();
+            hdr.switchml_debug.dst_addr = 0;
+            hdr.switchml_debug.src_addr = 0;
+            hdr.switchml_debug.ether_type = 0x88b6;
+
+            hdr.switchml_debug.worker_id = eg_md.switchml_md.worker_id;
+            hdr.switchml_debug.pool_index = eg_md.switchml_md.pool_index;
+            hdr.switchml_debug.padding = 0;
+            hdr.switchml_debug.first_last_flag = eg_md.switchml_md.first_last_flag;
         }
     }
 }

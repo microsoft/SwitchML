@@ -39,7 +39,7 @@ control UpdateAndCheckWorkerBitmap(
 
     action drop() {
         // mark for drop; mark as IGNORE so we don't further process this packet
-        ig_dprsr_md.drop_ctl = ig_dprsr_md.drop_ctl | 0x1;
+        ig_dprsr_md.drop_ctl[0:0] = 1;
         ig_md.switchml_md.packet_type = packet_type_t.IGNORE;
     }
 
@@ -47,7 +47,7 @@ control UpdateAndCheckWorkerBitmap(
         // set map result to nonzero if this packet is a retransmission
         ig_md.switchml_md.map_result = ig_md.switchml_md.worker_bitmap_before & ig_md.worker_bitmap;
         // compute same updated bitmap that was stored in the register
-        ig_md.switchml_md.worker_bitmap_after = ig_md.switchml_md.worker_bitmap_before | ig_md.worker_bitmap;
+        //ig_md.switchml_md.worker_bitmap_after = ig_md.switchml_md.worker_bitmap_before | ig_md.worker_bitmap;
         ig_md.switchml_md.ingress_port = ig_intr_md.ingress_port;
     }    
 
@@ -63,7 +63,8 @@ control UpdateAndCheckWorkerBitmap(
 
     table update_and_check_worker_bitmap {
         key = {
-            ig_md.pool_set : ternary;
+            //ig_md.pool_set : ternary;
+            ig_md.switchml_md.pool_index : ternary;
             ig_md.switchml_md.packet_type : ternary;  // only act on packets of type CONSUME
             ig_md.pool_remaining : ternary; // if sign bit is set, pool index was too large, so drop
             // TODO: disable for now
@@ -78,10 +79,10 @@ control UpdateAndCheckWorkerBitmap(
         size = 3;
         const entries = {
             // direct updates to the correct set
-            (1w0, packet_type_t.CONSUME, 0x0000 &&& 0x8000) : update_worker_bitmap_set0_action();
-            (1w1, packet_type_t.CONSUME, 0x0000 &&& 0x8000) : update_worker_bitmap_set1_action();
+            (15w0 &&& 15w1, packet_type_t.CONSUME, 0x0000 &&& 0x8000) : update_worker_bitmap_set0_action();
+            (15w1 &&& 15w1, packet_type_t.CONSUME, 0x0000 &&& 0x8000) : update_worker_bitmap_set1_action();
             // drop packets that have indices that extend beyond what's allowed
-            (  _, packet_type_t.CONSUME, 0x8000 &&& 0x8000) : drop();
+            (            _, packet_type_t.CONSUME, 0x8000 &&& 0x8000) : drop();
         }
         const default_action = NoAction;
     }

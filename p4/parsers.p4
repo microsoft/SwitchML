@@ -59,6 +59,7 @@ parser SwitchMLIngressParser(
     state parse_recirculate {
         // parse switchml metadata and mark as recirculated
         pkt.extract(ig_md.switchml_md);
+        pkt.extract(ig_md.switchml_rdma_md);
         //ig_md.switchml_md.packet_type = packet_type_t.HARVEST; // already set before recirculation
         counter.set(8w1);  // remember we don't need to parse 
         hdr.d1.setValid(); // this will be filled in by the pipeline
@@ -176,6 +177,7 @@ parser SwitchMLIngressParser(
         // at this point we know this is a SwitchML packet that wasn't recirculated, so mark it for consumption.
         ig_md.switchml_md.setValid();
         ig_md.switchml_md.packet_type = packet_type_t.CONSUME;
+        ig_md.switchml_rdma_md.setValid();
         transition accept;
     }
     
@@ -212,6 +214,7 @@ parser SwitchMLIngressParser(
         // at this point we know this is a SwitchML packet that wasn't recirculated, so mark it for consumption.
         ig_md.switchml_md.setValid();
         ig_md.switchml_md.packet_type = packet_type_t.CONSUME;
+        ig_md.switchml_rdma_md.setValid();
         transition accept;
     }
 
@@ -219,6 +222,7 @@ parser SwitchMLIngressParser(
     state accept_non_switchml {
         ig_md.switchml_md.setValid();
         ig_md.switchml_md.packet_type = packet_type_t.IGNORE; // assume non-SwitchML packet
+        ig_md.switchml_rdma_md.setValid();
         transition accept;
     }
     
@@ -231,6 +235,7 @@ control SwitchMLIngressDeparser(
     in ingress_intrinsic_metadata_for_deparser_t ig_dprsr_md) {
 
     Checksum() ipv4_checksum;
+    Mirror() mirror;
 
     apply {
         if (ig_md.update_ipv4_checksum) {
@@ -250,7 +255,42 @@ control SwitchMLIngressDeparser(
         // TODO: skip UDP checksum for now. Fix if needed and cost reasonable.
         //hdr.udp.checksum = 0; 
 
+        if (ig_dprsr_md.mirror_type == MIRROR_TYPE_I2E) {
+            // mirror.emit<ethernet_h>(ig_md.mirror_session,
+            //     {hdr.ethernet.src_addr, hdr.ethernet.dst_addr, hdr.ethernet.ether_type});
+            // mirror.emit<switchml_debug_h>(ig_md.mirror_session, {
+            //         ig_md.switch_mac,
+            //         ig_md.switch_mac,
+            //         ig_md.mirror_ether_type,
+            //         ig_md.switchml_md.worker_id,
+            //         ig_md.switchml_md.pool_index,
+            //         ig_md.switchml_md.first_last_flag,
+            //         ig_md.num_workers,
+            //         0,
+            //         ig_md.switchml_md.packet_type
+            //     });
+
+            //mirror.emit<switchml_md_h>(ig_md.mirror_session, ig_md.switchml_md);
+
+            mirror.emit<switchml_md_h>(ig_md.mirror_session, {
+                    ig_md.switchml_md.mgid,
+                    ig_md.switchml_md.ingress_port,
+                    ig_md.switchml_md.worker_type,
+                    ig_md.switchml_md.worker_id,
+                    ig_md.switchml_md.src_port,
+                    ig_md.switchml_md.dst_port,
+                    //ig_md.switchml_md.packet_type,
+                    packet_type_t.MIRROR,
+                    ig_md.switchml_md.pool_index,
+                    ig_md.switchml_md.first_last_flag,
+                    ig_md.switchml_md.map_result,
+                    ig_md.switchml_md.worker_bitmap_before,
+                    ig_md.switchml_md.tsi,
+                    ig_md.switchml_md.unused});
+        }
+        
         pkt.emit(ig_md.switchml_md);
+        pkt.emit(ig_md.switchml_rdma_md);
         pkt.emit(hdr);
     }
 }
@@ -280,6 +320,15 @@ parser SwitchMLEgressParser(
         pkt.extract(eg_md.switchml_md);
         // now parse the rest of the packet
         //transition parse_ethernet;
+        transition select(eg_md.switchml_md.packet_type) {
+            packet_type_t.MIRROR : accept;
+            default              : parse_switchml_rdma_md;
+        }
+        //transition accept;
+    }
+
+    state parse_switchml_rdma_md {
+        pkt.extract(eg_md.switchml_rdma_md); // TODO: only set and parse when needed
         transition accept;
     }
 

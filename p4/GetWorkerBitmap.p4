@@ -25,7 +25,7 @@ control GetWorkerBitmap(
     // packet was received with errors; set drop bit in deparser metadata
     action drop() {
         // ignore this packet and drop when it leaves pipeline
-        ig_dprsr_md.drop_ctl = ig_dprsr_md.drop_ctl | 0x1;
+        ig_dprsr_md.drop_ctl[0:0] = 1;
         ig_md.switchml_md.packet_type = packet_type_t.IGNORE;
         receive_counter.count();
     }
@@ -119,8 +119,8 @@ control GetWorkerBitmap(
         
         actions = {
             drop;
-            forward;
             set_bitmap;
+            @defaultonly forward;
         }
         const default_action = forward;
         

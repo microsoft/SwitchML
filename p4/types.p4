@@ -7,6 +7,15 @@
 #ifndef _TYPES_
 #define _TYPES_
 
+// Mirror types
+#if __TARGET_TOFINO__ == 1
+typedef bit<3> mirror_type_t;
+#else
+typedef bit<4> mirror_type_t;
+#endif
+const mirror_type_t MIRROR_TYPE_I2E = 1;
+const mirror_type_t MIRROR_TYPE_E2E = 2;
+
 // Ethernet-specific types
 typedef bit<48> mac_addr_t;
 typedef bit<16> ether_type_t;
@@ -106,11 +115,12 @@ typedef bit<16> drop_random_value_t;
 typedef bit<32> counter_t;
 
 enum bit<3> packet_type_t {
-    IGNORE     = 0x0,
+    MIRROR     = 0x0,
     CONSUME    = 0x1,
     HARVEST    = 0x2,
     BROADCAST  = 0x3,
-    RETRANSMIT = 0x4
+    RETRANSMIT = 0x4,
+    IGNORE     = 0x5
 }
 
 // SwitchML metadata header; bridged for recirculation (and not exposed outside the switch)
@@ -165,13 +175,42 @@ header switchml_md_h {
     bit<32> tsi;
     bit<12> unused;
 
-    bit<64> rdma_addr;
+    //bit<64> rdma_addr;
 }
 //switchml_md_h switchml_md_initializer = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
+header switchml_rdma_md_h {
+    bit<64> rdma_addr;
+}
+
+// header prepended to mirrored debug packets
+// must be 32 or fewer bytes 
+header switchml_debug_h {
+    // ethernet header
+    mac_addr_t dst_addr;    
+    mac_addr_t src_addr;
+    bit<16>    ether_type; // 14 bytes
+
+    
+    worker_id_t worker_id; // 2 bytes
+    bit<1> padding;
+    pool_index_t pool_index; // 2 bytes
+    
+    // 0 if first packet, 1 if last packet
+    num_workers_t first_last_flag; // 1 byte
+
+    //num_workers_t num_workers; // 1 byte (ingress only)
+
+    // // debug info
+    // bit<6> unused;
+    // packet_type_t packet_type; // 3 bits
+}
+
 // Metadata for ingress stage
+@flexible
 struct ingress_metadata_t {
     switchml_md_h switchml_md;
+    switchml_rdma_md_h switchml_rdma_md;
     
     // this bitmap has one bit set for the current packet's worker
     // communication between get_worker_bitmap and update_and_check_worker_bitmap; not used in harvest
@@ -185,16 +224,19 @@ struct ingress_metadata_t {
     // communication between get_worker_bitmap and count_workers; not used in harvest
     num_workers_t num_workers;
 
+    // check how many slots remain in this job's pool
+    worker_pool_index_t pool_remaining;
+
     // set if index is in set1
     // communication between get_worker_bitmap and update_and_check_worker_bitmap; not used in harvest
     bit<1> pool_set;
 
-    // check how many slots remain in this job's pool
-    worker_pool_index_t pool_remaining;
-
     // checksum stuff
     bool checksum_err_ipv4;
     bool update_ipv4_checksum;
+
+    MirrorId_t mirror_session;
+    bit<16> mirror_ether_type;
 
     // switch MAC and IP
     mac_addr_t switch_mac;
@@ -205,6 +247,7 @@ struct ingress_metadata_t {
 // Metadata for egress stage
 struct egress_metadata_t {
     switchml_md_h switchml_md;
+    switchml_rdma_md_h switchml_rdma_md;
     
     // checksum stuff
     bool checksum_err_ipv4;

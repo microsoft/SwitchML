@@ -21,9 +21,10 @@ control NonSwitchMLForward(
     action set_egress_port(bit<9> egress_port) {
         ig_tm_md.ucast_egress_port = egress_port;
         ig_tm_md.bypass_egress = 1w1;
-        ig_dprsr_md.drop_ctl = 0;
+        ig_dprsr_md.drop_ctl[0:0] = 0;
 
         ig_md.switchml_md.setInvalid();
+        ig_md.switchml_rdma_md.setInvalid();
     }
     
     action flood(MulticastGroupId_t flood_mgid) {
@@ -31,9 +32,10 @@ control NonSwitchMLForward(
         // we use 0x8000 + dev_port as the RID and XID for the non-SwitchML group
         ig_tm_md.level1_exclusion_id = 7w0b1000000 ++ ig_intr_md.ingress_port;
         ig_tm_md.bypass_egress = 1w1;
-        ig_dprsr_md.drop_ctl = 0;
+        ig_dprsr_md.drop_ctl[0:0] = 0;
 
         ig_md.switchml_md.setInvalid();
+        ig_md.switchml_rdma_md.setInvalid();
     }
     
     table forward {

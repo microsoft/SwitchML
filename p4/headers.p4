@@ -172,6 +172,10 @@ header data_h {
 
 // Full header stack
 struct header_t {
+    // used only for mirroring packets
+    switchml_debug_h switchml_debug;
+
+    // normal headers
     ethernet_h     ethernet;
     arp_h          arp;
     arp_ipv4_h     arp_ipv4;
