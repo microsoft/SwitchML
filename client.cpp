@@ -21,7 +21,7 @@
 
 DEFINE_int32(warmup,     0, "Number of warmup iterations to run before timing.");
 DEFINE_int32(iters,      1, "Number of timed iterations to run.");
-DEFINE_int64(length, 65536, "Length of buffer to reduce in 4-byte int32.");
+DEFINE_int64(length, 65536, "Length of buffer to reduce in 4-byte int32s.");
 
 DEFINE_bool(wait, false, "Wait after start for debugger to attach.");
 

@@ -50,13 +50,13 @@ clean::
 
 HOSTS=prometheus50,prometheus50
 NUM_PROCS=2
-ARGS=
+ARGS=--length=64
 # $(COUNT) $(SIZE)
 run:: $(TARGET)
 	mpirun --host $(HOSTS) -np 2 --tag-output ./$< $(ARGS)
 
 runswitch:: $(TARGET)
-	mpirun --host $(HOSTS) -np 2 --tag-output ./$< --server 7170c $(ARGS)
+	bash ../counterdiff.sh mlx5_0 mpirun --host $(HOSTS) -np 2 --tag-output ./$< --server 7170c $(ARGS)
 
 
 debug:: $(TARGET)

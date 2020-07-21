@@ -14,6 +14,10 @@
 #include "Connections.hpp"
 #include "ClientThread.hpp"
 
+//#define DEBUG
+const bool DEBUG = false;
+//const bool DEBUG = true;
+
 ClientThread::ClientThread(Reducer * reducer, int64_t thread_id)
   : reducer(reducer)
   , thread_id(thread_id)
@@ -134,7 +138,7 @@ void ClientThread::operator()() {
 
 
 void ClientThread::post_initial_writes() {
-  std::cout << "Posting initial writes...." << std::endl;
+  if (DEBUG) std::cout << "Posting initial writes...." << std::endl;
 
   for (int i = 0; i < FLAGS_slots_per_core; ++i) {
     post_next_send_wr(i);
@@ -167,16 +171,16 @@ void ClientThread::post_next_send_wr(int i) {
     
     
     // post
-    std::cout << ">>>>>>>>>>>>>>>>              Thread " << thread_id
-              << " QP " << queue_pairs[i]->qp_num
-              << " posting send from " << (void*) send_sges[i].addr
-              << " len " << (void*) send_sges[i].length
-              << " slot " << (void*) (send_wrs[i].wr.rdma.rkey & 1)
-              << " rkey " << (void*) send_wrs[i].wr.rdma.rkey
-      //<< " qp " << send_wrs[i].
-              << std::endl;
+    if (DEBUG) std::cout << ">>>>>>>>>>>>>>>>              Thread " << thread_id
+                         << " QP " << queue_pairs[i]->qp_num
+                         << " posting send from " << (void*) send_sges[i].addr
+                         << " len " << (void*) send_sges[i].length
+                         << " slot " << (void*) (send_wrs[i].wr.rdma.rkey & 1)
+                         << " rkey " << (void*) send_wrs[i].wr.rdma.rkey
+                 //<< " qp " << send_wrs[i].
+                         << std::endl;
     reducer->connections.post_send(queue_pairs[i], &send_wrs[i]);
-    std::cout << "Posting send successful...." << std::endl;
+    if (DEBUG) std::cout << "Posting send successful...." << std::endl;
     
     // increment pointer and indices
     // increment by number of floats per message * number of slots this core is handling
@@ -186,10 +190,10 @@ void ClientThread::post_next_send_wr(int i) {
 }
 
 void ClientThread::handle_recv_completion(const ibv_wc & wc) {
-  std::cout << "Got RECV completion for " << (void*) wc.wr_id
-            << " for QP " << wc.qp_num
-            << " source " << wc.src_qp
-            << std::endl;
+  if (DEBUG) std::cout << "Got RECV completion for " << (void*) wc.wr_id
+                       << " for QP " << wc.qp_num
+                       << " source " << wc.src_qp
+                       << std::endl;
   
   // get QP index
   int qp_index = (wc.wr_id & 0xffff) % FLAGS_slots_per_core;
@@ -205,10 +209,10 @@ void ClientThread::handle_recv_completion(const ibv_wc & wc) {
 }
 
 void ClientThread::handle_write_completion(const ibv_wc & wc) {
-  std::cout << "Got WRITE completion for " << (void*) wc.wr_id
-            << " for QP " << wc.qp_num
-            << " source " << wc.src_qp
-            << std::endl;
+  if (DEBUG) std::cout << "Got WRITE completion for " << (void*) wc.wr_id
+                       << " for QP " << wc.qp_num
+                       << " source " << wc.src_qp
+                       << std::endl;
 
   // record that this send completed
   // TODO: generally, we can use the recv completion to indicate that
@@ -229,7 +233,7 @@ void ClientThread::run() {
       std::cerr << "Failed polling completion queue with status " << retval << std::endl;
       exit(1);
     } else if (retval > 0) {
-      std::cout << "Got " << retval << " completions." << std::endl;
+      if (DEBUG) std::cout << "Got " << retval << " completions." << std::endl;
       for (int i = 0; i < retval; ++i) {
         if (completions[i].status != IBV_WC_SUCCESS) {
           std::cerr << "Got eror completion for " << (void*) completions[i].wr_id
