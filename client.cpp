@@ -16,6 +16,7 @@
 
 #include <iostream>
 #include <chrono>
+#include <cmath>
 
 #include <arpa/inet.h>
 
@@ -51,7 +52,8 @@ int main(int argc, char * argv[]) {
   //
   
   // allocate buffer at same address on each node
-  const size_t buffer_length = 1L << 28; // # of floats
+  //const size_t buffer_length = 1L << 28; // # of floats
+  const size_t buffer_length = 1L << 30; // # of floats
   auto mr = e.allocate_at_address((void*) 0x0000100000000000,
                                   buffer_length);
 
@@ -60,7 +62,7 @@ int main(int argc, char * argv[]) {
 
   // initialize vector with something easy to identify
   int * buf = (int*) mr->addr;
-  for (size_t i = 0; i < buffer_length; ++i) {
+  for (int64_t i = 0; i < buffer_length; ++i) {
     if (0 == (i % (FLAGS_packet_size / sizeof(int)))) {
       buf[i] = 0x11223344;
     } else if (0 == (i % 2)) {
@@ -104,6 +106,35 @@ int main(int argc, char * argv[]) {
               << rate_in_Gbps << " Gbps\n";
   }
 
+  // verify
+  int multiplier = std::pow(size, FLAGS_warmup + FLAGS_iters);
+  for (int i = 0; i < FLAGS_length; ++i) {
+    // convert to host byte order
+    buf[i] = ntohl(buf[i]);
+
+    int expected = 0;
+
+    // figure out what we sent
+    if (0 == (i % (FLAGS_packet_size / sizeof(int)))) {
+      expected = 0x11223344;
+    } else if (0 == (i % 2)) {
+      expected = i / (FLAGS_packet_size / sizeof(int));
+    } else {
+      expected = -i / (FLAGS_packet_size / sizeof(int));
+    }
+
+    // use that to compute expected reduction value
+    expected *= multiplier;
+    
+    if (buf[i] != expected) {
+      std::cout << "Mismatch at index " << i
+                << ": expected " << expected << "/0x" << std::hex << expected << std::dec
+                << ", got " << buf[i] << "/0x" << std::hex << buf[i] << std::dec
+                << std::endl;
+    }
+  }
+
+  
   //
   // shutdown
   //
