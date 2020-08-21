@@ -10,10 +10,19 @@
 
 //#include "Endpoint.hpp"
 #include "Reducer.hpp"
+#include "PriorityQueue.hpp"
+
+#define TIMEOUT (220000000)
+
+// #ifdef TIMEOUT
+// #include "SearchablePriorityQueue.hpp"
+// //DECLARE_uint32(timeout);
+// #endif
 
 DECLARE_int32(cores);
 DECLARE_int32(slots_per_core);
 DECLARE_int32(message_size);
+
 
 class ClientThread {
 private:
@@ -29,6 +38,10 @@ private:
   std::vector<ibv_recv_wr> recv_wrs;
   const int32_t base_pool_index;
   
+#ifdef TIMEOUT
+  PriorityQueue timeouts;
+#endif
+  
   std::vector<int64_t> indices;
   std::vector<float *> pointers;
   
@@ -40,15 +53,21 @@ private:
   int64_t end_index;
 
   int64_t outstanding_operations;
+  int64_t retransmissions;
   
   void post_initial_writes();
-  void post_next_send_wr(int i);
-  void handle_recv_completion(const ibv_wc &);
-  void handle_write_completion(const ibv_wc &);
+  void post_next_send_wr(const int i);
+  void repost_send_wr(const int i);
+  void handle_recv_completion(const ibv_wc &, const uint64_t timestamp);
+  void handle_write_completion(const ibv_wc &, const uint64_t timestamp);
   void run();
   
   void compute_thread_pointers();
-  
+
+#ifdef TIMEOUT
+  void check_for_timeouts(const uint64_t timestamp);
+#endif
+
 public:
   ClientThread(Reducer * reducer, int64_t thread_id);
 

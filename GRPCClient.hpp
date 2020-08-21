@@ -10,7 +10,7 @@
 
 #include <iostream>
 
-#include <grpcpp/grpcpp.h>
+#include <grpc++/grpc++.h>
 
 #include "SwitchML.grpc.pb.h"
 

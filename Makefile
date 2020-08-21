@@ -9,12 +9,15 @@ TARGET=client
 OBJECTS=client.o Endpoint.o Connections.o Reducer.o ClientThread.o GRPCClient.o SwitchML.pb.o SwitchML.grpc.pb.o
 GENERATED=SwitchML.pb.h SwitchML.grpc.pb.h SwitchML.pb.cc SwitchML.grpc.pb.cc
 
+SERVER_TARGET=server
+SERVER_OBJECTS=server.o Endpoint.o Connections.o ServerThread.o GRPCClient.o SwitchML.pb.o SwitchML.grpc.pb.o
+
 PROTOS_PATH = ../protos
 vpath %.proto $(PROTOS_PATH)
 
 CPPFLAGS+=`pkg-config --cflags protobuf grpc`
-CXXFLAGS+=-std=c++14 -g -MMD
-LDFLAGS+=-L/usr/local/lib `pkg-config --libs protobuf grpc++` \
+CXXFLAGS+=-std=c++14 -g -MMD -O1
+LDFLAGS+= -L/usr/local/lib `pkg-config --libs protobuf grpc++` \
 	-pthread \
 	-Wl,--no-as-needed -lgrpc++_reflection -Wl,--as-needed \
 	-ldl \
@@ -27,6 +30,9 @@ GRPC_CPP_PLUGIN = grpc_cpp_plugin
 GRPC_CPP_PLUGIN_PATH ?= `which $(GRPC_CPP_PLUGIN)`
 
 $(TARGET): $(OBJECTS)
+	mpicxx $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
+
+$(SERVER_TARGET): $(SERVER_OBJECTS)
 	mpicxx $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
 %.o: %.cpp Makefile
@@ -48,15 +54,21 @@ clean::
 # run:: mpitest
 # 	mpirun --host prometheus42,prometheus50 -np 2 --tag-output ./$< $(COUNT) $(SIZE)
 
-HOSTS=prometheus50,prometheus50
+HOSTS=prometheus47,prometheus49
+#HOSTS=prometheus50,prometheus47
+#HOSTS=prometheus49,prometheus49
 NUM_PROCS=2
+
+#HOSTS=prometheus50,prometheus50,prometheus50,prometheus50
+#NUM_PROCS=1
+
 ARGS=--length=64
 # $(COUNT) $(SIZE)
 run:: $(TARGET)
 	mpirun --host $(HOSTS) -np 2 --tag-output ./$< $(ARGS)
 
 runswitch:: $(TARGET)
-	bash ../counterdiff.sh mlx5_0 mpirun --host $(HOSTS) -np 2 --tag-output ./$< --server 7170c $(ARGS)
+	bash ../counterdiff.sh mlx5_0 mpirun --host $(HOSTS) -np $(NUM_PROCS) --mca btl tcp,self  --map-by core --bind-to none --tag-output ./$< --server 7170c $(ARGS)
 
 
 debug:: $(TARGET)

@@ -11,12 +11,16 @@
 #include <algorithm>
 #include <sstream>
 
+#include <x86intrin.h>
+
 #include "Connections.hpp"
 #include "ClientThread.hpp"
 
 //#define DEBUG
-const bool DEBUG = false;
 //const bool DEBUG = true;
+const bool DEBUG = false;
+
+DEFINE_bool(connect_to_server, false, "By default, format packets for switch; if set, format for server for debugging.");
 
 ClientThread::ClientThread(Reducer * reducer, int64_t thread_id)
   : reducer(reducer)
@@ -28,6 +32,9 @@ ClientThread::ClientThread(Reducer * reducer, int64_t thread_id)
   , send_wrs(FLAGS_slots_per_core)
   , recv_wrs(FLAGS_slots_per_core * 2)
   , base_pool_index(thread_id * FLAGS_slots_per_core) // first slot this thread is responsible for
+#ifdef TIMEOUT
+  , timeouts(FLAGS_slots_per_core)
+#endif
   , indices(FLAGS_slots_per_core, 0)
   , pointers(FLAGS_slots_per_core, nullptr)
   , base_pointer(nullptr)
@@ -83,16 +90,24 @@ ClientThread::ClientThread(Reducer * reducer, int64_t thread_id)
 
     send_wrs[i].wr.rdma.remote_addr = 0; // will be filled in later
 
-    // write shifted pool index into lower 15 bits of rkey. LSB is
-    // slot flag. Set slot flag to 1 initially; will be flipped to 0
-    // before the first message is posted.
-    send_wrs[i].wr.rdma.rkey = (((FLAGS_slots_per_core * thread_id + i)     // base message-sized pool index
-                                 * (FLAGS_message_size / FLAGS_packet_size) // shifted to convert to packet-sized pool index
-                                 * 2)                                       // leave space for slot bit
-                                | 1);                                       // set slot bit initially
+    // compute shifted pool index. LSB is slot flag. Set slot flag to
+    // 1 initially; will be flipped to 0 before the first message is
+    // posted.
+    uint32_t shifted_pool_index = (((FLAGS_slots_per_core * thread_id + i)     // base message-sized pool index
+                                    * (FLAGS_message_size / FLAGS_packet_size) // shifted to convert to packet-sized pool index
+                                    * 2)                                       // leave space for slot bit
+                                   | 1);                                       // set slot bit initially
 
+    if (!FLAGS_connect_to_server) {
+      // write shifted pool index into lower 15 bits of rkey. 
+      send_wrs[i].wr.rdma.rkey = shifted_pool_index;
+    } else {
+      // use remote rkey for debugging
+      send_wrs[i].wr.rdma.rkey = rkeys[i];
+    }
     
-    send_wrs[i].imm_data = 0x01020304; // will be filled in later
+    // for debugging, write shifted pool index into immediate field.
+    send_wrs[i].imm_data = shifted_pool_index;
   }  
 }
 
@@ -113,23 +128,23 @@ void ClientThread::operator()() {
     //
     compute_thread_pointers();
 
-    std::string s;
-    std::stringstream ss(s);
-    ss << "Thread " << thread_id
-       << " (" << std::this_thread::get_id() << ")"
-       << " reduction " << reducer->reduction_id
-       << " sending from " << thread_start_pointer
-       << " to " << thread_end_pointer
-       << " of " << reducer->src_buffer
-       << " length " << (void*) reducer->length << " floats"
-       << std::endl;
-    std::cout << ss.str();
+    // std::string s;
+    // std::stringstream ss(s);
+    // ss << "Thread " << thread_id
+    //    << " (" << std::this_thread::get_id() << ")"
+    //    << " reduction " << reducer->reduction_id
+    //    << " sending from " << thread_start_pointer
+    //    << " to " << thread_end_pointer
+    //    << " of " << reducer->src_buffer
+    //    << " length " << (void*) reducer->length << " floats"
+    //    << std::endl;
+    // std::cout << ss.str();
 
     post_initial_writes();
     run();
 
 
-    std::cout << "Thread " << thread_id << ": All operations complete." << std::endl;
+    //std::cout << "Thread " << thread_id << ": All operations complete." << std::endl;
     
     // wait at barrier again to indicate reduction is complete
     reducer->barrier.wait();
@@ -159,16 +174,23 @@ void ClientThread::post_next_send_wr(int i) {
     // index is calculated in construtor; here we just flip the slot
     // bit. (slot bit is initialized to 1 in constructor, so first
     // packet will have slot 0 after this flip)
-    send_wrs[i].wr.rdma.rkey ^= 1; // flip slot bit in LSB
-
-
+    if (!FLAGS_connect_to_server) {
+      send_wrs[i].wr.rdma.rkey ^= 1; // flip slot bit in LSB
+    } else {
+      // use immediate instead for debugging
+      send_wrs[i].imm_data ^= 1; // flip slot bit in LSB
+    }
+    
     //set destination address
     // if we use buffers allocated at the same address on each node
     send_wrs[i].wr.rdma.remote_addr = (intptr_t) pointers[i];
     // // if we use 0-indexed memory regions
     // send_wrs[i].wr.remote_addr = (intptr_t) indices[i];
 
-    
+#ifdef TIMEOUT
+    // remove from timeout queue
+    timeouts.remove(i);
+#endif
     
     // post
     if (DEBUG) std::cout << ">>>>>>>>>>>>>>>>              Thread " << thread_id
@@ -189,7 +211,30 @@ void ClientThread::post_next_send_wr(int i) {
   }
 }
 
-void ClientThread::handle_recv_completion(const ibv_wc & wc) {
+void ClientThread::repost_send_wr(int i) {
+  // count retransmission
+  ++retransmissions;
+
+#ifdef TIMEOUT
+  // ensure this remove from timeout queue
+  timeouts.remove(i);
+#endif
+
+  // repost
+  if (DEBUG) std::cout << ">>>>>>>>>>>>>>>>              Thread " << thread_id
+                       << " QP " << queue_pairs[i]->qp_num
+                       << " re-posting send from " << (void*) send_sges[i].addr
+                       << " len " << (void*) send_sges[i].length
+                       << " slot " << (void*) (send_wrs[i].wr.rdma.rkey & 1)
+                       << " rkey " << (void*) send_wrs[i].wr.rdma.rkey
+               //<< " qp " << send_wrs[i].
+                       << std::endl;
+  reducer->connections.post_send(queue_pairs[i], &send_wrs[i]);
+
+  if (DEBUG) std::cout << "Re-posting send successful...." << std::endl;
+}
+
+void ClientThread::handle_recv_completion(const ibv_wc & wc, const uint64_t timestamp) {
   if (DEBUG) std::cout << "Got RECV completion for " << (void*) wc.wr_id
                        << " for QP " << wc.qp_num
                        << " source " << wc.src_qp
@@ -208,7 +253,7 @@ void ClientThread::handle_recv_completion(const ibv_wc & wc) {
   --outstanding_operations;
 }
 
-void ClientThread::handle_write_completion(const ibv_wc & wc) {
+void ClientThread::handle_write_completion(const ibv_wc & wc, const uint64_t timestamp) {
   if (DEBUG) std::cout << "Got WRITE completion for " << (void*) wc.wr_id
                        << " for QP " << wc.qp_num
                        << " source " << wc.src_qp
@@ -219,14 +264,47 @@ void ClientThread::handle_write_completion(const ibv_wc & wc) {
   // this send is complete. We still need occasional send completions
   // to flush completed operations out of the send queue.
   --outstanding_operations;
+
+  // get QP index
+  int qp_index = (wc.wr_id & 0xffff) % FLAGS_slots_per_core;
+
+#ifdef TIMEOUT
+  // add to timeout queue
+  timeouts.push(qp_index, timestamp);
+#endif
 }
+
+#ifdef TIMEOUT
+void ClientThread::check_for_timeouts(const uint64_t timestamp) {
+  int qp_index = -1;
+  uint64_t old_timestamp = 0;
+
+  // get oldest queue entry
+  std::tie(qp_index, old_timestamp) = timeouts.bottom();
+
+  // if entry has timed out
+  if ((qp_index != -1) &&
+      (timestamp - old_timestamp > TIMEOUT)) {
+    //std::cout << "Resending queue " << qp_index << std::endl;
+    repost_send_wr(qp_index);
+  }
+}
+#endif
 
 void ClientThread::run() {
   const int max_entries = FLAGS_slots_per_core;
   std::vector<ibv_wc> completions(max_entries);
-  bool done = false;
 
   while (outstanding_operations > 0) {
+#ifdef TIMEOUT
+    // get current timestamp counter value
+    // TODO: have NIC generate timestamps
+    const uint64_t timestamp = __rdtsc();
+#else
+    const uint64_t timestamp = 0;
+#endif
+    
+    // check for completions
     int retval = ibv_poll_cq(completion_queue, max_entries, &completions[0]);
 
     if (retval < 0) {
@@ -243,9 +321,9 @@ void ClientThread::run() {
         } else {
           // success! 
           if (completions[i].opcode & IBV_WC_RECV) { // match on any RECV completion
-            handle_recv_completion(completions[i]);
+            handle_recv_completion(completions[i], timestamp);
           } else if (completions[i].opcode == IBV_WC_RDMA_WRITE) { // this includes RDMA_WRITE_WITH_IMM
-            handle_write_completion(completions[i]);
+            handle_write_completion(completions[i], timestamp);
           } else {
             std::cerr << "Got unknown successful completion with ID " << (void*) completions[i].wr_id
                       << " for QP " << completions[i].qp_num
@@ -257,6 +335,10 @@ void ClientThread::run() {
         } 
       }
     }
+
+#ifdef TIMEOUT
+    check_for_timeouts(timestamp);
+#endif
   }
 }
 
@@ -271,8 +353,8 @@ void ClientThread::compute_thread_pointers() {
   
   // threads send a base number of messages, plus an adjustment
   // to capture non-FLAGS_cores-divisible message counts
-  const int64_t base_messages_per_thread = total_messages / total_slots;
-  const int64_t adjustment               = total_messages % total_slots;
+  const int64_t base_messages_per_thread = total_messages / FLAGS_cores; //total_slots;
+  const int64_t adjustment               = total_messages % FLAGS_cores; //total_slots;
         
   // this thread sends total_messages / FLAGS_cores messages,
   // plus one more to spread the adjustment evenly over threads
@@ -300,19 +382,19 @@ void ClientThread::compute_thread_pointers() {
     indices[i] = start_message_index + i;
     pointers[i] = thread_start_pointer + i * FLAGS_message_size / sizeof(float);
 
-    std::cout << " thread_id: " << thread_id
-              << " total_messages: " << total_messages
-              << " base_messages_per_thread: " << base_messages_per_thread
-              << " adjustment: " << adjustment
-              << " adjusted_messages_per_thread: " << adjusted_messages_per_thread
-              << " start_message_index: " << start_message_index
-              << " end_message_index: " << end_message_index
-              << " outstanding_operations: " << outstanding_operations
-              << " slot: " << i
-              << " index: " << indices[i]
-              << " start_pointer: " << pointers[i]
-              << " end pointer: " << thread_end_pointer
-              << std::endl;
+    // std::cout << " thread_id: " << thread_id
+    //           << " total_messages: " << total_messages
+    //           << " base_messages_per_thread: " << base_messages_per_thread
+    //           << " adjustment: " << adjustment
+    //           << " adjusted_messages_per_thread: " << adjusted_messages_per_thread
+    //           << " start_message_index: " << start_message_index
+    //           << " end_message_index: " << end_message_index
+    //           << " outstanding_operations: " << outstanding_operations
+    //           << " slot: " << i
+    //           << " index: " << indices[i]
+    //           << " start_pointer: " << pointers[i]
+    //           << " end pointer: " << thread_end_pointer
+    //           << std::endl;
 
   }
 

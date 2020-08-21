@@ -52,8 +52,8 @@ int main(int argc, char * argv[]) {
   //
   
   // allocate buffer at same address on each node
-  //const size_t buffer_length = 1L << 28; // # of floats
-  const size_t buffer_length = 1L << 30; // # of floats
+  const size_t buffer_length = 1L << 28; // # of floats
+  //const size_t buffer_length = 1L << 30; // # of floats
   auto mr = e.allocate_at_address((void*) 0x0000100000000000,
                                   buffer_length);
 
@@ -78,7 +78,8 @@ int main(int argc, char * argv[]) {
   
   // Connect to other nodes and exchange memory region info
   Connections c(e, mr, rank, size);
-
+  c.connect();
+  
   //
   // perform reduction
   //
@@ -98,12 +99,12 @@ int main(int argc, char * argv[]) {
     auto end_time = std::chrono::high_resolution_clock::now();
 
     auto time_difference_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(end_time - start_time).count();
-    double rate_in_Gbps = 8.0 * FLAGS_length / time_difference_ns;
+    double rate_in_Gbps = 8.0 * FLAGS_length * sizeof(int32_t) / time_difference_ns;
 
     std::cout << "Iteration " << i << ": "
               << FLAGS_length * sizeof(int32_t) << " bytes in "
               << time_difference_ns << " ns == "
-              << rate_in_Gbps << " Gbps\n";
+              << rate_in_Gbps << " Gbps goodput\n";
   }
 
   // verify

@@ -81,15 +81,18 @@ public: // TODO: undo this as much as necessary
   std::vector<int32_t> rkeys;
 
   // functions to connect queue pairs
+  void initialize_queue_pairs();
+  void connect_queue_pairs();
   ibv_cq * create_completion_queue();
   ibv_qp * create_queue_pair(ibv_cq * completion_queue);
-  void set_up_queue_pairs();
-  void create_queue_pairs();
+
   void move_to_init(int);
   void move_to_rtr(int);
   void move_to_rts(int);
-  void exchange_connection_info();
 
+  // allow subclassing with different exchange methods
+  virtual void exchange_connection_info();
+  
   void resolve_server_addresses_to_gids();
 
   // data about neighbor queue pairs
@@ -121,8 +124,25 @@ public:
     , neighbor_qpns(FLAGS_cores * FLAGS_slots_per_core, 0)
     , neighbor_psns(FLAGS_cores * FLAGS_slots_per_core, 0)
   {
-    set_up_queue_pairs();
+    // do this later to support server overload
+    //set_up_queue_pairs();
   }
+
+  void connect() {
+    initialize_queue_pairs();
+
+    // In order to move the queues to RTR, we now need to exhange GID,
+    // queue pair numbers, and initial packet sequence numbers with
+    // our neighbors.
+    exchange_connection_info();
+    
+    connect_queue_pairs();
+  }
+
+  static uint32_t gid_to_ipv4(const ibv_gid gid);
+  static uint64_t gid_to_mac(const ibv_gid gid);
+  static ibv_gid ipv4_to_gid(const int32_t ip);
+  static ibv_gid mac_to_gid(const uint64_t mac);
 
   static void post_recv(ibv_qp * qp, ibv_recv_wr * wr) {
     ibv_recv_wr * bad_wr = nullptr;
@@ -131,11 +151,13 @@ public:
     if (retval < 0) {
       std::cerr << "Error " << retval << " posting receive WR startgin at WR " << wr << " id " << (void*) wr->wr_id << std::endl;
       perror( "Error posting receive WR" );
+      throw;
       exit(1);
     }
     
     if (bad_wr) {
       std::cerr << "Error posting receive WR at WR " << bad_wr << " id " << (void*) bad_wr->wr_id << std::endl;
+      throw;
       exit(1);
     }
   }
@@ -150,6 +172,7 @@ public:
                 << " id " << (void*) wr->wr_id
                 << ": " << strerror(errno)
                 << std::endl;
+      throw;
       exit(1);
     }
     
@@ -158,6 +181,7 @@ public:
                 << " id " << (void*) bad_wr->wr_id
                 << " starting at WR " << wr
                 << std::endl;
+      throw;
       exit(1);
     }
   }

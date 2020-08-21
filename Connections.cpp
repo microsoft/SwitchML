@@ -27,7 +27,7 @@ DEFINE_int32(port, 50099, "GRPC server port on coordinator.");
 //
 
 
-uint32_t gid_to_ipv4(const ibv_gid gid) {
+uint32_t Connections::gid_to_ipv4(const ibv_gid gid) {
   uint32_t ip = 0;
   ip |= gid.raw[12];
   ip <<= 8;
@@ -39,7 +39,7 @@ uint32_t gid_to_ipv4(const ibv_gid gid) {
   return ip;
 }
 
-uint64_t gid_to_mac(const ibv_gid gid) {
+uint64_t Connections::gid_to_mac(const ibv_gid gid) {
   uint64_t mac = 0;
   mac |= gid.raw[8]^ 2;
   mac <<= 8;
@@ -55,7 +55,7 @@ uint64_t gid_to_mac(const ibv_gid gid) {
   return mac;
 }
 
-ibv_gid ipv4_to_gid(const int32_t ip) {
+ibv_gid Connections::ipv4_to_gid(const int32_t ip) {
   ibv_gid gid;
   gid.global.subnet_prefix = 0;
   gid.global.interface_id = 0;
@@ -68,7 +68,7 @@ ibv_gid ipv4_to_gid(const int32_t ip) {
   return gid;
 }
 
-ibv_gid mac_to_gid(const uint64_t mac) {
+ibv_gid Connections::mac_to_gid(const uint64_t mac) {
   ibv_gid gid;
   gid.global.subnet_prefix = 0x80fe;
   gid.global.interface_id = 0;
@@ -84,7 +84,7 @@ ibv_gid mac_to_gid(const uint64_t mac) {
 }
 
 
-void Connections::set_up_queue_pairs() {
+void Connections::initialize_queue_pairs() {
   // See section 3.5 of the RDMA Aware Networks Programming User
   // Manual for more details on queue pair bringup.
 
@@ -115,11 +115,13 @@ void Connections::set_up_queue_pairs() {
   // have some other syncronization mechanism that will keep other
   // parties from sending before we're ready, it's okay not to.
 
-  // In order to move the queues to RTR, we now need to exhange GID,
-  // queue pair numbers, and initial packet sequence numbers with
-  // our neighbors.
-  std::cout << "Exchanging connection info...\n";
-  exchange_connection_info();
+  // Next, we must exchange queue pair information and finish
+  // connecting the queue pairs.
+}
+
+void Connections::connect_queue_pairs() {
+  // See section 3.5 of the RDMA Aware Networks Programming User
+  // Manual for more details on queue pair bringup.
 
   // copy/initialize rkeys
   for (int i = 0; i < FLAGS_cores * FLAGS_slots_per_core; ++i) {

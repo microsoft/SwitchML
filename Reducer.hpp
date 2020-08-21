@@ -33,8 +33,8 @@ private:
   float * dst_buffer; /// pointer to current buffer being reduced
   int64_t length;     /// number of floats
   ibv_mr * dst_mr;    /// MR for dest buffer
-  int64_t reduction_id; // ID of this reduction
-
+  int64_t reduction_id; /// ID of this reduction
+  
   friend class ClientThread;
   
 public:
