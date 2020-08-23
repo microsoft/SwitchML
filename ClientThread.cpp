@@ -99,7 +99,8 @@ ClientThread::ClientThread(Reducer * reducer, int64_t thread_id)
                                    | 1);                                       // set slot bit initially
 
     if (!FLAGS_connect_to_server) {
-      // write shifted pool index into lower 15 bits of rkey. 
+      // write shifted pool index into lower 15 bits of rkey.
+      std::cout << "Using rkey " << shifted_pool_index << " for remote rkey " << rkeys[i] << std::endl;
       send_wrs[i].wr.rdma.rkey = shifted_pool_index;
     } else {
       // use remote rkey for debugging
@@ -208,6 +209,14 @@ void ClientThread::post_next_send_wr(int i) {
     // increment by number of floats per message * number of slots this core is handling
     pointers[i] += FLAGS_slots_per_core * (FLAGS_message_size / sizeof(float)); // TODO: correct?
     indices[i]  += FLAGS_slots_per_core * (FLAGS_message_size / sizeof(float));
+
+    
+    // record that this send was enqueued.
+    //
+    // TODO: ideally this would be done on the completion, but I don't
+    // want to have to disambiguate between the initial send and
+    // retransmissions.
+    --outstanding_operations;
   }
 }
 
@@ -258,12 +267,6 @@ void ClientThread::handle_write_completion(const ibv_wc & wc, const uint64_t tim
                        << " for QP " << wc.qp_num
                        << " source " << wc.src_qp
                        << std::endl;
-
-  // record that this send completed
-  // TODO: generally, we can use the recv completion to indicate that
-  // this send is complete. We still need occasional send completions
-  // to flush completed operations out of the send queue.
-  --outstanding_operations;
 
   // get QP index
   int qp_index = (wc.wr_id & 0xffff) % FLAGS_slots_per_core;

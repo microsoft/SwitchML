@@ -28,6 +28,9 @@ DEFINE_bool(wait, false, "Wait after start for debugger to attach.");
 
 DEFINE_bool(test_grpc, false, "Just test GRPC at localhost and exit.");
 
+DEFINE_bool(verbose_errors, false, "Print each individual array element that was incorrectly aggregated.");
+DEFINE_int32(max_errors, 16, "Max number of errors to print.");
+
 int main(int argc, char * argv[]) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
 
@@ -108,34 +111,58 @@ int main(int argc, char * argv[]) {
   }
 
   // verify
-  int multiplier = std::pow(size, FLAGS_warmup + FLAGS_iters);
+  uint32_t multiplier = std::pow(size, FLAGS_warmup + FLAGS_iters);
+  // std::cout << "Multiplier is " << multiplier << "/0x" << std::hex << multiplier << std::dec
+  //           << " for size " << size
+  //           << " warmup iters " << FLAGS_warmup
+  //           << " iters " << FLAGS_iters
+  //           << std::endl;
+  
+  size_t error_count = 0;
   for (int i = 0; i < FLAGS_length; ++i) {
     // convert to host byte order
     buf[i] = ntohl(buf[i]);
 
-    int expected = 0;
-
-    // figure out what we sent
+    // figure out what we sent, times the number of workers
+    int original = 0;
     if (0 == (i % (FLAGS_packet_size / sizeof(int)))) {
-      expected = 0x11223344;
+      original = 0x11223344;
     } else if (0 == (i % 2)) {
-      expected = i / (FLAGS_packet_size / sizeof(int));
+      original = i / (FLAGS_packet_size / sizeof(int));
     } else {
-      expected = -i / (FLAGS_packet_size / sizeof(int));
+      original = -i / (FLAGS_packet_size / sizeof(int));
     }
 
-    // use that to compute expected reduction value
-    expected *= multiplier;
-    
+    // use that to compute expected reduction value after however many iterations we did
+    // use unsigned multiplication to mimic what repeated aggregation does
+    int expected = (uint32_t) original * multiplier;
+
+    // check for mismatches
     if (buf[i] != expected) {
-      std::cout << "Mismatch at index " << i
-                << ": expected " << expected << "/0x" << std::hex << expected << std::dec
-                << ", got " << buf[i] << "/0x" << std::hex << buf[i] << std::dec
-                << std::endl;
+      ++error_count;
+      if (FLAGS_verbose_errors) {
+        std::cout << "Mismatch at index " << i
+                  << ": original " << original << "/0x" << std::hex << original << std::dec
+                  << " expected " << expected << "/0x" << std::hex << expected << std::dec
+                  << ", got " << buf[i] << "/0x" << std::hex << buf[i] << std::dec
+                  << std::endl;
+        if (error_count > FLAGS_max_errors) {
+          std::cout << "Stopping after printing " << FLAGS_max_errors << " errors." << std::endl;
+          break;
+        }
+      }
     }
   }
 
-  
+  if (error_count == 0) {
+    std::cout << "No errors detected." << std::endl;
+  } else {
+    std::cout << "ERROR: incorrect values in " << error_count
+              << " of " << FLAGS_length
+              << " elements."
+              << std::endl;
+  }
+
   //
   // shutdown
   //
