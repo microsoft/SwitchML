@@ -9,6 +9,7 @@ import bfrt_grpc.client as gc
 import grpc
 
 import struct
+import math
 
 from Table import Table
 from Worker import Worker
@@ -18,33 +19,36 @@ class RoCESender(Table):
 
     def __init__(self, client, bfrt_info,
                  switch_mac, switch_ip,
-                 message_length, # must be a power of 2
-                 packet_length, # must be a power of 2
-                 use_rdma_write = True, 
+                 message_size, # must be a power of 2
+                 packet_size, # must be a power of 2
+                 use_rdma_write = True,
                  use_immediate  = True):
         # set up base class
         super(RoCESender, self).__init__(client, bfrt_info)
 
         self.logger = logging.getLogger('RoCESender')
-        self.logger.info("Setting up RoCE sender...")
+        self.logger.info("Setting up RoCE sender with message size {} and packet size {}...".format(message_size, packet_size))
         
         self.switch_mac = switch_mac
         self.switch_ip = switch_ip
-        self.message_length = message_length      # must be a power of 2
-        self.packet_length = packet_length
+        self.message_size = message_size      # must be a power of 2
+        self.packet_size = packet_size
 
-        self.packets_per_message = message_length / packet_length
-        
+        self.packets_per_message = message_size / packet_size
+
+        log2_packets_per_message = math.log(self.packets_per_message, 2)
+        if log2_packets_per_message != int(log2_packets_per_message):
+            self.logger.error("Number of {}B packets per {}B message is not a power of 2!".format(packet_size, message_size))
+        else:
+            self.log2_packets_per_message = int(log2_packets_per_message)
+            
         # first last mask is used with the slot number to decide
         # whether message is a first, last, or middle message.  It
         # should be the message size in bytes divided by the
         # per-packet payload size, shifted left once to skip the slot
         # bit.
-        #self.first_last_mask = ((message_length / packet_length) - 1) << 1
-        self.first_last_mask = 0x6 # for 4-slot messages
-
-        print(type(self.first_last_mask))
-        pprint(self.first_last_mask)
+        self.first_last_mask = ((self.packets_per_message) - 1) << 1
+        self.logger.info("First last mask is 0x{:x}".format(self.first_last_mask))
         
         self.use_rdma_write = use_rdma_write
         self.use_immediate = use_immediate
@@ -129,15 +133,17 @@ class RoCESender(Table):
             self.switch_mac_and_ip.make_data([gc.DataTuple('switch_mac', self.switch_mac),
                                               gc.DataTuple('switch_ip', self.switch_ip),
                                               #gc.DataTuple('base_opcode', self.base_opcode), 
-                                              gc.DataTuple('message_length', self.message_length),
+                                              gc.DataTuple('message_length', self.message_size),
                                               gc.DataTuple('first_last_mask', self.first_last_mask)],
                                              'SwitchMLEgress.roce_sender.set_switch_mac_and_ip'))
 
+        #def add_opcodes_for_worker(self, worker_id, message_size, packet_size):
+        
         #
         # set opcode breakpoints based on message size
         #
 
-        if self.message_length <= 256:
+        if self.message_size <= 256:
             # all messages are _ONLY messages
             self.set_opcodes.default_entry_set(
                 self.target,
@@ -207,8 +213,15 @@ class RoCESender(Table):
         # now, add entry to add QPN and PSN to packet
         # each QPN handles both sets of a slot in the pool
         for index, (qpn, initial_psn) in enumerate(qpns_and_psns):
-            shifted_index = index << 3;
-            mask = 0x7ff8;
+            # shifted_index = index << 3
+            # mask = 0x7ff8;
+            # shifted_index = index << 5
+            # mask = 0x7ffe & ~self.first_last_mask;
+
+            shifted_index = index << (self.log2_packets_per_message + 1) # 1 extra for slot bit
+            mask = 0x7ffe & ~self.first_last_mask;
+
+            
             print("Adding qpn {} and psn {} for index {:x} mask {:x}".format(qpn, initial_psn, shifted_index, mask))
             self.fill_in_qpn_and_psn.entry_add(
                 self.target,

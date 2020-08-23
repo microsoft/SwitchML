@@ -1,6 +1,12 @@
 # ignore compiler output
 out
 *~
+\#*
+.\#*
 *.pyc
 tofino*/*
 logs/*
+*.log
+*.pcap
+*.[0-9]
+*.bak

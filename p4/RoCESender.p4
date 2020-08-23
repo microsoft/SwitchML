@@ -260,7 +260,7 @@ control RoCESender(
             set_rdma_opcode;
             set_rdma_immediate_opcode;
         }
-        size = 3; // either one for _ONLY or three for _FIRST, _MIDDLE, and _LAST
+        size = 3 * max_num_workers; // either one for _ONLY or three for _FIRST, _MIDDLE, and _LAST
     }
     
     //

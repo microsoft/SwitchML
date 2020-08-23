@@ -85,7 +85,7 @@ class PRE(Table):
         #         )
 
         # set CPU port
-        print("Setting port", self.cpu_port, "as CopyToCPU port")
+        self.logger.info("Setting port {} as CopyToCPU port.".format(self.cpu_port))
         self.port_table.entry_add(
             self.target,
             [self.port_table.make_key([

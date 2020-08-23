@@ -113,7 +113,7 @@ class RoCEReceiver(Table):
                 (roce_opcode_s2n['UC_RDMA_WRITE_ONLY'],   'SwitchMLIngress.roce_receiver.only_packet'),
                 (roce_opcode_s2n['UC_RDMA_WRITE_LAST_IMMEDIATE'],   'SwitchMLIngress.roce_receiver.last_packet'),
                 (roce_opcode_s2n['UC_RDMA_WRITE_ONLY_IMMEDIATE'],   'SwitchMLIngress.roce_receiver.only_packet')]:
-            qpn_top_bits = ((1 + worker_rid) & 0xff) << 16
+            qpn_top_bits = 0x800000 | ((worker_rid & 0xff) << 16)
             self.table.entry_add(
                 self.target,
                 [self.table.make_key([gc.KeyTuple('$MATCH_PRIORITY', match_priority),

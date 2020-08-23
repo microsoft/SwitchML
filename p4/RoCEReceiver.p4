@@ -29,7 +29,8 @@ on last or only:
 */
 
 //typedef pool_index_t index_t;
-typedef bit<17> index_t;
+//typedef bit<17> index_t;
+//typedef bit<(max_num_workers_log2 + max_num_queue_pairs_per_worker_log2)> index_t;
 
 // // 256-byte slots
 // #define INDEX (hdr.ib_bth.dst_qp[14:0] ++ hdr.ib_bth.dst_qp[15:15])
@@ -49,13 +50,29 @@ typedef bit<17> index_t;
 // // queue pair indexing with worker ID, max 17 workers (5 bits worker id, 12 bits QPN)
 // #define QP_INDEX (hdr.ib_bth.dst_qp[20:16] ++ hdr.ib_bth.dst_qp[11:0])
 
+// Switch QPN format:
+// - bit 23 is always 1. Ignore.
+// - bits 22 downto 16 are the worker ID. Since we only support 32
+//   workers right now, only bits 20 downto 16 should ever be used.
+
+// - bits 15 downto 0 are the queue pair index for this worker. Since each RDMA message in flight requires its own queue pair, and the minimum message size is the size of a slot, the most queue pairs we could ever needs is the number of slots. The max number of slots we can have is 11264 (22528/2), so 
+
+//numberfor this worker
+//
+// for use
+// worker ID is in low-order bits. Max worker ID is 32.
+// QPN is 
+//#define QP_INDEX (hdr.ib_bth.dst_qp[11:0] ++ hdr.ib_bth.dst_qp[20:16])
+
 // queue pair indexing with worker ID, max 4 workers (2 bits worker id, 12 bits QPN)
-#define QP_INDEX (3w0 ++ hdr.ib_bth.dst_qp[17:16] ++ hdr.ib_bth.dst_qp[11:0])
+#define QP_INDEX (hdr.ib_bth.dst_qp[16+max_num_workers_log2-1:16] ++ hdr.ib_bth.dst_qp[max_num_queue_pairs_per_worker_log2-1:0])
 
 
 
 //#define POOL_INDEX (hdr.ib_bth.dst_qp[23:0] ++ 2w0 ++ hdr.ib_reth.r_key[0:0])
 //#define POOL_INDEX (hdr.ib_bth.dst_qp)
+
+// We take the pool index directly from the rkey.
 #define POOL_INDEX (hdr.ib_reth.r_key)
 
 //#define INDEX (hdr.ib_bth.dst_qp[14:1] ++ hdr.ib_bth.dst_qp[15:15])
@@ -82,10 +99,10 @@ control RoCEReceiver(
     
     DirectCounter<counter_t>(CounterType_t.PACKETS_AND_BYTES) rdma_receive_counter;
 
-    Register<receiver_data_t, index_t>(max_num_queue_pairs) receiver_data_register;
-    Counter<counter_t, index_t>(max_num_queue_pairs, CounterType_t.PACKETS) rdma_packet_counter;
-    Counter<counter_t, index_t>(max_num_queue_pairs, CounterType_t.PACKETS) rdma_message_counter;
-    Counter<counter_t, index_t>(max_num_queue_pairs, CounterType_t.PACKETS) rdma_sequence_violation_counter;
+    Register<receiver_data_t, queue_pair_index_t>(max_num_queue_pairs) receiver_data_register;
+    Counter<counter_t, queue_pair_index_t>(max_num_queue_pairs, CounterType_t.PACKETS) rdma_packet_counter;
+    Counter<counter_t, queue_pair_index_t>(max_num_queue_pairs, CounterType_t.PACKETS) rdma_message_counter;
+    Counter<counter_t, queue_pair_index_t>(max_num_queue_pairs, CounterType_t.PACKETS) rdma_sequence_violation_counter;
 
     bool message_possibly_received;
     bool sequence_violation;
@@ -102,31 +119,63 @@ control RoCEReceiver(
     bit<32> pool_index_result;
     
     // use with _FIRST and _ONLY packets
-    RegisterAction<receiver_data_t, index_t, return_t>(receiver_data_register) receiver_reset_action = {
+    RegisterAction<receiver_data_t, queue_pair_index_t, return_t>(receiver_data_register) receiver_reset_action = {
         void apply(inout receiver_data_t value, out return_t read_value) {
-            value.next_sequence_number = (bit<32>) hdr.ib_bth.psn + 1; // reset sequence number
-            //value.pool_index = (bit<32>) hdr.ib_bth.dst_qp;   // reset pool index from QP number
-            value.pool_index = (bit<32>) POOL_INDEX;   // reset pool index from QP number
-            read_value = (return_t) value.pool_index;
-        }
-    };
-
-    
-    // use with _MIDDLE and _LAST packets
-    RegisterAction<receiver_data_t, index_t, return_t>(receiver_data_register) receiver_increment_action = {
-        void apply(inout receiver_data_t value, out return_t read_value) {
-            if ((bit<32>) hdr.ib_bth.psn == value.next_sequence_number) {  // is this the next packet?
-                value.next_sequence_number = (bit<32>) hdr.ib_bth.psn + 1; // yes, so store next psn
-                value.pool_index           = value.pool_index + 2;         // and compute pool index
-                read_value = value.pool_index;                             // return pool index
+            // Store next sequence number.
+            if ((bit<32>) hdr.ib_bth.psn == 0x00ffffff) { // PSNs are 24 bits. Do we need to wrap around?
+                value.next_sequence_number = 0;
             } else {
-                value.next_sequence_number = value.next_sequence_number;  // no, so leave psn unchanged
-                value.pool_index           = 0xffffffff;                  // and return error value
-                read_value = value.pool_index;
+                value.next_sequence_number = (bit<32>) hdr.ib_bth.psn + 1; // Increment and store next sequence number.
             }
+
+            // Reset pool index register using pool index in packet.
+            value.pool_index = (bit<32>) POOL_INDEX;
+
+            // Return pool index field. MSB is error bit, LSBs are the actual pool index.
+            read_value = value.pool_index;
         }
     };
 
+    // use with _MIDDLE and _LAST packets
+    RegisterAction<receiver_data_t, queue_pair_index_t, return_t>(receiver_data_register) receiver_increment_action = {
+        void apply(inout receiver_data_t value, out return_t read_value) {
+            // is this packet the next one in the PSN sequence?
+            if ((bit<32>) hdr.ib_bth.psn == value.next_sequence_number) {
+                // Yes. Increment PSN and pool index.
+
+                // Increment pool index, leaving slot bit (bit 0) unchanged.
+                // Use saturating addition to ensure error bit stays set if it gets set.
+                value.pool_index = value.pool_index |+| 2;
+
+                // Increment expected sequence number.
+                if (value.next_sequence_number == 0x00ffffff) { // PSNs are 24 bits. Do we need to wrap around?
+                    value.next_sequence_number = 0; // Wrap around!
+                } else {
+                    value.next_sequence_number = value.next_sequence_number + 1; // Increment PSN!
+                }
+            } else {
+                // No! Leave next PSN unchanged and signal error using MSB of pool index
+
+                // Set error bit in pool index register. Once this bit
+                // is set, it stays set until a new message arrives
+                // and overwrites the register state. 
+                value.pool_index = 0x80000000;
+
+                // Ideally I would move the next_sequence_number to an
+                // error state that would never match an incoming
+                // packet, but I can't find a way to do this with the
+                // ALU block while still doing the wraparound for the
+                // PSN above. Fortunately, this isn't necessary, since
+                // the error bit will cause packets to be dropped even
+                // if the next packet in the sequence eventually
+                // arrives.
+                value.next_sequence_number = value.next_sequence_number;
+            }
+
+            // Return pool index field. MSB is error bit, LSBs are the actual pool index.
+            read_value = value.pool_index;
+        }
+    };
 
 
     action set_bitmap(
@@ -368,12 +417,13 @@ control RoCEReceiver(
                 rdma_sequence_violation_counter.count(QP_INDEX);
                 
                 // drop bit is already set; copy/mirror to CPU too
-                //ig_tm_md.copy_to_cpu = 1;
-                //ig_dprsr_md.digest_type
-                ig_md.mirror_session = 1;
-                ig_dprsr_md.mirror_type = MIRROR_TYPE_I2E;
-                //hdr.ethernet.setValid(); // re-enable ethernet header for mirror header
-                ig_md.mirror_ether_type = 0x88b6; // local experimental ethertype
+                ig_tm_md.copy_to_cpu = 1;
+                
+                // //ig_dprsr_md.digest_type
+                // ig_md.mirror_session = 1;
+                // ig_dprsr_md.mirror_type = MIRROR_TYPE_I2E;
+                // //hdr.ethernet.setValid(); // re-enable ethernet header for mirror header
+                // ig_md.mirror_ether_type = 0x88b6; // local experimental ethertype
 
 
                 // if (sequence_violation) {

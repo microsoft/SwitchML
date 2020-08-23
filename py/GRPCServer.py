@@ -17,8 +17,8 @@ import SwitchML_pb2_grpc
 class GRPCServer(SwitchML_pb2_grpc.RDMAServerServicer):
 
     def __init__(self, ip = '[::]', port = 50099):
-        self.server = None
-        self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=8))
+        # limit concurrency to 1 to avoid synchronization problems in the BF-RT interface
+        self.server = grpc.server(futures.ThreadPoolExecutor(max_workers=1))
         SwitchML_pb2_grpc.add_RDMAServerServicer_to_server(self, self.server)
         self.server.add_insecure_port('{}:{}'.format(ip, port))
 
@@ -72,8 +72,40 @@ class GRPCServer(SwitchML_pb2_grpc.RDMAServerServicer):
                 # mirror this worker's rkey, since the switch doesn't care
                 rkeys = [request.rkey],
                 
-                # switch QPNs are just the indices into the pool.
-                qpns  = [((1 + request.my_rank) << 16) + i for i, qpn in enumerate(request.qpns)],
+                # Switch QPNs are used for two purposes:
+                # 1. Indexing into the PSN registers
+                # 2. Differentiating between processes running on the same server
+                # 
+                # Additionally, there are two restrictions:
+                #
+                # 1. In order to make debugging easier, we should
+                # avoid QPN 0 (sometimes used for management) and QPN
+                # 0xffffff (sometimes used for multicast) because
+                # Wireshark decodes them improperly, even when the NIC
+                # treats them properly.
+                #
+                # 2. Due to the way the switch sends aggregated
+                # packets that are part of a message, only one message
+                # should be in flight at a time on a given QPN to
+                # avoid reordering packets. The clients will take care
+                # of this as long as we give them as many QPNs as they
+                # give us.
+                #
+                # Thus, we construct QPNs as follows.
+                # - Bit 23 is always 1. This ensures we avoid QPN 0.
+                # - Bits 22 through 16 are the rank of the
+                #   client. Since we only support 32 clients per
+                #   aggregation in the current design, we will never
+                #   use QPN 0xffffff.
+                # - Bits 15 through 0 are just the index of the queue;
+                #   if 4 queues are requested, these bits will
+                #   represent 0, 1, 2, and 3.
+                #
+                # So if a client with rank 3 sends us a request with 4
+                # QPNs, we will reply with QPNs 0x830000, 0x830001,
+                # 0x830002, and 0x830003.
+                qpns  = [0x800000 | (request.my_rank << 16) | i
+                         for i, qpn in enumerate(request.qpns)],
                 
                 # initial QPNs don't matter; they're overwritten by each _FIRST or _ONLY packet.
                 psns  = [i for i, qpn in enumerate(request.qpns)])

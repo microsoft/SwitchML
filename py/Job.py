@@ -814,8 +814,8 @@ class Job(Cmd, object):
         self.counters_to_clear.append(self.set_dst_addr)
         self.roce_sender = RoCESender(self.gc, self.bfrt_info,
                                       self.switch_mac, self.switch_ip,
-                                      message_length = 1024,
-                                      packet_length = 256)
+                                      message_size = 1024,
+                                      packet_size = 256)
         self.tables_to_clear.append(self.roce_sender)
         self.counters_to_clear.append(self.roce_sender)
         for worker in self.workers:
@@ -974,8 +974,10 @@ class Job(Cmd, object):
 
         self.roce_sender = RoCESender(self.gc, self.bfrt_info,
                                       self.switch_mac, self.switch_ip,
-                                      message_length = 1024,
-                                      packet_length = 256)
+                                      message_size = 1 << 12,
+                                      #message_size = 1 << 10, #32768, #16384, #4096, #1024,
+                                      #message_size = 1 << 11,
+                                      packet_size = 256)
         self.tables_to_clear.append(self.roce_sender)
         self.counters_to_clear.append(self.roce_sender)
 
