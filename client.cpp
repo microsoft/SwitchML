@@ -110,20 +110,30 @@ int main(int argc, char * argv[]) {
               << rate_in_Gbps << " Gbps goodput\n";
   }
 
+  //
   // verify
-  uint32_t multiplier = std::pow(size, FLAGS_warmup + FLAGS_iters);
-  // std::cout << "Multiplier is " << multiplier << "/0x" << std::hex << multiplier << std::dec
-  //           << " for size " << size
-  //           << " warmup iters " << FLAGS_warmup
-  //           << " iters " << FLAGS_iters
-  //           << std::endl;
-  
+  //
+
+  // generate multiplier by computing size ^ (FLAGS_warmup + FLAGS_iters)
+  // do it by hand with integers rather than with std::pow to avoid
+  // double<->int conversion edge cases.
+  int32_t multiplier = 1;
+  int32_t base = size;
+  uint32_t exponent = FLAGS_warmup + FLAGS_iters;
+  while (exponent) {
+      if (exponent & 1) {
+        multiplier *= base;
+      }
+      exponent >>= 1;
+      base *= base;
+  }
+
   size_t error_count = 0;
   for (int i = 0; i < FLAGS_length; ++i) {
     // convert to host byte order
     buf[i] = ntohl(buf[i]);
 
-    // figure out what we sent, times the number of workers
+    // figure out what we sent in the first iteration
     int original = 0;
     if (0 == (i % (FLAGS_packet_size / sizeof(int)))) {
       original = 0x11223344;
@@ -134,8 +144,7 @@ int main(int argc, char * argv[]) {
     }
 
     // use that to compute expected reduction value after however many iterations we did
-    // use unsigned multiplication to mimic what repeated aggregation does
-    int expected = (uint32_t) original * multiplier;
+    int expected = original * multiplier;
 
     // check for mismatches
     if (buf[i] != expected) {
