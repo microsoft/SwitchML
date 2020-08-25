@@ -101,18 +101,22 @@ int main(int argc, char * argv[]) {
     r.allreduce_inplace(mr, (float*) mr->addr, FLAGS_length);
     auto end_time = std::chrono::high_resolution_clock::now();
 
-    auto time_difference_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(end_time - start_time).count();
-    double rate_in_Gbps = 8.0 * FLAGS_length * sizeof(int32_t) / time_difference_ns;
-
-    std::cout << "Iteration " << i << ": "
-              << FLAGS_length * sizeof(int32_t) << " bytes in "
-              << time_difference_ns << " ns == "
-              << rate_in_Gbps << " Gbps goodput\n";
+    uint64_t time_difference_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(end_time - start_time).count();
+    uint64_t min_time_difference_ns = 0;
+    MPI_CHECK(MPI_Allreduce(&time_difference_ns, &min_time_difference_ns, 1, MPI_UINT64_T, MPI_MAX, MPI_COMM_WORLD));
+    if (0 == rank) {
+      double rate_in_Gbps = 8.0 * FLAGS_length * sizeof(int32_t) / time_difference_ns;
+      std::cout << "Iteration " << i << ": "
+                << FLAGS_length * sizeof(int32_t) << " bytes in "
+                << time_difference_ns << " ns == "
+                << rate_in_Gbps << " Gbps goodput\n";
+    }
   }
 
   //
   // verify
   //
+  std::cout << "Checking for errors." << std::endl;
 
   // generate multiplier by computing size ^ (FLAGS_warmup + FLAGS_iters)
   // do it by hand with integers rather than with std::pow to avoid

@@ -34,6 +34,7 @@ ClientThread::ClientThread(Reducer * reducer, int64_t thread_id)
   , base_pool_index(thread_id * FLAGS_slots_per_core) // first slot this thread is responsible for
 #ifdef TIMEOUT
   , timeouts(FLAGS_slots_per_core)
+  , retransmission_count(0)
 #endif
   , indices(FLAGS_slots_per_core, 0)
   , pointers(FLAGS_slots_per_core, nullptr)
@@ -240,6 +241,11 @@ void ClientThread::repost_send_wr(int i) {
                        << std::endl;
   reducer->connections.post_send(queue_pairs[i], &send_wrs[i]);
 
+#ifdef TIMEOUT
+  // count retransmission
+  ++retransmission_count;
+#endif
+  
   if (DEBUG) std::cout << "Re-posting send successful...." << std::endl;
 }
 
@@ -413,6 +419,9 @@ void ClientThread::compute_thread_pointers() {
             << " start_message_index: " << start_message_index
             << " end_message_index: " << end_message_index
             << " outstanding_operations: " << outstanding_operations
+#ifdef TIMEOUT
+            << " retransmissions so far: " << retransmission_count
+#endif
             << std::endl;
 }
 

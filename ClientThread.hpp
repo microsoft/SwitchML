@@ -40,6 +40,7 @@ private:
   
 #ifdef TIMEOUT
   PriorityQueue timeouts;
+  uint64_t retransmission_count;
 #endif
   
   std::vector<int64_t> indices;
