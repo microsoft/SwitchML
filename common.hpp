@@ -29,7 +29,7 @@
 
 //std::ostream & operator<<(std::ostream & o, const ibv_send_wr & wr);
 
-// this is to aid in debugging. It will 
+// this is to aid in debugging. It spins for a while so you can attach a debugger.
 inline void wait_for_attach() {
   volatile int i = 0;
   char hostname[256];

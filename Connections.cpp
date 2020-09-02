@@ -316,6 +316,8 @@ void Connections::exchange_connection_info() {
   request.set_mac(endpoint.get_mac());
   request.set_ipv4(endpoint.get_ipv4());
   request.set_rkey(memory_region->rkey);
+  request.set_packet_size(SwitchML::RDMAConnectRequest_PacketSize(mtu));
+  request.set_message_size(FLAGS_message_size);
 
   for (int i = 0; i < queue_pairs.size(); ++i) {
     request.add_qpns(queue_pairs[i]->qp_num);

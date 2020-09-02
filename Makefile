@@ -16,7 +16,7 @@ PROTOS_PATH = ../protos
 vpath %.proto $(PROTOS_PATH)
 
 CPPFLAGS+=`pkg-config --cflags protobuf grpc`
-CXXFLAGS+=-std=c++14 -g -MMD -O1
+CXXFLAGS+=-std=c++14 -g -MMD -O3
 LDFLAGS+= -L/usr/local/lib `pkg-config --libs protobuf grpc++` \
 	-pthread \
 	-Wl,--no-as-needed -lgrpc++_reflection -Wl,--as-needed \

@@ -8,6 +8,9 @@
 #include "Endpoint.hpp"
 #include <sys/mman.h>
 
+#include <x86intrin.h>
+#include <thread>
+
 extern "C" {
 #include <hugetlbfs.h>
 }
@@ -113,13 +116,19 @@ Endpoint::Endpoint()
     std::cerr << "Selected GID " << gid_index << " was all zeros; is interface down? Maybe try RoCEv1 GID index?" << std::endl;
     exit(1);
   }
-  
+
   // create protection domain
   protection_domain = ibv_alloc_pd(context);
   if (!protection_domain)  {
     std::cerr << "Error getting protection domain!\n";
     exit(1);
   }
+
+  /// until we can use NIC timestamps, store the CPU timestamp counter tick rate
+  uint64_t start_ticks = __rdtsc();
+  std::this_thread::sleep_for(std::chrono::seconds(1));
+  uint64_t end_ticks = __rdtsc();
+  ticks_per_sec = end_ticks - start_ticks;
 }
 
 Endpoint::~Endpoint() {

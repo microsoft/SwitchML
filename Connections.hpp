@@ -28,7 +28,6 @@
 #include "GRPCClient.hpp"
 
 DECLARE_bool(use_rc);
-DECLARE_int32(mtu);
 
 DECLARE_int32(cores);
 DECLARE_int32(slots_per_core);
@@ -108,10 +107,10 @@ public:
     , grpc_client(grpc::CreateChannel(FLAGS_server + ":" + std::to_string(FLAGS_port),
                                       grpc::InsecureChannelCredentials()))
     , qp_type(FLAGS_use_rc ? IBV_QPT_RC : IBV_QPT_UC) // default to UC; use RC if specified
-    , mtu(FLAGS_mtu >= 4096 ? IBV_MTU_4096 :
-          FLAGS_mtu >= 2048 ? IBV_MTU_2048 :
-          FLAGS_mtu >= 1024 ? IBV_MTU_1024 :
-          FLAGS_mtu >=  512 ? IBV_MTU_512 :
+    , mtu(FLAGS_packet_size >= 4096 ? IBV_MTU_4096 :
+          FLAGS_packet_size >= 2048 ? IBV_MTU_2048 :
+          FLAGS_packet_size >= 1024 ? IBV_MTU_1024 :
+          FLAGS_packet_size >=  512 ? IBV_MTU_512 :
           IBV_MTU_256)
     , memory_region(mr)
     , rank(rank)

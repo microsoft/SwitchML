@@ -12,12 +12,8 @@
 #include "Reducer.hpp"
 #include "PriorityQueue.hpp"
 
-#define TIMEOUT (220000000)
-
-// #ifdef TIMEOUT
-// #include "SearchablePriorityQueue.hpp"
-// //DECLARE_uint32(timeout);
-// #endif
+// 
+#define ENABLE_RETRANSMISSION
 
 DECLARE_int32(cores);
 DECLARE_int32(slots_per_core);
@@ -38,8 +34,9 @@ private:
   std::vector<ibv_recv_wr> recv_wrs;
   const int32_t base_pool_index;
   
-#ifdef TIMEOUT
+#ifdef ENABLE_RETRANSMISSION
   PriorityQueue timeouts;
+  uint64_t timeout_ticks;
   uint64_t retransmission_count;
 #endif
   
@@ -65,7 +62,7 @@ private:
   
   void compute_thread_pointers();
 
-#ifdef TIMEOUT
+#ifdef ENABLE_RETRANSMISSION
   void check_for_timeouts(const uint64_t timestamp);
 #endif
 

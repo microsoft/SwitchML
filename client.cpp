@@ -28,6 +28,7 @@ DEFINE_bool(wait, false, "Wait after start for debugger to attach.");
 
 DEFINE_bool(test_grpc, false, "Just test GRPC at localhost and exit.");
 
+DEFINE_bool(print_array, false, "Print entire array.");
 DEFINE_bool(verbose_errors, false, "Print each individual array element that was incorrectly aggregated.");
 DEFINE_int32(max_errors, 16, "Max number of errors to print.");
 
@@ -68,10 +69,15 @@ int main(int argc, char * argv[]) {
   for (int64_t i = 0; i < buffer_length; ++i) {
     if (0 == (i % (FLAGS_packet_size / sizeof(int)))) {
       buf[i] = 0x11223344;
+    // } else if (0 == (i % 2)) {
+    //   buf[i] = (i+1) / (FLAGS_packet_size / sizeof(int));
+    // } else {
+    //   buf[i] = -(i-1) / (FLAGS_packet_size / sizeof(int));
+    // }
     } else if (0 == (i % 2)) {
-      buf[i] = i / (FLAGS_packet_size / sizeof(int));
+      buf[i] = i;
     } else {
-      buf[i] = -i / (FLAGS_packet_size / sizeof(int));
+      buf[i] = -i;
     }
 
     // convert to network byte order
@@ -141,14 +147,33 @@ int main(int argc, char * argv[]) {
     int original = 0;
     if (0 == (i % (FLAGS_packet_size / sizeof(int)))) {
       original = 0x11223344;
+    // } else if (0 == (i % 2)) {
+    //   original = (i+1) / (FLAGS_packet_size / sizeof(int));
+    // } else {
+    //   original = -(i-1) / (FLAGS_packet_size / sizeof(int));
+    // }
     } else if (0 == (i % 2)) {
-      original = i / (FLAGS_packet_size / sizeof(int));
+      original = i;
     } else {
-      original = -i / (FLAGS_packet_size / sizeof(int));
+      original = -i;
     }
-
     // use that to compute expected reduction value after however many iterations we did
     int expected = original * multiplier;
+
+
+    if (FLAGS_print_array) {
+      if (rank == 0) {
+        //std::cout << i << ": 0x" << std::hex << buf[i] << std::dec << std::endl;
+        std::cout << i
+                  << ": original " << original << "/0x" << std::hex << original << std::dec
+                  << " expected " << expected << "/0x" << std::hex << expected << std::dec
+                  << ", got " << buf[i] << "/0x" << std::hex << buf[i] << std::dec;
+        if (buf[i] != expected) {
+          std::cout << " MISMATCH!";
+        }
+        std::cout << std::endl;
+      }
+    }
 
     // check for mismatches
     if (buf[i] != expected) {

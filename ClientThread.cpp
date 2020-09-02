@@ -21,6 +21,7 @@
 const bool DEBUG = false;
 
 DEFINE_bool(connect_to_server, false, "By default, format packets for switch; if set, format for server for debugging.");
+DEFINE_double(timeout, 0.001, "Retransmission timeout in seconds. Set to 0 to disable retransmission.");
 
 ClientThread::ClientThread(Reducer * reducer, int64_t thread_id)
   : reducer(reducer)
@@ -32,8 +33,9 @@ ClientThread::ClientThread(Reducer * reducer, int64_t thread_id)
   , send_wrs(FLAGS_slots_per_core)
   , recv_wrs(FLAGS_slots_per_core * 2)
   , base_pool_index(thread_id * FLAGS_slots_per_core) // first slot this thread is responsible for
-#ifdef TIMEOUT
+#ifdef ENABLE_RETRANSMISSION
   , timeouts(FLAGS_slots_per_core)
+  , timeout_ticks(0)
   , retransmission_count(0)
 #endif
   , indices(FLAGS_slots_per_core, 0)
@@ -47,6 +49,12 @@ ClientThread::ClientThread(Reducer * reducer, int64_t thread_id)
 {
   std::cout << "Constructing thread " << thread_id << std::endl;
 
+  // convert double timeout to timestamp count
+  timeout_ticks = FLAGS_timeout * reducer->endpoint.ticks_per_sec;
+  std::cout << "Timeout is " << FLAGS_timeout << " seconds, "
+            << timeout_ticks << " ticks."
+            << std::endl;
+    
   // copy in connection info
   completion_queue = reducer->connections.completion_queues[thread_id];
   std::copy(&reducer->connections.queue_pairs[FLAGS_slots_per_core * thread_id],
@@ -189,7 +197,7 @@ void ClientThread::post_next_send_wr(int i) {
     // // if we use 0-indexed memory regions
     // send_wrs[i].wr.remote_addr = (intptr_t) indices[i];
 
-#ifdef TIMEOUT
+#ifdef ENABLE_RETRANSMISSION
     // remove from timeout queue
     timeouts.remove(i);
 #endif
@@ -225,7 +233,7 @@ void ClientThread::repost_send_wr(int i) {
   // count retransmission
   ++retransmissions;
 
-#ifdef TIMEOUT
+#ifdef ENABLE_RETRANSMISSION
   // ensure this remove from timeout queue
   timeouts.remove(i);
 #endif
@@ -241,7 +249,7 @@ void ClientThread::repost_send_wr(int i) {
                        << std::endl;
   reducer->connections.post_send(queue_pairs[i], &send_wrs[i]);
 
-#ifdef TIMEOUT
+#ifdef ENABLE_RETRANSMISSION
   // count retransmission
   ++retransmission_count;
 #endif
@@ -277,13 +285,13 @@ void ClientThread::handle_write_completion(const ibv_wc & wc, const uint64_t tim
   // get QP index
   int qp_index = (wc.wr_id & 0xffff) % FLAGS_slots_per_core;
 
-#ifdef TIMEOUT
+#ifdef ENABLE_RETRANSMISSION
   // add to timeout queue
   timeouts.push(qp_index, timestamp);
 #endif
 }
 
-#ifdef TIMEOUT
+#ifdef ENABLE_RETRANSMISSION
 void ClientThread::check_for_timeouts(const uint64_t timestamp) {
   int qp_index = -1;
   uint64_t old_timestamp = 0;
@@ -293,8 +301,7 @@ void ClientThread::check_for_timeouts(const uint64_t timestamp) {
 
   // if entry has timed out
   if ((qp_index != -1) &&
-      (timestamp - old_timestamp > TIMEOUT)) {
-    //std::cout << "Resending queue " << qp_index << std::endl;
+      (timestamp - old_timestamp > timeout_ticks)) {
     repost_send_wr(qp_index);
   }
 }
@@ -305,7 +312,7 @@ void ClientThread::run() {
   std::vector<ibv_wc> completions(max_entries);
 
   while (outstanding_operations > 0) {
-#ifdef TIMEOUT
+#ifdef ENABLE_RETRANSMISSION
     // get current timestamp counter value
     // TODO: have NIC generate timestamps
     const uint64_t timestamp = __rdtsc();
@@ -345,8 +352,10 @@ void ClientThread::run() {
       }
     }
 
-#ifdef TIMEOUT
-    check_for_timeouts(timestamp);
+#ifdef ENABLE_RETRANSMISSION
+    if (timeout_ticks != 0) {
+      check_for_timeouts(timestamp);
+    }
 #endif
   }
 }
@@ -419,7 +428,7 @@ void ClientThread::compute_thread_pointers() {
             << " start_message_index: " << start_message_index
             << " end_message_index: " << end_message_index
             << " outstanding_operations: " << outstanding_operations
-#ifdef TIMEOUT
+#ifdef ENABLE_RETRANSMISSION
             << " retransmissions so far: " << retransmission_count
 #endif
             << std::endl;

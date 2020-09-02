@@ -41,6 +41,9 @@ public: // TODO: undo this as much as necessary
   /// protection domain to go with context
   ibv_pd * protection_domain;
 
+  /// until we can use NIC timestamps, store the CPU timestamp counter tick rate
+  uint64_t ticks_per_sec;
+  
   uint64_t get_mac();
   uint32_t get_ipv4();
   
