@@ -99,6 +99,8 @@ class NonSwitchMLForward(Table):
         self.mac_addresses.clear()
 
     def worker_port_get(self, mac):
+        if mac not in self.mac_addresses:
+            raise Exception("Error: MAC address not configured on switch.")
         return self.mac_addresses[mac]
     
     def add_workers(self, switch_mgid, workers):

@@ -64,7 +64,7 @@ on last or only:
 // QPN is 
 //#define QP_INDEX (hdr.ib_bth.dst_qp[11:0] ++ hdr.ib_bth.dst_qp[20:16])
 
-// queue pair indexing with worker ID, max 4 workers (2 bits worker id, 12 bits QPN)
+// compute queue pair index
 #define QP_INDEX (hdr.ib_bth.dst_qp[16+max_num_workers_log2-1:16] ++ hdr.ib_bth.dst_qp[max_num_queue_pairs_per_worker_log2-1:0])
 
 
@@ -79,6 +79,8 @@ on last or only:
 
 //typedef bit<10> index_t;
 //typedef bit<24> index_t;
+
+
 
 //typedef bool    return_t;
 //typedef bit<16> return_t;
@@ -96,6 +98,25 @@ control RoCEReceiver(
     in ingress_intrinsic_metadata_from_parser_t ig_prsr_md,
     inout ingress_intrinsic_metadata_for_deparser_t ig_dprsr_md,
     inout ingress_intrinsic_metadata_for_tm_t ig_tm_md) {
+
+    //Random<drop_random_value_t>() rng;
+    //drop_random_value_t drop_random_value;
+    //drop_random_value_t worker_drop_probability;
+    //typedef bit
+    //bit<12>  worker_drop_probability;
+    //Random<drop_random_value_t>() rng;
+    //Random<drop_probability_t>() rng;
+    //Hash<drop_probability_t>(HashAlgorithm_t.RANDOM) rng;
+
+    // CRCPolynomial<bit<32>>(32w0x04C11DB7, // polynomial
+    //     true,          // reversed
+    //     false,         // use msb?
+    //     false,         // extended?
+    //     32w0xFFFFFFFF, // initial shift register value
+    //     32w0xFFFFFFFF  // result xor
+    // ) poly1;
+    // Hash<bit<32>>(HashAlgorithm_t.CUSTOM, poly1) hash1;
+
     
     DirectCounter<counter_t>(CounterType_t.PACKETS_AND_BYTES) rdma_receive_counter;
 
@@ -106,17 +127,6 @@ control RoCEReceiver(
 
     bool message_possibly_received;
     bool sequence_violation;
-    
-    return_t received_message;
-    const return_t true_value  = 0x1;
-    const return_t false_value = 0xffffffff;
-    //const return_t false_value = false;
-    
-    const pool_index_t base_pool_index      = 0;
-    const pool_index_t pool_index_increment = 2;
-
-    //pool_index_t pool_index_result;
-    bit<32> pool_index_result;
     
     // use with _FIRST and _ONLY packets
     RegisterAction<receiver_data_t, queue_pair_index_t, return_t>(receiver_data_register) receiver_reset_action = {
@@ -183,11 +193,15 @@ control RoCEReceiver(
         worker_type_t worker_type,
         worker_id_t worker_id, 
         num_workers_t num_workers,
-        worker_bitmap_t worker_bitmap) {
+        worker_bitmap_t worker_bitmap,
+        packet_size_t packet_size,
+        drop_probability_t drop_probability) {
 
         // bitmap representation for this worker
         ig_md.worker_bitmap   = worker_bitmap;
         ig_md.num_workers     = num_workers;
+
+        ig_md.switchml_md.setValid();
 
         // group ID for this job
         ig_md.switchml_md.mgid = mgid;
@@ -198,8 +212,18 @@ control RoCEReceiver(
 
 
         ig_md.switchml_rdma_md.setValid();
-        ig_md.switchml_rdma_md.rdma_addr = hdr.ib_reth.addr;
-        
+        ig_md.switchml_rdma_md.rdma_addr = hdr.ib_reth.addr; // TODO: make this an index rather than an address
+        ig_md.switchml_md.tsi = hdr.ib_reth.len; // TODO: put this in a better place
+
+        //ig_md.switchml_md.ingress_port = ig_intr_md.ingress_port;
+        // compute port used for recirculation
+        //ig_md.switchml_md.recirc_port_selector = (bit<8>) ig_intr_md.ingress_port;
+        //ig_md.switchml_md.recirc_port_selector = (bit<8>) ig_md.switchml_md.pool_index[8:1];
+
+        //ig_tm_md.ucast_egress_port = (PortId_t) ig_md.switchml_md.pool_index[4:1];
+
+        //ig_md.switchml_md.recirc_port_selector = (bit<16>) ig_md.switchml_md.pool_index[4:1];
+
         // TODO: copy immediate to exponents
         // TODO: copy address
         
@@ -207,16 +231,27 @@ control RoCEReceiver(
         hdr.ethernet.setInvalid();
         hdr.ipv4.setInvalid();
         hdr.udp.setInvalid();
-        hdr.ib_bth.setInvalid();
+        hdr.ib_bth.setInvalid(); // TODO: copy qpn to a better place and re-eenable here
         hdr.ib_reth.setInvalid();
         hdr.ib_immediate.setInvalid();
         hdr.ib_icrc.setInvalid();
 
+        // record packet size for use in recirculation
+        ig_md.switchml_md.packet_size = packet_size;
+        ig_md.switchml_md.recirc_port_selector = (queue_pair_index_t) QP_INDEX;
+        
+        //drop_random_value = rng.get();
+        //ig_md.drop_calculation = drop_probability - (1w0 ++ rng.get());
+        //ig_md.drop_calculation = drop_probability - rng.get();
+        //ig_md.drop_calculation = rng.get({ig_prsr_md.global_tstamp, ig_intr_md.ingress_mac_tstamp});
+        //ig_md.drop_calculation = hash1.get({ig_intr_md.ingress_mac_tstamp})[15:0];
+        //ig_md.drop_calculation = drop_probability;
+        
         //
         // Pool parameters
         //
         
-
+        
         // move the SwitchML set bit in the MSB to the LSB to match existing software
         //ig_md.switchml_md.pool_index = receiver_increment_action.execute(hdr.switchml.pool_index[13:0] ++ hdr.switchml.pool_index[15:15])[14:0];
         //ig_md.switchml_md.pool_index = receiver_increment_action.execute(hdr.ib_bth.dst_qp)[14:0];
@@ -251,10 +286,14 @@ control RoCEReceiver(
         worker_type_t worker_type,
         worker_id_t worker_id, 
         num_workers_t num_workers,
-        worker_bitmap_t worker_bitmap) {
+        worker_bitmap_t worker_bitmap,
+        packet_size_t packet_size,
+        drop_probability_t drop_probability) {
 
         // set common fields
-        set_bitmap(mgid, worker_type, worker_id,  num_workers, worker_bitmap);
+        set_bitmap(mgid, worker_type, worker_id,  num_workers, worker_bitmap, packet_size, drop_probability);
+        ig_md.switchml_rdma_md.first_packet = false;
+        ig_md.switchml_rdma_md.last_packet  = false;
 
         // process sequence number
         return_t result = receiver_increment_action.execute(QP_INDEX);
@@ -275,10 +314,14 @@ control RoCEReceiver(
         worker_type_t worker_type,
         worker_id_t worker_id, 
         num_workers_t num_workers,
-        worker_bitmap_t worker_bitmap) {
+        worker_bitmap_t worker_bitmap,
+        packet_size_t packet_size,
+        drop_probability_t drop_probability) {
 
         // set common fields
-        set_bitmap(mgid, worker_type, worker_id,  num_workers, worker_bitmap);
+        set_bitmap(mgid, worker_type, worker_id,  num_workers, worker_bitmap, packet_size, drop_probability);
+        ig_md.switchml_rdma_md.first_packet = false;
+        ig_md.switchml_rdma_md.last_packet  = true;
 
         // process sequence number
         return_t result = receiver_increment_action.execute(QP_INDEX);
@@ -300,10 +343,14 @@ control RoCEReceiver(
         worker_type_t worker_type,
         worker_id_t worker_id, 
         num_workers_t num_workers,
-        worker_bitmap_t worker_bitmap) {
+        worker_bitmap_t worker_bitmap,
+        packet_size_t packet_size,
+        drop_probability_t drop_probability) {
 
         // set common fields
-        set_bitmap(mgid, worker_type, worker_id,  num_workers, worker_bitmap);
+        set_bitmap(mgid, worker_type, worker_id,  num_workers, worker_bitmap, packet_size, drop_probability);
+        ig_md.switchml_rdma_md.first_packet = true;
+        ig_md.switchml_rdma_md.last_packet  = false;
 
         // reset sequence number
         return_t result = receiver_reset_action.execute(QP_INDEX);
@@ -323,11 +370,15 @@ control RoCEReceiver(
         worker_type_t worker_type,
         worker_id_t worker_id, 
         num_workers_t num_workers,
-        worker_bitmap_t worker_bitmap) {
+        worker_bitmap_t worker_bitmap,
+        packet_size_t packet_size,
+        drop_probability_t drop_probability) {
 
         // set common fields
-        set_bitmap(mgid, worker_type, worker_id,  num_workers, worker_bitmap);
-
+        set_bitmap(mgid, worker_type, worker_id,  num_workers, worker_bitmap, packet_size, drop_probability);
+        ig_md.switchml_rdma_md.first_packet = true;
+        ig_md.switchml_rdma_md.last_packet  = true;
+        
         // reset sequence number
         return_t result = receiver_reset_action.execute(QP_INDEX);
 
@@ -401,8 +452,11 @@ control RoCEReceiver(
     apply {
         // sequence_violation = false;
         // message_possibly_received = false;
+        //ig_md.drop_calculation = rng.get({ig_prsr_md.global_tstamp, ig_intr_md.ingress_mac_tstamp});
+        //ig_md.drop_calculation = rng.get({ig_intr_md.ingress_mac_tstamp});
         
         if (receive_roce.apply().hit) {
+            
             // // use the SwitchML set bit in the MSB of the 16-bit pool index to switch between sets
             // //ig_md.pool_set = hdr.ib_bth.dst_qp[15:15];
             // if (hdr.ib_bth.dst_qp[15:15] == 1w1) {
@@ -410,11 +464,18 @@ control RoCEReceiver(
                 // } else {
                 //     ig_md.pool_set = 0;
                 // }
-            rdma_packet_counter.count(QP_INDEX);
+            rdma_packet_counter.count(ig_md.switchml_md.recirc_port_selector);
+            // if (drop_random_value < worker_drop_probability) {
+            //     ig_dprsr_md.drop_ctl[0:0] = 1;
+            // }
+            // if (worker_drop_probability[11:11] == 1) {
+            //     ig_dprsr_md.drop_ctl[0:0] = 1;
+            // }
+        
             
             if (sequence_violation) {
                 // count violation
-                rdma_sequence_violation_counter.count(QP_INDEX);
+                rdma_sequence_violation_counter.count(ig_md.switchml_md.recirc_port_selector);
                 
                 // drop bit is already set; copy/mirror to CPU too
                 ig_tm_md.copy_to_cpu = 1;
@@ -436,24 +497,11 @@ control RoCEReceiver(
                 
             } else if (message_possibly_received) {
                 // count correctly received message
-                rdma_message_counter.count(QP_INDEX);
+                rdma_message_counter.count(ig_md.switchml_md.recirc_port_selector);
             }
+
+            //hdr.ib_bth.setInvalid(); // TODO: copy qpn to better place and move back to set action
         }
-
-
-        // if (ig_dprsr_md.drop_ctl[0:0] == 1) {
-        //     if (sequence_violation) {
-        //         ig_md.switchml_md.packet_type = packet_type_t.IGNORE;
-        //         ig_tm_md.ucast_egress_port = 4;
-        //         ig_tm_md.bypass_egress = 1w1;
-        //         ig_dprsr_md.drop_ctl[0:0] = 0;
-        //     }
-        // }    
-                
-
-        
-        // //pool_index_result = result;
-        // ig_md.switchml_md.pool_index = pool_index_result[14:0];
     }
 }
 

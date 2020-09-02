@@ -60,6 +60,7 @@ class GRPCServer(SwitchML_pb2_grpc.RDMAServerServicer):
                                      mac_str,
                                      ipv4_str,
                                      request.rkey,
+                                     request.packet_size,
                                      request.message_size,
                                      zip(request.qpns, request.psns))
             

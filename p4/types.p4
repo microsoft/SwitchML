@@ -7,6 +7,8 @@
 #ifndef _TYPES_
 #define _TYPES_
 
+#include "configuration.p4"
+
 // Mirror types
 #if __TARGET_TOFINO__ == 1
 typedef bit<3> mirror_type_t;
@@ -110,17 +112,46 @@ struct exponent_pair_t {
     exponent_t second;
 }
 
-typedef bit<16> drop_random_value_t;
+// RDMA MTU (packet size). Matches ibv_mtu enum in verbs.h
+enum bit<3> packet_size_t {
+    IBV_MTU_128  = 0, // not actually defined in IB, but useful for no recirculation tests
+    IBV_MTU_256  = 1,
+    IBV_MTU_512  = 2,
+    IBV_MTU_1024 = 3
+}
+
+// make drop random value small enough to be used with gateway
+// inequality comparisons.
+//typedef bit<12> drop_random_value_t;
+//typedef bit<11> drop_random_value_t;
+//typedef bit<16> drop_probability_t;  // signed drop probability; set between 0 and 32767
+typedef bit<15> drop_random_value_t; // will be 0-extended to make positive random value
+typedef bit<16> drop_probability_t;  // signed drop probability; set between 0 and 32767
 
 typedef bit<32> counter_t;
 
-enum bit<3> packet_type_t {
+typedef bit<4> packet_type_underlying_t;
+enum bit<4> packet_type_t {
     MIRROR     = 0x0,
-    CONSUME    = 0x1,
-    HARVEST    = 0x2,
-    BROADCAST  = 0x3,
-    RETRANSMIT = 0x4,
-    IGNORE     = 0x5
+    //CONSUME    = 0x1,
+    //HARVEST    = 0x2,
+    BROADCAST  = 0x1,
+    RETRANSMIT = 0x2,
+    IGNORE     = 0x3,
+
+    CONSUME0   = 0x4, // pipe 0
+    CONSUME1   = 0x5, // pipe 1
+    CONSUME2   = 0x6, // pipe 2
+    CONSUME3   = 0x7, // pipe 3
+    
+    HARVEST0   = 0x8, // pipe 3
+    HARVEST1   = 0x9, // pipe 3
+    HARVEST2   = 0xa, // pipe 2
+    HARVEST3   = 0xb, // pipe 2
+    HARVEST4   = 0xc, // pipe 1
+    HARVEST5   = 0xd, // pipe 1
+    HARVEST6   = 0xe, // pipe 0
+    HARVEST7   = 0xf  // pipe 0
 }
 
 // SwitchML metadata header; bridged for recirculation (and not exposed outside the switch)
@@ -135,13 +166,15 @@ enum bit<3> packet_type_t {
 header switchml_md_h {
     MulticastGroupId_t mgid;
 
-    // @padding
-    // bit<5> pad2;
-    
-    PortId_t ingress_port;
+    //bit<16> ingress_port;
+    //bit<16> recirc_port_selector;
+    queue_pair_index_t recirc_port_selector;
+    //bit<8> ingress_port; // GRR
 
     // @padding
     // bit<5> pad;
+
+    packet_size_t packet_size;
 
     // is this RDMA or UDP?
     worker_type_t worker_type;
@@ -175,12 +208,22 @@ header switchml_md_h {
     bit<32> tsi;
     bit<12> unused;
 
+    // @padding
+    // bit<5> pad2;
+    
+    PortId_t ingress_port;
     //bit<64> rdma_addr;
 }
 //switchml_md_h switchml_md_initializer = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
+@flexible
 header switchml_rdma_md_h {
-    bit<64> rdma_addr;
+    bool first_packet; // set both for only packets
+    bool last_packet;
+    // // min message len is 256 bytes
+    // // max is (22528/2)*256, or 11264*256 (all pool indices for one slot)
+    // bit<14> message_len_by256; // only store relevant bits
+    bit<64> rdma_addr; // TODO: make this an index rather than an address
 }
 
 // header prepended to mirrored debug packets
@@ -215,10 +258,10 @@ struct ingress_metadata_t {
     // this bitmap has one bit set for the current packet's worker
     // communication between get_worker_bitmap and update_and_check_worker_bitmap; not used in harvest
     worker_bitmap_t worker_bitmap;
-    
-    // this bitmap shows the way the bitmap should look when complete
-    // communication between get_worker_bitmap and update_and_check_worker_bitmap; not used in harvest
-    worker_bitmap_t complete_bitmap;
+
+    // // this bitmap shows the way the bitmap should look when complete
+    // // communication between get_worker_bitmap and update_and_check_worker_bitmap; not used in harvest
+    // worker_bitmap_t complete_bitmap; // TODO: probably delete this
 
     // how many workers in job?
     // communication between get_worker_bitmap and count_workers; not used in harvest
@@ -241,6 +284,9 @@ struct ingress_metadata_t {
     // switch MAC and IP
     mac_addr_t switch_mac;
     ipv4_addr_t switch_ip;
+
+    // signed difference between rng and drop probability for this worker; negative means we should drop
+    drop_probability_t drop_calculation;
 }
 //const ingress_metadata_t ingress_metadata_initializer = {{0, 0, true, 0, 0, packet_type_t.IGNORE, 0, 0, 0, 0, 0, 0}, 0, 0, 0, 0, 0, false, 0, 0};
 

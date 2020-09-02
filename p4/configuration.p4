@@ -7,8 +7,6 @@
 #ifndef _CONFIGURATION_
 #define _CONFIGURATION_
 
-#include "types.p4"
-
 // Register size.
 // Register size be multiple of 2.
 

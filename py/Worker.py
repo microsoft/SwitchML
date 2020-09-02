@@ -15,6 +15,12 @@ class WorkerType(IntEnum):
     SWITCHML_UDP = 1
     ROCEv2       = 2
 
+class PacketSize(IntEnum):
+    IBV_MTU_128  = 0
+    IBV_MTU_256  = 1
+    IBV_MTU_512  = 2
+    IBV_MTU_1024 = 3
+
 class Worker(object):
 
     # set either UDP port or RoCE QPN to use as SwitchML worker;

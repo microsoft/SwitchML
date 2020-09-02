@@ -49,35 +49,61 @@ parser SwitchMLIngressParser(
         // decide what to do with recirculated packets now
         counter.set(8w0);
         transition select(ig_intr_md.ingress_port) {
-            // handle non-resubmitted packets coming in on recirculation port in this pipeline
-            68 &&& 0x7f: parse_recirculate;
-            // handle non-resubmitted, non-recirculated packets
+            // not currently using PCIe CPU port for recirculation; just parse ethernet
+            64: parse_recirculate;
+            68: parse_recirculate;
+            320: parse_ethernet;
+            0x080 &&& 0x180: parse_recirculate;
+            0x100 &&& 0x180: parse_recirculate;
+            0x180 &&& 0x180: parse_recirculate;
             default:  parse_ethernet;
         }
+        // transition select(ig_intr_md.ingress_port) {
+        //     // not currently using PCIe CPU port for recirculation; just parse ethernet
+        //     320 &&& 0x1ff: parse_ethernet;
+
+        //     // Always parse ethernet on the pipe 0 front panel ports
+        //     0x0 &&& 0x1c0: parse_ethernet;
+            
+        //     // for everything else, treat as recirculated this
+        //     // includes ports 64 and 68 on pipe 0, and all other ports
+        //     // on all other pipes to support 1024B packets.
+        //     default:  parse_recirculate;
+        // }
     }
 
     state parse_recirculate {
         // parse switchml metadata and mark as recirculated
         pkt.extract(ig_md.switchml_md);
         pkt.extract(ig_md.switchml_rdma_md);
-        //ig_md.switchml_md.packet_type = packet_type_t.HARVEST; // already set before recirculation
+        //ig_md.switchml_md.packet_type = packet_type_t.HARVEST7; // already set before recirculation
         counter.set(8w1);  // remember we don't need to parse 
-        hdr.d1.setValid(); // this will be filled in by the pipeline
+        //hdr.d1.setValid(); // this will be filled in by the pipeline
         // now parse the rest of the packet
-        transition select(ig_md.switchml_md.worker_type) {
-            worker_type_t.SWITCHML_UDP : parse_bare_packet;
-            worker_type_t.ROCEv2       : parse_bare_packet; 
-            default : parse_ethernet;
+        transition select(ig_md.switchml_md.worker_type, ig_md.switchml_md.packet_type) {
+            (worker_type_t.SWITCHML_UDP, _)                : parse_bare_harvest_packet; // only 256B packets are supported, so go parse harvest
+            (worker_type_t.ROCEv2, packet_type_t.CONSUME0) : parse_bare_consume_packet; 
+            (worker_type_t.ROCEv2, packet_type_t.CONSUME1) : parse_bare_consume_packet; 
+            (worker_type_t.ROCEv2, packet_type_t.CONSUME2) : parse_bare_consume_packet; 
+            (worker_type_t.ROCEv2, packet_type_t.CONSUME3) : parse_bare_consume_packet; 
+            default : parse_bare_harvest_packet; // default to parsing for harvests
         }
     }
 
-    state parse_bare_packet {
-        // address
-        // exponents
-        pkt.extract(hdr.d0);
+    state parse_bare_harvest_packet {
+        // one of these will be filled in by the pipeline, and the other set invalid
+        hdr.d0.setValid();
+        hdr.d1.setValid();
         transition accept;
     }
 
+    state parse_bare_consume_packet {
+        // extract the next data headers in packet
+        pkt.extract(hdr.d0);
+        pkt.extract(hdr.d1);
+        transition accept;
+    }
+    
     state parse_ethernet {
         pkt.extract(hdr.ethernet);
         transition select(hdr.ethernet.ether_type) {
@@ -174,9 +200,8 @@ parser SwitchMLIngressParser(
         pkt.extract(hdr.d0);
         pkt.extract(hdr.d1);
         pkt.extract(hdr.ib_icrc);
-        // at this point we know this is a SwitchML packet that wasn't recirculated, so mark it for consumption.
         ig_md.switchml_md.setValid();
-        ig_md.switchml_md.packet_type = packet_type_t.CONSUME;
+        ig_md.switchml_md.packet_type = packet_type_t.CONSUME0;
         ig_md.switchml_rdma_md.setValid();
         transition accept;
     }
@@ -203,6 +228,7 @@ parser SwitchMLIngressParser(
             true  : parse_data1; // not recirculated; continue parsing and set packet type
             _     : accept;      // recirculated; SwitchML packet type already set
         }
+        //transition parse_data1; // not recirculated; continue parsing and set packet type
     }
 
     // mark as @critical to ensure minimum cycles for extraction
@@ -213,7 +239,7 @@ parser SwitchMLIngressParser(
         pkt.extract(hdr.exponents); // TODO: move exponents before data once daiet code supports it
         // at this point we know this is a SwitchML packet that wasn't recirculated, so mark it for consumption.
         ig_md.switchml_md.setValid();
-        ig_md.switchml_md.packet_type = packet_type_t.CONSUME;
+        ig_md.switchml_md.packet_type = packet_type_t.CONSUME0;
         ig_md.switchml_rdma_md.setValid();
         transition accept;
     }
@@ -255,39 +281,39 @@ control SwitchMLIngressDeparser(
         // TODO: skip UDP checksum for now. Fix if needed and cost reasonable.
         //hdr.udp.checksum = 0; 
 
-        if (ig_dprsr_md.mirror_type == MIRROR_TYPE_I2E) {
-            // mirror.emit<ethernet_h>(ig_md.mirror_session,
-            //     {hdr.ethernet.src_addr, hdr.ethernet.dst_addr, hdr.ethernet.ether_type});
-            // mirror.emit<switchml_debug_h>(ig_md.mirror_session, {
-            //         ig_md.switch_mac,
-            //         ig_md.switch_mac,
-            //         ig_md.mirror_ether_type,
-            //         ig_md.switchml_md.worker_id,
-            //         ig_md.switchml_md.pool_index,
-            //         ig_md.switchml_md.first_last_flag,
-            //         ig_md.num_workers,
-            //         0,
-            //         ig_md.switchml_md.packet_type
-            //     });
+        // if (ig_dprsr_md.mirror_type == MIRROR_TYPE_I2E) {
+        //     // mirror.emit<ethernet_h>(ig_md.mirror_session,
+        //     //     {hdr.ethernet.src_addr, hdr.ethernet.dst_addr, hdr.ethernet.ether_type});
+        //     // mirror.emit<switchml_debug_h>(ig_md.mirror_session, {
+        //     //         ig_md.switch_mac,
+        //     //         ig_md.switch_mac,
+        //     //         ig_md.mirror_ether_type,
+        //     //         ig_md.switchml_md.worker_id,
+        //     //         ig_md.switchml_md.pool_index,
+        //     //         ig_md.switchml_md.first_last_flag,
+        //     //         ig_md.num_workers,
+        //     //         0,
+        //     //         ig_md.switchml_md.packet_type
+        //     //     });
 
-            //mirror.emit<switchml_md_h>(ig_md.mirror_session, ig_md.switchml_md);
+        //     //mirror.emit<switchml_md_h>(ig_md.mirror_session, ig_md.switchml_md);
 
-            mirror.emit<switchml_md_h>(ig_md.mirror_session, {
-                    ig_md.switchml_md.mgid,
-                    ig_md.switchml_md.ingress_port,
-                    ig_md.switchml_md.worker_type,
-                    ig_md.switchml_md.worker_id,
-                    ig_md.switchml_md.src_port,
-                    ig_md.switchml_md.dst_port,
-                    //ig_md.switchml_md.packet_type,
-                    packet_type_t.MIRROR,
-                    ig_md.switchml_md.pool_index,
-                    ig_md.switchml_md.first_last_flag,
-                    ig_md.switchml_md.map_result,
-                    ig_md.switchml_md.worker_bitmap_before,
-                    ig_md.switchml_md.tsi,
-                    ig_md.switchml_md.unused});
-        }
+        //     mirror.emit<switchml_md_h>(ig_md.mirror_session, {
+        //             ig_md.switchml_md.mgid,
+        //             ig_md.switchml_md.ingress_port,
+        //             ig_md.switchml_md.worker_type,
+        //             ig_md.switchml_md.worker_id,
+        //             ig_md.switchml_md.src_port,
+        //             ig_md.switchml_md.dst_port,
+        //             //ig_md.switchml_md.packet_type,
+        //             packet_type_t.MIRROR,
+        //             ig_md.switchml_md.pool_index,
+        //             ig_md.switchml_md.first_last_flag,
+        //             ig_md.switchml_md.map_result,
+        //             ig_md.switchml_md.worker_bitmap_before,
+        //             ig_md.switchml_md.tsi,
+        //             ig_md.switchml_md.unused});
+        // }
         
         pkt.emit(ig_md.switchml_md);
         pkt.emit(ig_md.switchml_rdma_md);
@@ -301,7 +327,7 @@ parser SwitchMLEgressParser(
     out egress_metadata_t eg_md,
     out egress_intrinsic_metadata_t eg_intr_md) {
 
-    Checksum() ipv4_checksum;
+    //Checksum() ipv4_checksum;
 
     state start {
         pkt.extract(eg_intr_md);
@@ -332,57 +358,57 @@ parser SwitchMLEgressParser(
         transition accept;
     }
 
-    state parse_ethernet {
-        pkt.extract(hdr.ethernet);
-        transition select(hdr.ethernet.ether_type) {
-            // ETHERTYPE_ROCEv1                                    : parse_ib_grh;
-            ETHERTYPE_IPV4                                      : parse_ipv4;
-            ETHERTYPE_SWITCHML_BASE &&& ETHERTYPE_SWITCHML_MASK : parse_switchml;
-            default                                             : accept;
-        }
-    }
-
-    state parse_ipv4 {
-        pkt.extract(hdr.ipv4);
-        ipv4_checksum.add(hdr.ipv4);
-        eg_md.checksum_err_ipv4 = ipv4_checksum.verify();
-        eg_md.update_ipv4_checksum = false;
-        
-        transition select(hdr.ipv4.protocol) {
-            ip_protocol_t.UDP : parse_udp;
-            default           : accept;
-        }
-    }
-
-    state parse_udp {
-        pkt.extract(hdr.udp);
-        transition select(hdr.udp.dst_port) {
-            UDP_PORT_ROCEV2                                   : parse_ib_bth;
-            UDP_PORT_SWITCHML_BASE &&& UDP_PORT_SWITCHML_MASK : parse_switchml;
-            default                                           : accept;
-        }
-    }
-
-    // state parse_ib_grh {
-    //     pkt.extract(hdr.ib_grh);
-    //     transition parse_ib_bth;
+    // state parse_ethernet {
+    //     pkt.extract(hdr.ethernet);
+    //     transition select(hdr.ethernet.ether_type) {
+    //         // ETHERTYPE_ROCEv1                                    : parse_ib_grh;
+    //         ETHERTYPE_IPV4                                      : parse_ipv4;
+    //         ETHERTYPE_SWITCHML_BASE &&& ETHERTYPE_SWITCHML_MASK : parse_switchml;
+    //         default                                             : accept;
+    //     }
     // }
 
-    state parse_ib_bth {
-        pkt.extract(hdr.ib_bth);
-        transition accept;
-    }
+    // state parse_ipv4 {
+    //     pkt.extract(hdr.ipv4);
+    //     ipv4_checksum.add(hdr.ipv4);
+    //     eg_md.checksum_err_ipv4 = ipv4_checksum.verify();
+    //     eg_md.update_ipv4_checksum = false;
+        
+    //     transition select(hdr.ipv4.protocol) {
+    //         ip_protocol_t.UDP : parse_udp;
+    //         default           : accept;
+    //     }
+    // }
 
-    state parse_switchml {
-        pkt.extract(hdr.switchml);
-        transition parse_exponents;
-    }
+    // state parse_udp {
+    //     pkt.extract(hdr.udp);
+    //     transition select(hdr.udp.dst_port) {
+    //         UDP_PORT_ROCEV2                                   : parse_ib_bth;
+    //         UDP_PORT_SWITCHML_BASE &&& UDP_PORT_SWITCHML_MASK : parse_switchml;
+    //         default                                           : accept;
+    //     }
+    // }
 
-    state parse_exponents {
-        pkt.extract(hdr.exponents);
-        // don't parse data in egress to save on PHV space
-        transition accept;
-    }
+    // // state parse_ib_grh {
+    // //     pkt.extract(hdr.ib_grh);
+    // //     transition parse_ib_bth;
+    // // }
+
+    // state parse_ib_bth {
+    //     pkt.extract(hdr.ib_bth);
+    //     transition accept;
+    // }
+
+    // state parse_switchml {
+    //     pkt.extract(hdr.switchml);
+    //     transition parse_exponents;
+    // }
+
+    // state parse_exponents {
+    //     pkt.extract(hdr.exponents);
+    //     // don't parse data in egress to save on PHV space
+    //     transition accept;
+    // }
 }
 
 control SwitchMLEgressDeparser(
@@ -414,4 +440,6 @@ control SwitchMLEgressDeparser(
         pkt.emit(hdr);
     }
 }
+
+
 #endif /* _PARSERS_ */

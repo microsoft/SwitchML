@@ -15,7 +15,7 @@
 // Significand stage value calculator
 //
 // Each control handles two significands.
-control SignificandStage(
+control SignificandStage<HDR_T, MD_T>(
     inout significand_t significand0a,
     inout significand_t significand0b,
     inout significand_t significand1a,
@@ -25,7 +25,7 @@ control SignificandStage(
     inout significand_t significand3a,
     inout significand_t significand3b,
     in header_t hdr,
-    inout ingress_metadata_t ig_md) {
+    inout switchml_md_h switchml_md) {
 
     SignificandSum() sum0;
     SignificandSum() sum1;
@@ -33,10 +33,10 @@ control SignificandStage(
     SignificandSum() sum3;
     
     apply {
-        sum0.apply(significand0a, significand0b, hdr, ig_md);
-        sum1.apply(significand1a, significand1b, hdr, ig_md);
-        sum2.apply(significand2a, significand2b, hdr, ig_md);
-        sum3.apply(significand3a, significand3b, hdr, ig_md);
+        sum0.apply(significand0a, significand0b, hdr, switchml_md);
+        sum1.apply(significand1a, significand1b, hdr, switchml_md);
+        sum2.apply(significand2a, significand2b, hdr, switchml_md);
+        sum3.apply(significand3a, significand3b, hdr, switchml_md);
     }
 }
 

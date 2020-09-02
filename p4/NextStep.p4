@@ -11,6 +11,10 @@
 #include "types.p4"
 #include "headers.p4"
 
+// enable this for testing in the model. This avoids using port 64 for loopback.
+// start the model with the flag --int-port-loop 0xe to enable loopback in pipes 1-3.
+#define LOOPBACK_DEBUG
+
 control NextStep(
     inout header_t hdr,
     inout ingress_metadata_t ig_md,
@@ -18,36 +22,153 @@ control NextStep(
     inout ingress_intrinsic_metadata_for_deparser_t ig_dprsr_md,
     inout ingress_intrinsic_metadata_for_tm_t ig_tm_md) {
 
-    //DirectCounter<counter_t>(CounterType_t.PACKETS_AND_BYTES) next_step_counter;
-    Counter<counter_t, pool_index_t>(register_size, CounterType_t.PACKETS) recirculate_counter;
+
+    bool count_consume;
+    bool count_harvest;
+
+    bool count_broadcast;
+    bool count_retransmit;
+    bool count_recirculate;
+    bool count_drop;
+
+    DirectCounter<counter_t>(CounterType_t.PACKETS_AND_BYTES) next_step_counter;
+        
+    //Counter<counter_t, pool_index_t>(register_size, CounterType_t.PACKETS) consume_counter;
+    //Counter<counter_t, pool_index_t>(register_size, CounterType_t.PACKETS) harvest_counter;
     Counter<counter_t, pool_index_t>(register_size, CounterType_t.PACKETS) broadcast_counter;
     Counter<counter_t, pool_index_t>(register_size, CounterType_t.PACKETS) retransmit_counter;
+    Counter<counter_t, pool_index_t>(register_size, CounterType_t.PACKETS) recirculate_counter;
     Counter<counter_t, pool_index_t>(register_size, CounterType_t.PACKETS) drop_counter;
 
     action drop() {
         // mark for drop
         ig_dprsr_md.drop_ctl[0:0] = 1;
-        //ig_md.switchml_md.packet_type = packet_type_t.IGNORE;
-
-        //next_step_counter.count();
-        //drop_counter.count(ig_md.switchml_md.pool_index);
+        ig_md.switchml_md.packet_type = packet_type_t.IGNORE;
+        count_drop = true;
+        
+        next_step_counter.count();
     }
 
-    action recirculate_for_harvest() {
-        // drop second data header, since first header has data we read out
+    // drop packet but mark it as a consume
+    action finish_consume() {
+        // mark for drop but don't change the packet type
+        ig_dprsr_md.drop_ctl[0:0] = 1;
+        count_consume = true;
+        count_drop = true;
+        next_step_counter.count();
+    }
+
+    action recirculate_for_consume(packet_type_t packet_type, PortId_t recirc_port) {
+        // drop both data headers now that they've been consumed
+        hdr.d0.setInvalid();
         hdr.d1.setInvalid();
-        
-        // recirculate for harvest
-        ig_tm_md.ucast_egress_port = ig_md.switchml_md.ingress_port[8:7] ++ 7w68; // TODO: use both recirc ports
+
+        // recirculate to port on next pipe
+        ig_tm_md.ucast_egress_port = recirc_port;
         ig_tm_md.bypass_egress = 1w1;
         ig_dprsr_md.drop_ctl[0:0] = 0;
-        ig_md.switchml_md.packet_type = packet_type_t.HARVEST;
+        ig_md.switchml_md.packet_type = packet_type;
 
-        //next_step_counter.count();
-        recirculate_counter.count(ig_md.switchml_md.pool_index);
+        count_consume = true;
+        count_recirculate = true;
+        
+        next_step_counter.count();
     }
 
+    action recirculate_for_CONSUME3_same_port_next_pipe() {
+        recirculate_for_consume(packet_type_t.CONSUME3, 2w3 ++ ig_intr_md.ingress_port[6:0]);
+    }
+    
+    action recirculate_for_CONSUME2_same_port_next_pipe() {
+        recirculate_for_consume(packet_type_t.CONSUME2, 2w2 ++ ig_intr_md.ingress_port[6:0]);
+    }
+    
+    action recirculate_for_CONSUME1(PortId_t recirc_port) {
+        recirculate_for_consume(packet_type_t.CONSUME1, recirc_port);
+    }
+
+    action recirculate_for_harvest(packet_type_t packet_type, PortId_t recirc_port) {
+        // recirculate for harvest on next pipe
+        ig_tm_md.ucast_egress_port = recirc_port;
+        ig_tm_md.bypass_egress = 1w1;
+        ig_dprsr_md.drop_ctl[0:0] = 0;
+        ig_md.switchml_md.packet_type = packet_type;
+
+        count_harvest = true;
+        count_recirculate = true;
+
+        next_step_counter.count();
+    }
+
+    action recirculate_for_HARVEST7_same_port() {
+        hdr.d0.setInvalid();
+        recirculate_for_harvest(packet_type_t.HARVEST7, ig_intr_md.ingress_port);
+    }
+
+    action recirculate_for_HARVEST7(PortId_t recirc_port) {
+        hdr.d0.setInvalid();
+        recirculate_for_harvest(packet_type_t.HARVEST7, recirc_port);
+    }
+
+    action recirculate_for_HARVEST7_256B(PortId_t recirc_port) {
+        // this is called on the last consume pass for 1024B packets,
+        // so the first 128B of updates is in hdr.d1.
+
+        // get rid of input data in hdr.d0
+        hdr.d0.setInvalid();
+
+        // add empty ICRC header since this is the deepest we'll be in the packet
+        // TODO: right now there's a bug aliasing this and g_md.switchml_md.first_last_flag, so don't set it
+        hdr.ib_icrc.setValid();
+        //hdr.ib_icrc.icrc = 0xffffffff;
+
+        // go collect the next 128B
+        recirculate_for_harvest(packet_type_t.HARVEST7,recirc_port);
+    }
+
+    action recirculate_for_HARVEST6(PortId_t recirc_port) {
+        hdr.d1.setInvalid();
+        recirculate_for_harvest(packet_type_t.HARVEST6, recirc_port);
+    }
+
+    action recirculate_for_HARVEST5_same_port() {
+        hdr.d0.setInvalid();
+        recirculate_for_harvest(packet_type_t.HARVEST5, ig_intr_md.ingress_port);
+    }
+
+    action recirculate_for_HARVEST4(PortId_t recirc_port) {
+        hdr.d1.setInvalid();
+        recirculate_for_harvest(packet_type_t.HARVEST4, recirc_port);
+    }
+
+    action recirculate_for_HARVEST3_same_port() {
+        hdr.d0.setInvalid();
+        recirculate_for_harvest(packet_type_t.HARVEST3, ig_intr_md.ingress_port);
+    }
+
+    action recirculate_for_HARVEST2(PortId_t recirc_port) {
+        hdr.d1.setInvalid();
+        recirculate_for_harvest(packet_type_t.HARVEST2, recirc_port);
+    }
+
+    action recirculate_for_HARVEST1_same_port_1024B() {
+        // this is called on the last consume pass for 1024B packets,
+        // so the first 128B of updates is in hdr.d1.
+
+        // get rid of input data in hdr.d0
+        hdr.d0.setInvalid();
+
+        // add empty ICRC header since this is the deepest we'll be in the packet
+        hdr.ib_icrc.setValid();
+
+        // go collect the next 128B
+        recirculate_for_harvest(packet_type_t.HARVEST1, ig_intr_md.ingress_port);
+    }
+
+    
     action broadcast_eth() {
+        hdr.d1.setInvalid();
+
         // set the switch as the source MAC address
         hdr.ethernet.src_addr = hdr.ethernet.dst_addr;
         // destination address will be filled in egress pipe
@@ -59,133 +180,290 @@ control NextStep(
         ig_tm_md.bypass_egress = 1w0;
         ig_dprsr_md.drop_ctl[0:0] = 0;
 
-        //next_step_counter.count();
-        //broadcast_counter.count(ig_md.switchml_md.pool_index);
+        count_broadcast = true;
+
+        next_step_counter.count();
     }
     
     action broadcast_udp() {
-        // // set the switch as the source IP
-        // hdr.ipv4.src_addr = hdr.ipv4.dst_addr;
-        // // destination IP will be filled in in egress pipe
-
         broadcast_eth();
     }
     
     action broadcast_roce() {
-        // // set the switch as the source IP
-        // hdr.ipv4.src_addr = hdr.ipv4.dst_addr;
-        // // destination IP, QPN, PSN, etc. will be filled in in egress pipe
-
-        // add empty ICRC header
-        hdr.ib_icrc.setValid();
-
         broadcast_eth();
     }
-    
-    action retransmit_eth() {
-        // // set the switch as the source MAC address
-        // hdr.ethernet.dst_addr = hdr.ethernet.src_addr;
-        // // destination address will be filled in egress pipe
 
+    action retransmit_eth() {
+        hdr.d1.setInvalid();
+        
         // send back out ingress port
         ig_tm_md.ucast_egress_port = ig_md.switchml_md.ingress_port;
         ig_md.switchml_md.packet_type = packet_type_t.RETRANSMIT;
         ig_tm_md.bypass_egress = 1w0;
         ig_dprsr_md.drop_ctl[0:0] = 0;
 
-        //next_step_counter.count();
-        //retransmit_counter.count(ig_md.switchml_md.pool_index);
+        count_retransmit = true;
+        
+        next_step_counter.count();
     }
     
     action retransmit_udp() {
-        // // swap source and destination IPs
-        // ipv4_addr_t dst_addr = hdr.ipv4.dst_addr;
-        // hdr.ipv4.dst_addr = hdr.ipv4.src_addr;
-        // hdr.ipv4.src_addr = dst_addr;
-
-        // // swap source and destination ports
-        // udp_port_t dst_port = hdr.udp.dst_port;
-        // hdr.udp.dst_port = hdr.udp.src_port;
-        // hdr.udp.src_port = dst_port;
-
-        // hdr.udp.checksum = 0;
-        // ig_md.update_ipv4_checksum = true;
-        
         retransmit_eth();
     }
 
     action retransmit_roce() {
-        // // set the switch as the source IP
-        // hdr.ipv4.src_addr = hdr.ipv4.dst_addr;
-        // // destination IP, QPN, PSN, etc. will be filled in in egress pipe
-
         // add empty ICRC header
         hdr.ib_icrc.setValid();
-
         retransmit_eth();
     }
     
     table next_step {
         key = {
+            ig_md.switchml_md.packet_size : ternary;
+            //ig_md.switchml_md.pool_index : ternary;
+            ig_md.switchml_md.recirc_port_selector : ternary;
             ig_md.switchml_md.packet_type : ternary;
             ig_md.switchml_md.first_last_flag : ternary; // 1: last 0: first
             ig_md.switchml_md.map_result : ternary;
             ig_md.switchml_md.worker_type : ternary;
-            //hdr.ib_bth.isValid() : ternary;
-            //hdr.udp.isValid() : ternary;
-            //ig_dprsr_md.drop_ctl : ternary;
         }
         actions = {
-            recirculate_for_harvest;
+            recirculate_for_HARVEST7_256B;
+            recirculate_for_HARVEST6;
+            recirculate_for_HARVEST4;
+            recirculate_for_HARVEST2;
+            recirculate_for_CONSUME1;
+            recirculate_for_CONSUME2_same_port_next_pipe;
+            recirculate_for_CONSUME3_same_port_next_pipe;
+            recirculate_for_HARVEST7_same_port;
+            recirculate_for_HARVEST5_same_port;
+            recirculate_for_HARVEST3_same_port;
+            recirculate_for_HARVEST1_same_port_1024B;
             drop;
+            finish_consume;
             broadcast_udp;
             retransmit_udp;
             broadcast_roce;
             retransmit_roce;
         }
-        size = 11;
         const entries = {
             //        packet type | last |map result|worker_type
 
-            // for CONSUME packets that are the last packet, recirculate for harvest
-            (packet_type_t.CONSUME,     1,         _,          _) : recirculate_for_harvest();
-            // for CONSUME packets that are retransmitted packets to a full slot, recirculate for harvest
-            (packet_type_t.CONSUME,     0,         0,          _) : drop(); // first consume packet for slot
-            (packet_type_t.CONSUME,     0,         _,          _) : recirculate_for_harvest();
-            // drop others
-            (packet_type_t.CONSUME,     _,         _,          _) : drop();
+            //
+            // Due to challenges with forming the egress port number,
+            // we dispatch on the lower bits of the queue pair number
+            // and set the recirculation port to ensure ordering of
+            // requests to the same memory locations.
+            //
 
+            //
+            // 128B packets: Not supported, but should be easy if we
+            // wanted for some reason? (TODO?)
+            //
+            (packet_size_t.IBV_MTU_128, _, _, _, _, _) : drop();
+            
+            //
+            // 256B packets: Pipe 0 only
+            //
+            
+            // For CONSUME packets that are the last packet, recirculate for harvest.
+            // Choose between the two recirculation ports in pipe 0.
+#ifdef LOOPBACK_DEBUG
+            (packet_size_t.IBV_MTU_256, 0 &&& 1, packet_type_t.CONSUME0, 1, _, _) : recirculate_for_HARVEST7_256B(68);
+#else
+            (packet_size_t.IBV_MTU_256, 0 &&& 1, packet_type_t.CONSUME0, 1, _, _) : recirculate_for_HARVEST7_256B(64);            
+#endif
+            (packet_size_t.IBV_MTU_256, 1 &&& 1, packet_type_t.CONSUME0, 1, _, _) : recirculate_for_HARVEST7_256B(68);
+            
+            // just consume any CONSUME packets if they're not last and we haven't seen them before
+            (packet_size_t.IBV_MTU_256,       _, packet_type_t.CONSUME0, _, 0, _) : finish_consume();
+            
+            // for CONSUME packets that are retransmitted packets to a full slot, recirculate for harvest
+#ifdef LOOPBACK_DEBUG
+            (packet_size_t.IBV_MTU_256, 0 &&& 1, packet_type_t.CONSUME0, 0, _, _) : recirculate_for_HARVEST7_256B(68);
+#else
+            (packet_size_t.IBV_MTU_256, 0 &&& 1, packet_type_t.CONSUME0, 0, _, _) : recirculate_for_HARVEST7_256B(64);
+#endif
+            (packet_size_t.IBV_MTU_256, 2 &&& 2, packet_type_t.CONSUME0, 0, _, _) : recirculate_for_HARVEST7_256B(68);
+            
+            // drop others
+            (packet_size_t.IBV_MTU_256,       _, packet_type_t.CONSUME0, _, _, _) : drop();
+
+
+            //
+            // 512B packets: Not yet supported. Should be mostly the
+            //  same as 1024B packets. (TODO?)
+            //
+            (packet_size_t.IBV_MTU_512, _, _, _, _, _) : drop();
+
+
+            //
+            // 1024B packets
+            //
+
+            // If pipe 0 receives a CONSUME packet we haven't seen before, recirculate it to finish consuming.
+            // Choose between the 16 front-panel loopback ports based on slot ID.
+            // Break this out this way because of issues assigning bitfields to the egress port metadata field.
+            (packet_size_t.IBV_MTU_1024, 0x0 &&& 0xf, packet_type_t.CONSUME0, _, 0, _) : recirculate_for_CONSUME1(128);
+            (packet_size_t.IBV_MTU_1024, 0x1 &&& 0xf, packet_type_t.CONSUME0, _, 0, _) : recirculate_for_CONSUME1(132);
+            (packet_size_t.IBV_MTU_1024, 0x2 &&& 0xf, packet_type_t.CONSUME0, _, 0, _) : recirculate_for_CONSUME1(136);
+            (packet_size_t.IBV_MTU_1024, 0x3 &&& 0xf, packet_type_t.CONSUME0, _, 0, _) : recirculate_for_CONSUME1(140);
+            (packet_size_t.IBV_MTU_1024, 0x4 &&& 0xf, packet_type_t.CONSUME0, _, 0, _) : recirculate_for_CONSUME1(144);
+            (packet_size_t.IBV_MTU_1024, 0x5 &&& 0xf, packet_type_t.CONSUME0, _, 0, _) : recirculate_for_CONSUME1(148);
+            (packet_size_t.IBV_MTU_1024, 0x6 &&& 0xf, packet_type_t.CONSUME0, _, 0, _) : recirculate_for_CONSUME1(152);
+            (packet_size_t.IBV_MTU_1024, 0x7 &&& 0xf, packet_type_t.CONSUME0, _, 0, _) : recirculate_for_CONSUME1(156);
+            (packet_size_t.IBV_MTU_1024, 0x8 &&& 0xf, packet_type_t.CONSUME0, _, 0, _) : recirculate_for_CONSUME1(160);
+            (packet_size_t.IBV_MTU_1024, 0x9 &&& 0xf, packet_type_t.CONSUME0, _, 0, _) : recirculate_for_CONSUME1(164);
+            (packet_size_t.IBV_MTU_1024, 0xa &&& 0xf, packet_type_t.CONSUME0, _, 0, _) : recirculate_for_CONSUME1(168);
+            (packet_size_t.IBV_MTU_1024, 0xb &&& 0xf, packet_type_t.CONSUME0, _, 0, _) : recirculate_for_CONSUME1(172);
+            (packet_size_t.IBV_MTU_1024, 0xc &&& 0xf, packet_type_t.CONSUME0, _, 0, _) : recirculate_for_CONSUME1(176);
+            (packet_size_t.IBV_MTU_1024, 0xd &&& 0xf, packet_type_t.CONSUME0, _, 0, _) : recirculate_for_CONSUME1(180);
+            (packet_size_t.IBV_MTU_1024, 0xe &&& 0xf, packet_type_t.CONSUME0, _, 0, _) : recirculate_for_CONSUME1(184);
+            (packet_size_t.IBV_MTU_1024, 0xf &&& 0xf, packet_type_t.CONSUME0, _, 0, _) : recirculate_for_CONSUME1(188);
+
+            // Pipe 1
+            (packet_size_t.IBV_MTU_1024, _, packet_type_t.CONSUME1, _, _, _) : recirculate_for_CONSUME2_same_port_next_pipe();
+
+            // Pipe 2
+            (packet_size_t.IBV_MTU_1024, _, packet_type_t.CONSUME2, _, _, _) : recirculate_for_CONSUME3_same_port_next_pipe();
+
+            // Pipe 3
+            // For CONSUME packets that are the last packet, recirculate for harvest.
+            // The last pass is a combined consume/harvest pass, so skip directly to HARVEST1
+            (packet_size_t.IBV_MTU_1024, _, packet_type_t.CONSUME3, 1, _, _) : recirculate_for_HARVEST1_same_port_1024B();
+            
+            // just consume any CONSUME packets if they're not last and we haven't seen them before
+            (packet_size_t.IBV_MTU_1024, _, packet_type_t.CONSUME3, _, 0, _) : finish_consume();
+            
+            // for CONSUME packets that are retransmitted packets to a full slot, recirculate for harvest
+            // The last pass is a combined consume/harvest pass, so skip directly to HARVEST1
+            (packet_size_t.IBV_MTU_1024, _, packet_type_t.CONSUME3, 0, _, _) : recirculate_for_HARVEST1_same_port_1024B();
+            
+            // drop others
+            (packet_size_t.IBV_MTU_1024, _, packet_type_t.CONSUME3, _, _, _) : drop();
+
+            // finish recirculation for 1024B in pipe 3 and continue in pipe 2
+            (packet_size_t.IBV_MTU_1024, 0x0 &&& 0xf, packet_type_t.HARVEST1, _, _, _) : recirculate_for_HARVEST2(256);
+            (packet_size_t.IBV_MTU_1024, 0x1 &&& 0xf, packet_type_t.HARVEST1, _, _, _) : recirculate_for_HARVEST2(260);
+            (packet_size_t.IBV_MTU_1024, 0x2 &&& 0xf, packet_type_t.HARVEST1, _, _, _) : recirculate_for_HARVEST2(264);
+            (packet_size_t.IBV_MTU_1024, 0x3 &&& 0xf, packet_type_t.HARVEST1, _, _, _) : recirculate_for_HARVEST2(268);
+            (packet_size_t.IBV_MTU_1024, 0x4 &&& 0xf, packet_type_t.HARVEST1, _, _, _) : recirculate_for_HARVEST2(272);
+            (packet_size_t.IBV_MTU_1024, 0x5 &&& 0xf, packet_type_t.HARVEST1, _, _, _) : recirculate_for_HARVEST2(276);
+            (packet_size_t.IBV_MTU_1024, 0x6 &&& 0xf, packet_type_t.HARVEST1, _, _, _) : recirculate_for_HARVEST2(280);
+            (packet_size_t.IBV_MTU_1024, 0x7 &&& 0xf, packet_type_t.HARVEST1, _, _, _) : recirculate_for_HARVEST2(284);
+            (packet_size_t.IBV_MTU_1024, 0x8 &&& 0xf, packet_type_t.HARVEST1, _, _, _) : recirculate_for_HARVEST2(288);
+            (packet_size_t.IBV_MTU_1024, 0x9 &&& 0xf, packet_type_t.HARVEST1, _, _, _) : recirculate_for_HARVEST2(292);
+            (packet_size_t.IBV_MTU_1024, 0xa &&& 0xf, packet_type_t.HARVEST1, _, _, _) : recirculate_for_HARVEST2(296);
+            (packet_size_t.IBV_MTU_1024, 0xb &&& 0xf, packet_type_t.HARVEST1, _, _, _) : recirculate_for_HARVEST2(300);
+            (packet_size_t.IBV_MTU_1024, 0xc &&& 0xf, packet_type_t.HARVEST1, _, _, _) : recirculate_for_HARVEST2(304);
+            (packet_size_t.IBV_MTU_1024, 0xd &&& 0xf, packet_type_t.HARVEST1, _, _, _) : recirculate_for_HARVEST2(308);
+            (packet_size_t.IBV_MTU_1024, 0xe &&& 0xf, packet_type_t.HARVEST1, _, _, _) : recirculate_for_HARVEST2(312);
+            (packet_size_t.IBV_MTU_1024, 0xf &&& 0xf, packet_type_t.HARVEST1, _, _, _) : recirculate_for_HARVEST2(316);
+
+            // recirculate one more time in pipe 2
+            (packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST2, _, _, _) : recirculate_for_HARVEST3_same_port();
+
+            // finish recirculation for 1024B in pipe 2 and continue in pipe 1
+            (packet_size_t.IBV_MTU_1024, 0x0 &&& 0xf, packet_type_t.HARVEST3, _, _, _) : recirculate_for_HARVEST4(128);
+            (packet_size_t.IBV_MTU_1024, 0x1 &&& 0xf, packet_type_t.HARVEST3, _, _, _) : recirculate_for_HARVEST4(132);
+            (packet_size_t.IBV_MTU_1024, 0x2 &&& 0xf, packet_type_t.HARVEST3, _, _, _) : recirculate_for_HARVEST4(136);
+            (packet_size_t.IBV_MTU_1024, 0x3 &&& 0xf, packet_type_t.HARVEST3, _, _, _) : recirculate_for_HARVEST4(140);
+            (packet_size_t.IBV_MTU_1024, 0x4 &&& 0xf, packet_type_t.HARVEST3, _, _, _) : recirculate_for_HARVEST4(144);
+            (packet_size_t.IBV_MTU_1024, 0x5 &&& 0xf, packet_type_t.HARVEST3, _, _, _) : recirculate_for_HARVEST4(148);
+            (packet_size_t.IBV_MTU_1024, 0x6 &&& 0xf, packet_type_t.HARVEST3, _, _, _) : recirculate_for_HARVEST4(152);
+            (packet_size_t.IBV_MTU_1024, 0x7 &&& 0xf, packet_type_t.HARVEST3, _, _, _) : recirculate_for_HARVEST4(156);
+            (packet_size_t.IBV_MTU_1024, 0x8 &&& 0xf, packet_type_t.HARVEST3, _, _, _) : recirculate_for_HARVEST4(160);
+            (packet_size_t.IBV_MTU_1024, 0x9 &&& 0xf, packet_type_t.HARVEST3, _, _, _) : recirculate_for_HARVEST4(164);
+            (packet_size_t.IBV_MTU_1024, 0xa &&& 0xf, packet_type_t.HARVEST3, _, _, _) : recirculate_for_HARVEST4(168);
+            (packet_size_t.IBV_MTU_1024, 0xb &&& 0xf, packet_type_t.HARVEST3, _, _, _) : recirculate_for_HARVEST4(172);
+            (packet_size_t.IBV_MTU_1024, 0xc &&& 0xf, packet_type_t.HARVEST3, _, _, _) : recirculate_for_HARVEST4(176);
+            (packet_size_t.IBV_MTU_1024, 0xd &&& 0xf, packet_type_t.HARVEST3, _, _, _) : recirculate_for_HARVEST4(180);
+            (packet_size_t.IBV_MTU_1024, 0xe &&& 0xf, packet_type_t.HARVEST3, _, _, _) : recirculate_for_HARVEST4(184);
+            (packet_size_t.IBV_MTU_1024, 0xf &&& 0xf, packet_type_t.HARVEST3, _, _, _) : recirculate_for_HARVEST4(188);
+
+            // recirculate one more time in pipe 1
+            (packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST4, _, _, _) : recirculate_for_HARVEST5_same_port();
+
+            // finish recirculation for 1024B in pipe 1 and continue in pipe 0
+#ifdef LOOPBACK_DEBUG
+            (packet_size_t.IBV_MTU_1024, 0 &&& 1, packet_type_t.HARVEST5, _, _, _) : recirculate_for_HARVEST6(64);
+#else
+            (packet_size_t.IBV_MTU_1024, 0 &&& 1, packet_type_t.HARVEST5, _, _, _) : recirculate_for_HARVEST6(68);
+#endif
+            (packet_size_t.IBV_MTU_1024, 1 &&& 1, packet_type_t.HARVEST5, _, _, _) : recirculate_for_HARVEST6(68);
+
+            // recirculate once in pipe 0 before finishing
+            (packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST6, _, _, _) : recirculate_for_HARVEST7_same_port();
+            
+            //
+            // Harvest pass 7: final pass
+            //
+            // Read final 128B and send to PRE with correct setting
+            // for packet type.
+            //
+            
             // broadcast any HARVEST packets that are not retransmitted, are the last packet, and the protocol is implemented
-            (packet_type_t.HARVEST,     1,         0, worker_type_t.SWITCHML_UDP) : broadcast_udp();
-            (packet_type_t.HARVEST,     1,         0, worker_type_t.ROCEv2) : broadcast_roce();
+            (_, _, packet_type_t.HARVEST7, 1, 0, worker_type_t.SWITCHML_UDP) : broadcast_udp();
+            (_, _, packet_type_t.HARVEST7, 1, 0, worker_type_t.ROCEv2) : broadcast_roce();
             // drop any HARVEST packets that are not retransmitted, are the last packet, and we don't have a protocol implementation
-            (packet_type_t.HARVEST,     1,         0,          _) : drop(); // TODO: support other formats
+            (_, _, packet_type_t.HARVEST7, 1, 0, _) : drop(); // TODO: support other formats
             // shouldn't ever get here, because the packet would be dropped in CONSUME
-            (packet_type_t.HARVEST,     0,         0,          _) : drop(); // shouldn't ever get here
+            (_, _, packet_type_t.HARVEST7, 0, 0, _) : drop(); // shouldn't ever get here
             // retransmit any other HARVEST packets for which we have an implementation
-            (packet_type_t.HARVEST,     0,         _, worker_type_t.SWITCHML_UDP) : retransmit_udp();
-            (packet_type_t.HARVEST,     0,         _, worker_type_t.ROCEv2) : retransmit_roce();
+            (_, _, packet_type_t.HARVEST7, 0, _, worker_type_t.SWITCHML_UDP) : retransmit_udp();
+            (_, _, packet_type_t.HARVEST7, 0, _, worker_type_t.ROCEv2) : retransmit_roce();
             // drop any other HARVEST packets
-            (packet_type_t.HARVEST,     _,         _,          _) : drop(); // TODO: support other formats
+            (_, _, packet_type_t.HARVEST7, _, _, _) : drop(); // TODO: support other formats
             // ignore other packet types
         }
-        //counters = next_step_counter;
+        const default_action = drop();
+        counters = next_step_counter;
     }
     
+    //Random<drop_probability_t>() rng;
+
     apply {
+        // ig_md.drop_calculation = ig_md.drop_calculation |-| rng.get();
+
+        // if (ig_md.drop_calculation != 0) {
+        //     next_step.apply();
+        // } else {
+        //     drop();
+        // }
+        count_consume = false;
+        count_harvest = false;
+
+        count_broadcast = false;
+        count_retransmit = false;
+        count_recirculate = false;
+        count_drop = false;
+        
         next_step.apply();
 
-        
-        // if (ig_md.switchml_md.packet_type == packet_type_t.HARVEST) {
-        //     recirculate_counter.count(ig_md.switchml_md.pool_index);
-        // } else
-        if (ig_md.switchml_md.packet_type == packet_type_t.BROADCAST) {
-            broadcast_counter.count(ig_md.switchml_md.pool_index);
-        } else if (ig_md.switchml_md.packet_type == packet_type_t.RETRANSMIT) {
-            retransmit_counter.count(ig_md.switchml_md.pool_index);
-        } else {
+
+        if (count_consume || count_drop) {
             drop_counter.count(ig_md.switchml_md.pool_index);
         }
+        
+        if (count_recirculate) {
+            recirculate_counter.count(ig_md.switchml_md.pool_index);
+        }
+
+        if (count_broadcast) {
+            broadcast_counter.count(ig_md.switchml_md.pool_index);
+        }
+
+        if (count_retransmit) {
+            retransmit_counter.count(ig_md.switchml_md.pool_index);
+        }
+
+        // if (count_consume) {
+        //     consume_counter.count(ig_md.switchml_md.pool_index);
+        // }
+
+        // if (count_harvest) {
+        //     harvest_counter.count(ig_md.switchml_md.pool_index);
+        // } 
     }
 }
 

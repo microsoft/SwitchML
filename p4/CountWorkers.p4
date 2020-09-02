@@ -53,7 +53,7 @@ control CountWorkers(
     // if no bits are set in the map result, this was the first time we
     // saw this packet, so decrement worker count. Otherwise, it's a
     // retransmission, so just read the worker count.
-    // Only act if packet type is CONSUME
+    // Only act if packet type is CONSUME0
     table count_workers {
         key = {
             ig_md.num_workers            : ternary;
@@ -69,11 +69,11 @@ control CountWorkers(
         size = 3;
         const entries = {
             // special case for single-worker jobs
-            (1,    _, packet_type_t.CONSUME) : single_worker_action();
-            // if map_result is all 0's and type is CONSUME, this is the first time we've seen this packet
-            (_, 32w0, packet_type_t.CONSUME) : count_workers_action();
-            // if map_result is not all 0's and type is CONSUME, don't count, just read
-            (_,    _, packet_type_t.CONSUME) : read_count_workers_action();
+            (1,    _, packet_type_t.CONSUME0) : single_worker_action();
+            // if map_result is all 0's and type is CONSUME0, this is the first time we've seen this packet
+            (_, 32w0, packet_type_t.CONSUME0) : count_workers_action();
+            // if map_result is not all 0's and type is CONSUME0, don't count, just read
+            (_,    _, packet_type_t.CONSUME0) : read_count_workers_action();
         }            
         const default_action = NoAction;
     }

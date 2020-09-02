@@ -195,9 +195,32 @@ control RoCESender(
 
     // macros to define packet lengths, since doing compile-time
     // addition on const variables doesn't seem to work in the
-    // compiler yet
-#define UDP_BASE_LENGTH (hdr.udp.minSizeInBytes() + hdr.ib_bth.minSizeInBytes() + hdr.d0.minSizeInBytes() + hdr.d1.minSizeInBytes() + hdr.ib_icrc.minSizeInBytes())
-#define IPV4_BASE_LENGTH (hdr.ipv4.minSizeInBytes() + UDP_BASE_LENGTH);
+    // compiler yet.
+    //
+    // This is an adjustment to the packet size at *ingress*, which
+    // will contain the switchml_md, switchml_rdma_md, icrc, and all
+    // but 128B of data.
+    //
+    // We need to add
+    // * the last 128B of data
+    // * the ip, udp, ib_bth headers
+    // * optionally, reth header
+    // * optionally, immediate header
+    // and subtract:
+    // * switchml_md header
+    // * switchml_rdma_md header
+    // * 6?!? TODO: where does this come from?
+    #define UDP_BASE_LENGTH (\
+        hdr.d0.minSizeInBytes() + \
+        hdr.ib_bth.minSizeInBytes() + \
+        hdr.udp.minSizeInBytes() - \
+        6 -\
+        eg_md.switchml_md.minSizeInBytes() - \
+        eg_md.switchml_rdma_md.minSizeInBytes())
+    
+    #define IPV4_BASE_LENGTH (\
+        hdr.ipv4.minSizeInBytes() + \
+        UDP_BASE_LENGTH)
     
     action set_opcode_common(ib_opcode_t opcode) {
         hdr.ib_bth.opcode = opcode;
@@ -213,46 +236,58 @@ control RoCESender(
     action set_rdma() {
         hdr.ib_reth.setValid();
         hdr.ib_reth.r_key = rdma_rkey;
-        hdr.ib_reth.len = 1w0 ++ rdma_message_length;
+        //hdr.ib_reth.len = 1w0 ++ rdma_message_length;
+        //hdr.ib_reth.len = 10w0 ++ eg_md.switchml_rdma_md.message_len_by256 ++ 8w0;
+        hdr.ib_reth.len = eg_md.switchml_md.tsi;
         //hdr.ib_reth.addr = rdma_base_addr + 0; //eg_md.switchml_md.rdma_addr; // TODO: ???
         hdr.ib_reth.addr = eg_md.switchml_rdma_md.rdma_addr; // TODO: ???
     }
     
-    action set_opcode(ib_opcode_t opcode) {
-        set_opcode_common(opcode);
+    // action set_opcode(ib_opcode_t opcode) { //}
+    //     set_opcode_common(opcode);
+    action set_opcode() {
+        set_opcode_common(ib_opcode_t.UC_RDMA_WRITE_MIDDLE);
 
-        hdr.udp.length = UDP_BASE_LENGTH;
-        hdr.ipv4.total_len = IPV4_BASE_LENGTH;
+        hdr.udp.length = eg_intr_md.pkt_length + (bit<16>) UDP_BASE_LENGTH;
+        hdr.ipv4.total_len = eg_intr_md.pkt_length + (bit<16>) IPV4_BASE_LENGTH;
     }
     
-    action set_immediate_opcode(ib_opcode_t opcode) {
-        set_opcode_common(opcode);
+    // action set_immediate_opcode(ib_opcode_t opcode) { //}
+    //     set_opcode_common(opcode);
+    action set_immediate_opcode() {        
+        set_opcode_common(ib_opcode_t.UC_RDMA_WRITE_LAST_IMMEDIATE);
         set_immediate();
 
-        hdr.udp.length = hdr.ib_immediate.minSizeInBytes() + UDP_BASE_LENGTH;
-        hdr.ipv4.total_len = hdr.ib_immediate.minSizeInBytes() + IPV4_BASE_LENGTH;
+        hdr.udp.length = eg_intr_md.pkt_length + (bit<16>) (hdr.ib_immediate.minSizeInBytes() + UDP_BASE_LENGTH);
+        hdr.ipv4.total_len = eg_intr_md.pkt_length + (bit<16>) (hdr.ib_immediate.minSizeInBytes() + IPV4_BASE_LENGTH);
     }
     
-    action set_rdma_opcode(ib_opcode_t opcode) {
-        set_opcode_common(opcode);
+    // action set_rdma_opcode(ib_opcode_t opcode) { //}
+    //     set_opcode_common(opcode);
+    action set_rdma_opcode() {
+        set_opcode_common(ib_opcode_t.UC_RDMA_WRITE_FIRST);
         set_rdma();
 
-        hdr.udp.length = hdr.ib_reth.minSizeInBytes() + UDP_BASE_LENGTH;
-        hdr.ipv4.total_len = hdr.ib_reth.minSizeInBytes() + IPV4_BASE_LENGTH;
+        hdr.udp.length = eg_intr_md.pkt_length + (bit<16>) (hdr.ib_reth.minSizeInBytes() + UDP_BASE_LENGTH);
+        hdr.ipv4.total_len = eg_intr_md.pkt_length + (bit<16>) (hdr.ib_reth.minSizeInBytes() + IPV4_BASE_LENGTH);
     }
     
-    action set_rdma_immediate_opcode(ib_opcode_t opcode) {
-        set_opcode_common(opcode);
+    // action set_rdma_immediate_opcode(ib_opcode_t opcode) { //}
+        //     set_opcode_common(opcode);p
+    action set_rdma_immediate_opcode() {        
+        set_opcode_common(ib_opcode_t.UC_RDMA_WRITE_ONLY_IMMEDIATE);
         set_rdma();
         set_immediate();
 
-        hdr.udp.length = hdr.ib_immediate.minSizeInBytes() + hdr.ib_reth.minSizeInBytes() + UDP_BASE_LENGTH;
-        hdr.ipv4.total_len = hdr.ib_immediate.minSizeInBytes() + hdr.ib_reth.minSizeInBytes() + IPV4_BASE_LENGTH;
+        hdr.udp.length = eg_intr_md.pkt_length + (bit<16>) (hdr.ib_immediate.minSizeInBytes() + hdr.ib_reth.minSizeInBytes() + UDP_BASE_LENGTH);
+        hdr.ipv4.total_len = eg_intr_md.pkt_length + (bit<16>) (hdr.ib_immediate.minSizeInBytes() + hdr.ib_reth.minSizeInBytes() + IPV4_BASE_LENGTH);
     }
     
     table set_opcodes {
         key = {
-            eg_md.switchml_md.pool_index : ternary;
+            //eg_md.switchml_md.pool_index : ternary;
+            eg_md.switchml_rdma_md.first_packet : exact;
+            eg_md.switchml_rdma_md.last_packet : exact;
         }
         actions = {
             set_opcode;
@@ -260,7 +295,13 @@ control RoCESender(
             set_rdma_opcode;
             set_rdma_immediate_opcode;
         }
-        size = 3 * max_num_workers; // either one for _ONLY or three for _FIRST, _MIDDLE, and _LAST
+        //size = 3 * max_num_workers; // either one for _ONLY or three for _FIRST, _MIDDLE, and _LAST
+        const entries = {
+            ( true, false) :           set_rdma_opcode();//ib_opcode_t.UC_RDMA_WRITE_FIRST);
+            (false, false) :                set_opcode();//ib_opcode_t.UC_RDMA_WRITE_MIDDLE);
+            (false,  true) :      set_immediate_opcode();//ib_opcode_t.UC_RDMA_WRITE_LAST_IMMEDIATE);
+            ( true,  true) : set_rdma_immediate_opcode();//ib_opcode_t.UC_RDMA_WRITE_ONLY_IMMEDIATE);
+        }
     }
     
     //

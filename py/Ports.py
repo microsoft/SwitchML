@@ -38,6 +38,9 @@ class Ports(object):
         self.active_ports = []
 
         # pktget table to configure recirculation
+        #pktgen_app_cfg_table = bfrt_info.table_get("$PKTGEN_APPLICATION_CFG")
+        #pktgen_pkt_buffer_table = bfrt_info.table_get("$PKTGEN_PKT_BUFFER")
+        #pktgen_port_cfg_table = bfrt_info.table_get("$PKTGEN_PORT_CFG")
         self.pktgen_port_cfg_table = self.bfrt_info.table_get("$PKTGEN_PORT_CFG")
 
         
@@ -261,10 +264,29 @@ class Ports(object):
                                               gc.DataTuple('$OctetsTransmittedwithouterror', 0),
                                               gc.DataTuple('$FramesTransmittedwithError', 0)])] * len(self.active_ports))
 
-        
+    def enable_loopback_ports(self):
+        # enable loopback on front panel ports
+        loopback_ports = ([64] +                # Pipe 0 CPU ethernet port
+                          range(128,128+64,4) + # Pipe 1: all 16 front-panel ports
+                          range(256,256+64,4) + # Pipe 2: all 16 front-panel ports
+                          range(384,384+64,4))  # Pipe 3: all 16 front-panel ports
 
-            
+        self.logger.info("Enabling loopback on {} front panel ports...".format(len(loopback_ports)))
+
+        self.port_table.entry_add(
+            self.target,
+            [self.port_table.make_key([gc.KeyTuple('$DEV_PORT', dev_port)])
+             for dev_port in loopback_ports],
+            [self.port_table.make_data([gc.DataTuple('$SPEED', str_val='BF_SPEED_100G'),
+                                        gc.DataTuple('$FEC', str_val='BF_FEC_TYP_NONE'),
+                                        gc.DataTuple('$LOOPBACK_MODE', str_val="BF_LPBK_MAC_NEAR"),
+                                        gc.DataTuple('$PORT_ENABLE', bool_val=True)])] * len(loopback_ports))
+
+
+        #self.enable_additional_loopback_ports()
+        
     def enable_additional_loopback_ports(self):
+        # NOT USED
         # self.logger.info(pformat(self.bfrt_info.table_dict))
         # self.logger.info("------")
         # self.logger.info(pformat(self.pktgen_port_cfg_table.info.action_dict))
@@ -283,16 +305,32 @@ class Ports(object):
             k = k.to_dict()
             pprint((k, v))
 
-        # print("Modifying")
-        
+            # print("Modifying")
+
+
+        # resp = self.pktgen_port_cfg_table.entry_del(
+        #     self.target,
+        #     [self.pktgen_port_cfg_table.make_key([gc.KeyTuple('dev_port', 192)])])
+
+
+        # NOTE:
+        # You must "remove" the ports in the CLI before this code will work right now.
+        # bf-sde.port_mgr> bf_port_rmv 0 1 64
+        # bf-sde.port_mgr> bf_port_rmv 0 3 64
         #for dev_port in [64, 192, 320, 448]:
-        for dev_port in [192, 320, 448]:
-        #for dev_port in [320]:
+        #for dev_port in [192, 320, 448]:
+        for dev_port in [192, 448]:
+        #for dev_port in [192]:
             print("Modifying port {}".format(dev_port))
             self.pktgen_port_cfg_table.entry_add(
                 self.target,
                 [self.pktgen_port_cfg_table.make_key([gc.KeyTuple('dev_port', dev_port)])],
-                [self.pktgen_port_cfg_table.make_data([gc.DataTuple('recirculation_enable', bool_val=True)])])
+                [self.pktgen_port_cfg_table.make_data([
+                    gc.DataTuple('recirculation_enable', bool_val=True),
+                    #gc.DataTuple('pktgen_enable', bool_val=False),
+                    #gc.DataTuple('pattern_matching_enable', bool_val=False),
+                    #gc.DataTuple('clear_port_down_enable', bool_val=False)
+                ])])
 
         print("Checking")
         resp = self.pktgen_port_cfg_table.entry_get(

@@ -71,9 +71,9 @@ control ExponentMax(
         max_exponent1 = exponent_read1_register_action.execute(ig_md.switchml_md.pool_index);
     }
 
-    /* If bitmap_before is 0 and type is CONSUME, just write values. */
-    /* If bitmap_before is not zero and type is CONSUME, compute max of values and read first value. */
-    /* If map_result is not zero and type is CONSUME, just read first value. */
+    /* If bitmap_before is 0 and type is CONSUME0, just write values. */
+    /* If bitmap_before is not zero and type is CONSUME0, compute max of values and read first value. */
+    /* If map_result is not zero and type is CONSUME0, just read first value. */
     /* If type is HARVEST, read second value. */
     table exponent_max {
         key = {
@@ -89,16 +89,16 @@ control ExponentMax(
             NoAction;
         }
         size = 4;
-        const entries = {
-            // if bitmap_before is all 0's and type is CONSUME, this is the first packet for slot, so just write values and read first value
-            (32w0,    _, packet_type_t.CONSUME) : exponent_write_read0_action();
-            // if bitmap_before is nonzero, map_result is all 0's,  and type is CONSUME, compute max of values and read first value
-            (   _, 32w0, packet_type_t.CONSUME) : exponent_max_read0_action();
-            // if bitmap_before is nonzero, map_result is nonzero, and type is CONSUME, this is a retransmission, so just read first value
-            (   _,    _, packet_type_t.CONSUME) : exponent_read0_action();
-            // if type is HARVEST, read second value
-            (   _,    _, packet_type_t.HARVEST) : exponent_read1_action();
-        }
+        // const entries = {
+        //     // if bitmap_before is all 0's and type is CONSUME0, this is the first packet for slot, so just write values and read first value
+        //     (32w0,    _, packet_type_t.CONSUME0) : exponent_write_read0_action();
+        //     // if bitmap_before is nonzero, map_result is all 0's,  and type is CONSUME0, compute max of values and read first value
+        //     (   _, 32w0, packet_type_t.CONSUME0) : exponent_max_read0_action();
+        //     // if bitmap_before is nonzero, map_result is nonzero, and type is CONSUME0, this is a retransmission, so just read first value
+        //     (   _,    _, packet_type_t.CONSUME0) : exponent_read0_action();
+        //     // if type is HARVEST, read second value
+        //     (   _,    _, packet_type_t.HARVEST7) : exponent_read1_action();
+        // }
         // if none of the above are true, do nothing.
         const default_action = NoAction;
     }

@@ -106,7 +106,7 @@ header ib_bth_h {
 }
 
 // Make sure QP number and PSN are in 32-bit containers for register ops
-@pa_container_size("ingress", "hdr.ib_bth.dst_qp", 32)
+//@pa_container_size("ingress", "hdr.ib_bth.dst_qp", 32)
 @pa_container_size("ingress", "hdr.ib_bth.psn", 32)
 
 // InfiniBand-RoCE RDMA Extended Transport Header
@@ -169,6 +169,7 @@ header data_h {
     data_t d30;
     data_t d31;
 }
+
 
 // Full header stack
 struct header_t {

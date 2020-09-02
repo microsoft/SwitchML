@@ -10,7 +10,7 @@ import grpc
 import struct
 
 from Table import Table
-from Worker import Worker, WorkerType
+from Worker import Worker, WorkerType, PacketSize
 from Packets import roce_opcode_s2n
 
 class RoCEReceiver(Table):
@@ -85,7 +85,8 @@ class RoCEReceiver(Table):
         
     # Add SwitchML RoCE v2 entry to table
     def add_entry(self, switch_mac, switch_ip, switch_partition_key, switch_mgid,
-                  worker_ip, worker_rid, worker_bitmap, num_workers):
+                  worker_ip, worker_rid, worker_bitmap, worker_packet_size,
+                  num_workers):
         self.logger.info("Adding RoCE worker {}".format(worker_ip))
 
         if worker_rid >= 0x8000:
@@ -94,11 +95,6 @@ class RoCEReceiver(Table):
         if num_workers > 0x8000:
             self.logger.error("Worker count {} too large; only 32K workers supported by this code.".format(num_workers))
 
-        worker_rid
-            
-        # doesn't matter
-        match_priority = 10
-        
         # add entry for each opcode for each worker
         for opcode, action in [
                 # (roce_opcode_s2n['UC_SEND_FIRST'],  'SwitchMLIngress.roce_receiver.first_packet'),
@@ -116,7 +112,7 @@ class RoCEReceiver(Table):
             qpn_top_bits = 0x800000 | ((worker_rid & 0xff) << 16)
             self.table.entry_add(
                 self.target,
-                [self.table.make_key([gc.KeyTuple('$MATCH_PRIORITY', match_priority),
+                [self.table.make_key([gc.KeyTuple('$MATCH_PRIORITY', 10), # doesn't matter
                                       # match on Ethernet addrs, IPs and port
                                       gc.KeyTuple('hdr.ipv4.src_addr',
                                                   worker_ip),
@@ -135,13 +131,14 @@ class RoCEReceiver(Table):
                                        # gc.DataTuple('num_workers', struct.pack('@H', num_workers)),
                                        gc.DataTuple('worker_id',  worker_rid),
                                        gc.DataTuple('num_workers', num_workers),
+                                       gc.DataTuple('packet_size', worker_packet_size),
                                        gc.DataTuple('worker_bitmap', worker_bitmap)],
                                       action)])
 
             # clear counters
             self.table.entry_mod(
                 self.target,
-                [self.table.make_key([gc.KeyTuple('$MATCH_PRIORITY', match_priority),
+                [self.table.make_key([gc.KeyTuple('$MATCH_PRIORITY', 10),
                                       # match on Ethernet addrs, IPs and port
                                       gc.KeyTuple('hdr.ipv4.src_addr',
                                                   worker_ip),
@@ -201,7 +198,6 @@ class RoCEReceiver(Table):
         self.rdma_packet_counter.operations_execute(self.target, 'Sync')
         self.rdma_message_counter.operations_execute(self.target, 'Sync')
         self.rdma_sequence_violation_counter.operations_execute(self.target, 'Sync')
-
 
         packets_resp = self.rdma_packet_counter.entry_get(
             self.target,

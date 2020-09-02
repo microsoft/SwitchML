@@ -44,7 +44,7 @@ control GetWorkerBitmap(
         packet_type_t packet_type,
         num_workers_t num_workers,
         worker_bitmap_t worker_bitmap,
-        worker_bitmap_t complete_bitmap,
+        worker_bitmap_t complete_bitmap,  // TODO: probably delete this
         pool_index_t pool_base,
         worker_pool_index_t pool_size_minus_1) {
 
@@ -54,7 +54,7 @@ control GetWorkerBitmap(
         // bitmap representation for this worker
         ig_md.worker_bitmap   = worker_bitmap;
         ig_md.num_workers     = num_workers;
-        ig_md.complete_bitmap = complete_bitmap;
+        //ig_md.complete_bitmap = complete_bitmap; // TODO: probably delete this
 
         // group ID for this job
         ig_md.switchml_md.mgid = mgid;

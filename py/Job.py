@@ -20,7 +20,7 @@ import re
 
 # import table definitions
 from GetWorkerBitmap import GetWorkerBitmap
-from Worker import Worker
+from Worker import Worker, PacketSize
 from UpdateAndCheckWorkerBitmap import UpdateAndCheckWorkerBitmap
 from CountWorkers import CountWorkers
 from ExponentMax import ExponentMax
@@ -35,6 +35,7 @@ from RoCESender import RoCESender
 from RoCEReceiver import RoCEReceiver
 from NextStep import NextStep
 from Mirror import Mirror
+from DropSimulator import DropSimulator
 #from MACLearning import MACLearning
 
 # import RPC server
@@ -105,17 +106,14 @@ class Job(Cmd, object):
         print "Registers cleared."
 
     def do_clear_all(self, arg):
-        'Clear all registers and counters.'
-        print "Clearing all registers and counters..."
-        self.clear_registers()
-        self.clear_counters()
-        print "Registers and counters cleared."
+        'Clear all registers, counters, and tables.'
+        print "Clearing all registers, counters, and tables..."
+        # self.clear_registers()
+        # self.clear_counters()
+        # self.clear_tables()
+        self.clear_all()
+        print "Registers, counters, and drop simulator cleared."
         
-
-    def do_reset(self, arg):
-        'Reinitialize all switch state.'
-        self.configure_job()
-
     def do_bitmaps(self, arg):
         'Show the bitmaps for the first n slots. 8 is default, or specify a count.'
 
@@ -145,7 +143,7 @@ class Job(Cmd, object):
             self.update_and_check_worker_bitmap.show_weird_bitmaps()
 
     def do_get_counters(self, arg):
-        'Show counters. For pool index counters, we show the first 8 as default; you can specify a count, start point and count.'
+        'Show counters. For pool index counters, we show the first 16 slots by default. You can specify a count or a starting index and count.'
 
         try:
             # get start and count for pool index counters
@@ -449,7 +447,7 @@ class Job(Cmd, object):
 
         
     def do_worker_add_roce(self, arg):
-        'Add a RoCEv2 SwitchML worker. Usage: worker_add_roce <worker rank> <total number of workers> <MAC address> <IP address> <Rkey> <Message size> <list of QPN and PSNs>'
+        'Add a RoCEv2 SwitchML worker. Usage: worker_add_roce <worker rank> <total number of workers> <MAC address> <IP address> <Rkey> <Packet size> <Message size> <list of QPN and PSNs>'
         try:
             result = arg.split()
             
@@ -458,13 +456,25 @@ class Job(Cmd, object):
             mac = result[2]
             ip = result[3]
             rkey = int(result[4], 0)
-            message_size = int(result[4], 0)
+
+            # convert to enum
+            packet_size = int(result[5], 0)
+            if packet_size == 128:
+                packet_size = PacketSize.IBV_MTU_128
+            elif packet_size == 256:
+                packet_size = PacketSize.IBV_MTU_256
+            elif packet_size == 512:
+                packet_size = PacketSize.IBV_MTU_512
+            elif packet_size == 1024:
+                packet_size = PacketSize.IBV_MTU_1024
+            
+            message_size = int(result[6], 0)
 
             # read rest of arg list, constructing tuples of alternating arguments
-            qpns_and_psns = [(int(qpn, 0), int(psn, 0)) for qpn, psn in zip(result[6::2], result[7::2])]
+            qpns_and_psns = [(int(qpn, 0), int(psn, 0)) for qpn, psn in zip(result[7::2], result[8::2])]
 
             # add worker
-            self.worker_add_roce(rank, count, mac, ip, rkey, message_size, qpns_and_psns)
+            self.worker_add_roce(rank, count, mac, ip, rkey, packet_size, message_size, qpns_and_psns)
 
         except Exception as e:
             print("Error: {}".format(traceback.format_exc()))
@@ -482,6 +492,17 @@ class Job(Cmd, object):
     def do_worker_del(self, arg):
         'Remove worker. Usage: worker_del <worker id>'
         self.worker_del(int(arg, 0))
+
+    #
+    # drop simulator
+    #
+    def do_drop_probability(self, arg):
+        'Set drop probability for drop simulator. Usage: drop_probability <probability>'
+        self.drop_simulator.set_egress_drop_probability(float(arg))
+        
+
+
+
         
     #
     # state management for job
@@ -499,6 +520,8 @@ class Job(Cmd, object):
                 print("Oops: {}".format(traceback.format_exc()))
 
     def clear_all(self):
+        # clear_registers()
+        # clear_counters()
         for x in self.tables_to_clear:
             x.clear()
 
@@ -612,7 +635,8 @@ class Job(Cmd, object):
     # worker_qpns_and_psns is a list of qpn, psn tuples
     def worker_add_roce(self,
                         worker_rank, worker_count,
-                        worker_mac, worker_ip, worker_rkey, worker_message_size,
+                        worker_mac, worker_ip, worker_rkey,
+                        worker_packet_size, worker_message_size,
                         worker_qpns_and_psns):
 
         if worker_count > 32:
@@ -635,6 +659,7 @@ class Job(Cmd, object):
             worker_ip,
             worker_rid,
             worker_mask,
+            worker_packet_size,
 
             # total number of workers
             worker_count)
@@ -649,6 +674,7 @@ class Job(Cmd, object):
         
         # add to egress pipeline
         self.roce_sender.add_write_worker(worker_rid, worker_mac, worker_ip, worker_rkey,
+                                          worker_packet_size, worker_message_size,
                                           worker_qpns_and_psns)
 
     
@@ -671,7 +697,7 @@ class Job(Cmd, object):
         self.pre.worker_clear_all(self.switchml_workers_mgid)
         self.set_dst_addr.clear_udp_entries()
         self.roce_sender.clear_workers()
-
+        self.drop_simulator.clear()
 
     def worker_load_file(self, filename):
         # clear out previous job
@@ -699,142 +725,6 @@ class Job(Cmd, object):
                     # add with no IP
                     self.worker_add_udp(i, len(ports), mac, '0.0.0.0')
                     
-    #
-    # old code to set up job
-    #
-    
-    def configure_job(self):
-        self.tables_to_clear    = []
-        self.registers_to_clear = []
-        self.counters_to_clear = []
-
-        # clear and reset everything to defaults
-        self.clear_all()
-        
-        # first, delete all old ports and add new ports for all workers
-        self.ports.delete_all_ports()
-        ###self.ports.enable_additional_loopback_ports()
-        
-        # we allocate each worker its own rid.
-        for index, worker in enumerate(self.workers):
-            worker.rid = index
-            worker.xid = index
-            self.ports.add_port(worker.front_panel_port, worker.lane, worker.speed, worker.fec)
-        
-        # set switch IP and MAC and enable ARP/ICMP responder
-        self.arp_and_icmp = ARPandICMP(self.gc, self.bfrt_info, self.switch_mac, self.switch_ip)
-        
-        # add workers to worker bitmap table
-        self.get_worker_bitmap = GetWorkerBitmap(self.gc, self.bfrt_info)
-        self.tables_to_clear.append(self.get_worker_bitmap)
-        self.counters_to_clear.append(self.get_worker_bitmap)
-        self.roce_receiver = RoCEReceiver(self.gc, self.bfrt_info)
-        self.tables_to_clear.append(self.roce_receiver)
-        self.counters_to_clear.append(self.roce_receiver)
-                
-        match_priority = 10       # not sure if this matters
-        pool_base = 0             # TODO: for now, support only one pool at base index 0
-        pool_size = 22528         # TODO: for now, use entire switch for single pool
-        worker_mask = 0x00000001  # initial worker mask
-
-        # get workers that are enabled as SwitchML workers by having a UDP port or RoCE QPN set
-        switchml_workers = [w for w in self.workers if w.worker_type in [WorkerType.SWITCHML_UDP, WorkerType.ROCEv2]]
-        num_switchml_workers = len(switchml_workers)
-        if num_switchml_workers > 32:
-            log.error("Current design supports only 32 SwitchML workers per job; you requested {}".format(num_switchml_workers))
-
-        for worker in switchml_workers:
-            if worker.worker_type is WorkerType.SWITCHML_UDP:
-                # SwitchML-UDP worker
-                self.get_worker_bitmap.add_udp_entry(self.switch_mac, self.switch_ip, self.switch_udp_port, self.switch_udp_port_mask,
-                                                     worker.rid, worker.worker_type, worker.mac, worker.ip, worker_mask, num_switchml_workers,
-                                                     match_priority, self.switchml_workers_mgid, pool_base, pool_size)
-            elif worker.worker_type is WorkerType.ROCEv2:
-                self.roce_receiver.add_entry(self.switch_mac, self.switch_ip, self.switch_udp_port, self.switch_udp_port_mask,
-                                             worker, worker_mask, num_switchml_workers,
-                                             self.switchml_workers_mgid)
-            else:
-                # non-SwitchML worker; shouldn't be able to get here
-                log.error("Why are we trying to create a SwitchML entry for a non-SwitchML worker?")
-
-            # shift mask one bit to left for next worker
-            worker_mask = worker_mask << 1
-        
-        # add update rules for bitmap and clear register
-        self.update_and_check_worker_bitmap = UpdateAndCheckWorkerBitmap(self.gc, self.bfrt_info)
-        self.registers_to_clear.append(self.update_and_check_worker_bitmap)
-        
-        # add rules for worker count and clear register
-        self.count_workers = CountWorkers(self.gc, self.bfrt_info)
-        self.registers_to_clear.append(self.count_workers)
-        
-        # add rules for exponent max calculation and clear register
-        self.exponent_max = ExponentMax(self.gc, self.bfrt_info)
-        self.registers_to_clear.append(self.exponent_max)
-        
-        # add rules for data registers and clear registers
-        self.significands_00_01_02_03 = SignificandStage(self.gc, self.bfrt_info,  0,  1,  2,  3)
-        self.registers_to_clear.append(self.significands_00_01_02_03)
-        self.significands_04_05_06_07 = SignificandStage(self.gc, self.bfrt_info,  4,  5,  6,  7)
-        self.registers_to_clear.append(self.significands_04_05_06_07)
-        self.significands_08_09_10_11 = SignificandStage(self.gc, self.bfrt_info,  8,  9, 10, 11)
-        self.registers_to_clear.append(self.significands_08_09_10_11)
-        self.significands_12_13_14_15 = SignificandStage(self.gc, self.bfrt_info, 12, 13, 14, 15)
-        self.registers_to_clear.append(self.significands_12_13_14_15)
-        self.significands_16_17_18_19 = SignificandStage(self.gc, self.bfrt_info, 16, 17, 18, 19)
-        self.registers_to_clear.append(self.significands_16_17_18_19)
-        self.significands_20_21_22_23 = SignificandStage(self.gc, self.bfrt_info, 20, 21, 22, 23)
-        self.registers_to_clear.append(self.significands_20_21_22_23)
-        self.significands_24_25_26_27 = SignificandStage(self.gc, self.bfrt_info, 24, 25, 26, 27)
-        self.registers_to_clear.append(self.significands_24_25_26_27)
-        self.significands_28_29_30_31 = SignificandStage(self.gc, self.bfrt_info, 28, 29, 30, 31)
-        self.registers_to_clear.append(self.significands_28_29_30_31)
-    
-        #
-        # configure multicast group
-        #
-        
-        # add workers to multicast groups.
-        self.pre = PRE(self.gc, self.bfrt_info, self.ports)
-        # add workers
-        self.pre.add_workers(self.switchml_workers_mgid, switchml_workers,
-                             self.all_ports_mgid, self.workers)
-
-        # set up counters in next step table
-        self.next_step = NextStep(self.gc, self.bfrt_info)
-        self.tables_to_clear.append(self.next_step)
-        
-        # add workers to non-switchml forwarding table
-        self.non_switchml_forward = NonSwitchMLForward(self.gc, self.bfrt_info, self.ports)
-        self.non_switchml_forward.add_workers(self.all_ports_mgid, self.workers)
-        
-        # now add workers to set_dst_addr table in egress
-        self.set_dst_addr = SetDstAddr(self.gc, self.bfrt_info, self.switch_mac, self.switch_ip)
-        self.tables_to_clear.append(self.set_dst_addr)
-        self.counters_to_clear.append(self.set_dst_addr)
-        self.roce_sender = RoCESender(self.gc, self.bfrt_info,
-                                      self.switch_mac, self.switch_ip,
-                                      message_size = 1024,
-                                      packet_size = 256)
-        self.tables_to_clear.append(self.roce_sender)
-        self.counters_to_clear.append(self.roce_sender)
-        for worker in self.workers:
-            if worker.worker_type is WorkerType.SWITCHML_UDP:
-                # SwitchML-UDP worker
-                self.set_dst_addr.add_udp_entry(worker.rid, worker.mac, worker.ip)
-            elif worker.worker_type is WorkerType.ROCEv2:
-                # SwitchML-RoCE worker
-                self.roce_sender.add_worker(worker.rid, worker.mac, worker.ip,
-                                            worker.roce_base_qpn, worker.roce_initial_psn)
-            else:
-                # not a SwitchML UDP or RoCE worker, so ignore
-                pass
-
-        # do this last to print more cleanly
-        self.counters_to_clear.append(self.next_step)
-
-        # should already be done
-        #self.clear_registers()
 
     def get_workers_from_files(self, ports_file, job_file):
         workers = []
@@ -885,10 +775,22 @@ class Job(Cmd, object):
 
         # set up RPC server
         self.grpc_server = GRPCServer()
+
+
+        # self.thrift_connection = ThriftInterface('switchml', '127.0.0.1')
+        # self.thrift_client = self.thrift_connection.setup()
+
+        # self.conn_mgr = self.thrift_connection.conn_mgr
+        # self.sess_hdl = self.thrift_connection.conn_mgr.client_init()
+
+        # print('Connected to Device %d, Session %d' % (self.dev_id, self.sess_hdl))
+
+
         
         # set up ports object
         self.ports = Ports(self.gc, self.bfrt_info)
-
+        self.ports.enable_loopback_ports()
+        
         # capture job state
         self.switch_mac = switch_mac
         self.switch_ip = switch_ip
@@ -960,6 +862,9 @@ class Job(Cmd, object):
 
         self.mirror = Mirror(self.gc, self.bfrt_info, self.cpu_port)
 
+        self.drop_simulator = DropSimulator(self.gc, self.bfrt_info)
+        self.tables_to_clear.append(self.drop_simulator)
+        
         # set up counters in next step table
         self.next_step = NextStep(self.gc, self.bfrt_info)
         self.tables_to_clear.append(self.next_step)
@@ -973,11 +878,11 @@ class Job(Cmd, object):
         self.counters_to_clear.append(self.set_dst_addr)
 
         self.roce_sender = RoCESender(self.gc, self.bfrt_info,
-                                      self.switch_mac, self.switch_ip,
-                                      message_size = 1 << 12,
+                                      self.switch_mac, self.switch_ip)
+                                      #message_size = 1 << 12,
                                       #message_size = 1 << 10, #32768, #16384, #4096, #1024,
                                       #message_size = 1 << 11,
-                                      packet_size = 256)
+                                      #packet_size = 256)
         self.tables_to_clear.append(self.roce_sender)
         self.counters_to_clear.append(self.roce_sender)
 
