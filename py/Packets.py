@@ -90,19 +90,9 @@ def make_switchml_udp(src_mac, src_ip, dst_mac, dst_ip, src_port, dst_port, pool
     return p
 
 
-class IB_GRH(Packet):
-    name = "IB_GRH"
-    fields_desc = [
-        XBitField("ipver", 6, 4),
-        XBitField("tclass", 2, 8),
-        XBitField("flowlabel", 0, 20),
-        XShortField("paylen", 0),
-        XByteField("nxthdr", 27),
-        XByteField("hoplmt", 64),
-        IP6Field("sgid", "::1"),
-        IP6Field("dgid", "::1")
-        ]
-
+#
+# RoCE headers
+#
 
 roce_opcode_n2s = {0b00100000: "UC_SEND_FIRST",
                    0b00100001: "UC_SEND_MIDDLE",
@@ -158,16 +148,37 @@ class IB_BTH(Packet):
         X3BytesField("dst_qp", 0),
         XBitField("ack_req", 0, 1),
         XBitField("reserved2", 0, 7),
-        X3BytesField("psn", 0)
-        ]
+        X3BytesField("psn", 0),
+    ]
+
+    # could do this with bind_layers, but given that we have to use
+    # guess_payload_class for the RETH->IMM transition later, we'll
+    # just do it all the same way.
+    def guess_payload_class(self, payload):
+        # is this an RDMA packet? if so, next is IB_RETH
+        if 'RDMA' in roce_opcode_n2s[self.opcode]:
+            return IB_RETH
+        # is this an immediate packet that's not RDMA? if so, next is IB_IMM
+        elif 'IMMEDIATE' in roce_opcode_n2s[self.opcode]:
+            return IB_IMM
+        # otherwise, do the normal thing.
+        else:
+            return Packet.guess_payload_class(self, payload)
 
 class IB_RETH(Packet):
     name = "IB_RETH"
+
     fields_desc = [
         XLongField("addr", 0),
         XIntField("rkey", 0),
         XIntField("len", 0),
-        ]
+    ]
+
+    def guess_payload_class(self, payload):
+        if 'IMMEDIATE' in roce_opcode_n2s[self.underlayer.opcode]:
+            return IB_IMM
+        else:
+            return Packet.guess_payload_class(self, payload)
 
 class IB_IMM(Packet):
     name = "IB_IMM"
@@ -186,7 +197,7 @@ class IB_GRH(Packet):
         XByteField("hoplmt", 64),
         IP6Field("sgid", "::1"),
         IP6Field("dgid", "::1")
-        ]
+    ]
 
 class IB_ICRC(Packet):
     name = "IB_ICRC"
@@ -194,40 +205,65 @@ class IB_ICRC(Packet):
         XIntField("icrc", None)
     ]
 
+class IB_Payload(Packet):
+    name = "IB_Payload"
+    fields_desc = [
+        FieldListField('data', None, SignedIntField('', 0),
+                       length_from=lambda pkt: len(pkt.payload) - 4)
+    ]
+
+# Connect the RoCE headers to UDP
 bind_layers(UDP, IB_BTH, dport=4791)
-bind_layers(IB_BTH, IB_IMM, opcode="UC_SEND_LAST_IMMEDIATE")
-bind_layers(IB_BTH, IB_IMM, opcode="UC_SEND_ONLY_IMMEDIATE")
-bind_layers(IB_BTH, SwitchMLData, opcode="UC_SEND_FIRST")
-bind_layers(IB_BTH, SwitchMLData, opcode="UC_SEND_MIDDLE")
-bind_layers(IB_BTH, SwitchMLData, opcode="UC_SEND_LAST")
-bind_layers(IB_BTH, SwitchMLData, opcode="UC_SEND_ONLY")
 
-# bind_layers(IB_BTH, SwitchMLData, opcode="UC_RDMA_WRITE_FIRST")
-# bind_layers(IB_BTH, SwitchMLData, opcode="UC_RDMA_WRITE_MIDDLE")
-# bind_layers(IB_BTH, SwitchMLData, opcode="UC_RDMA_WRITE_LAST")
-# bind_layers(IB_BTH, SwitchMLData, opcode="UC_RDMA_WRITE_ONLY")
-# bind_layers(IB_BTH, IB_IMM, opcode="UC_RDMA_WRITE_LAST_IMMEDIATE")
-# bind_layers(IB_BTH, IB_IMM, opcode="UC_RDMA_WRITE_ONLY_IMMEDIATE")
-
-bind_layers(IB_BTH, IB_RETH, opcode=roce_opcode_s2n["UC_RDMA_WRITE_FIRST"])
-bind_layers(IB_BTH, SwitchMLData64, opcode=roce_opcode_s2n["UC_RDMA_WRITE_MIDDLE"])
-bind_layers(IB_BTH, SwitchMLData64, opcode=roce_opcode_s2n["UC_RDMA_WRITE_LAST"])
-bind_layers(IB_BTH, IB_RETH, opcode=roce_opcode_s2n["UC_RDMA_WRITE_ONLY"])
-bind_layers(IB_BTH, IB_IMM, opcode=roce_opcode_s2n["UC_RDMA_WRITE_LAST_IMMEDIATE"])
-bind_layers(IB_BTH, IB_IMM, opcode=roce_opcode_s2n["UC_RDMA_WRITE_ONLY_IMMEDIATE"])
-
-bind_layers(IB_RETH, SwitchMLData64)
-
-bind_layers(IB_IMM, SwitchMLData64)
-
-bind_layers(SwitchMLData64, IB_ICRC)
+# Connect all the IB headers to the payload fields
+bind_layers(IB_BTH, IB_Payload)
+bind_layers(IB_BTH, IB_RETH)
+bind_layers(IB_BTH, IB_IMM)
+bind_layers(IB_RETH, IB_Payload)
+bind_layers(IB_RETH, IB_IMM)
+bind_layers(IB_IMM, IB_Payload)
+bind_layers(IB_Payload, IB_ICRC)
 
 
 
+# bind_layers(IB_BTH, IB_IMM, opcode="UC_SEND_LAST_IMMEDIATE")
+# bind_layers(IB_BTH, IB_IMM, opcode="UC_SEND_ONLY_IMMEDIATE")
+# bind_layers(IB_BTH, SwitchMLData, opcode="UC_SEND_FIRST")
+# bind_layers(IB_BTH, SwitchMLData, opcode="UC_SEND_MIDDLE")
+# bind_layers(IB_BTH, SwitchMLData, opcode="UC_SEND_LAST")
+# bind_layers(IB_BTH, SwitchMLData, opcode="UC_SEND_ONLY")
+
+# # bind_layers(IB_BTH, SwitchMLData, opcode="UC_RDMA_WRITE_FIRST")
+# # bind_layers(IB_BTH, SwitchMLData, opcode="UC_RDMA_WRITE_MIDDLE")
+# # bind_layers(IB_BTH, SwitchMLData, opcode="UC_RDMA_WRITE_LAST")
+# # bind_layers(IB_BTH, SwitchMLData, opcode="UC_RDMA_WRITE_ONLY")
+# # bind_layers(IB_BTH, IB_IMM, opcode="UC_RDMA_WRITE_LAST_IMMEDIATE")
+# # bind_layers(IB_BTH, IB_IMM, opcode="UC_RDMA_WRITE_ONLY_IMMEDIATE")
+
+# bind_layers(IB_BTH, IB_RETH, opcode=roce_opcode_s2n["UC_RDMA_WRITE_FIRST"])
+# bind_layers(IB_BTH, SwitchMLData64, opcode=roce_opcode_s2n["UC_RDMA_WRITE_MIDDLE"])
+# bind_layers(IB_BTH, SwitchMLData64, opcode=roce_opcode_s2n["UC_RDMA_WRITE_LAST"])
+# bind_layers(IB_BTH, IB_RETH, opcode=roce_opcode_s2n["UC_RDMA_WRITE_ONLY"])
+# bind_layers(IB_BTH, IB_IMM, opcode=roce_opcode_s2n["UC_RDMA_WRITE_LAST_IMMEDIATE"])
+
+# # TODO: need to parse an immediate header here too
+# #bind_layers(IB_BTH, (IB_RETH, IB_IMM), opcode=roce_opcode_s2n["UC_RDMA_WRITE_ONLY_IMMEDIATE"])
+# bind_layers(IB_BTH, IB_RETH, opcode=roce_opcode_s2n["UC_RDMA_WRITE_ONLY_IMMEDIATE"])
+
+# #bind_layers(IB_RETH, IB_IMM, lambda pkt: pkt.underlayer)
+# #bind_layers(IB_RETH, SwitchMLData64)
+# #bind_layers(IB_RETH, IB_Payload)
+
+# bind_layers(IB_IMM, SwitchMLData64)
+# #bind_layers(IB_IMM, IB_Payload)
+
+# bind_layers(SwitchMLData64, SwitchMLData64)
 
 
-# SwitchML debug tunnel protocol
 
+
+
+# SwitchML debug tunnel protocol header
 class SwitchMLDebug(Packet):
     name = "SwitchMLDebug"
     fields_desc = [
@@ -263,35 +299,33 @@ def make_switchml_rdma(src_mac, src_ip, dst_mac, dst_ip, src_port, dst_qp, opcod
     return p
 
 if __name__ == '__main__':
-    #p = make_switchml_udp(src_mac="b8:83:03:73:a6:a0", src_ip="198.19.200.49", dst_mac="06:00:00:00:00:01", dst_ip="198.19.200.200", src_port=1234, dst_port=0xbee0, pool_index=0)
-    #pprint(p)
-
     if len(sys.argv) <= 1:
         print("Usage: {} <PCAP fiale>".format(sys.argv[0]))
         sys.exit(1)
     else:
         print("{} reading packets from {}...".format(sys.argv[0], sys.argv[1]))
-
+        
         conf.color_theme = BrightTheme()
-
+        conf.debug_dissector = True
+        
         for i, pkt in enumerate(PcapReader(sys.argv[1])):
             print("Packet {}:".format(i))
             pkt.show()
 
-        sys.exit(0)
+        # sys.exit(0)
         
-        for i, pkt in enumerate(PcapReader('/u/jacob/c50a.pcap')):
-            #print("Packet {}:".format(i))
-            #pkt.show()
+        # for i, pkt in enumerate(PcapReader('/u/jacob/c50a.pcap')):
+        #     #print("Packet {}:".format(i))
+        #     #pkt.show()
 
-            dst_ip = pkt[IP].dst
-            src_port = pkt[UDP].sport
-            opcode = roce_opcode_n2s[pkt[IB_BTH].opcode]
-            qp     = pkt[IB_BTH].dst_qp
-            psn    = pkt[IB_BTH].psn
-            if IB_RETH in pkt:
-                addr   = pkt[IB_RETH].addr
-            else:
-                addr   = 0
+        #     dst_ip = pkt[IP].dst
+        #     src_port = pkt[UDP].sport
+        #     opcode = roce_opcode_n2s[pkt[IB_BTH].opcode]
+        #     qp     = pkt[IB_BTH].dst_qp
+        #     psn    = pkt[IB_BTH].psn
+        #     if IB_RETH in pkt:
+        #         addr   = pkt[IB_RETH].addr
+        #     else:
+        #         addr   = 0
             
-            print("{:>2}: {:>15} {:>5} {:>30} 0x{:x} 0x{:x} 0x{:x}".format(i, dst_ip, src_port, opcode, qp, psn, addr))
+        #     print("{:>2}: {:>15} {:>5} {:>30} 0x{:x} 0x{:x} 0x{:x}".format(i, dst_ip, src_port, opcode, qp, psn, addr))
