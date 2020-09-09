@@ -14,10 +14,13 @@
 //
 // Each control handles two significands.
 control SignificandSum(
-    inout significand_t significand0,
-    inout significand_t significand1,
-    in header_t hdr,
-    inout switchml_md_h switchml_md) {
+    // inout significand_t significand0,
+    // inout significand_t significand1,
+    in significand_t significand0,
+    in significand_t significand1,
+    out significand_t significand0_out,
+    out significand_t significand1_out,
+    in switchml_md_h switchml_md) {
 
     Register<significand_pair_t, pool_index_t>(register_size) significands;
 
@@ -31,7 +34,7 @@ control SignificandSum(
     };
 
     action significand_write_read1_action() {
-        significand1 = significand_write_read1_register_action.execute(switchml_md.pool_index);
+        significand1_out = significand_write_read1_register_action.execute(switchml_md.pool_index);
     }
 
     // compute sum of both significands and read first one
@@ -44,7 +47,7 @@ control SignificandSum(
     };
 
     action significand_sum_read1_action() {
-        significand1 = significand_sum_read1_register_action.execute(switchml_md.pool_index);
+        significand1_out = significand_sum_read1_register_action.execute(switchml_md.pool_index);
     }
 
     // read first sum register
@@ -55,7 +58,7 @@ control SignificandSum(
     };
 
     action significand_read0_action() {
-        significand0 = significand_read0_register_action.execute(switchml_md.pool_index);
+        significand0_out = significand_read0_register_action.execute(switchml_md.pool_index);
     }
 
     // read second sum register
@@ -66,7 +69,7 @@ control SignificandSum(
     };
 
     action significand_read1_action() {
-        significand1 = significand_read1_register_action.execute(switchml_md.pool_index);
+        significand1_out = significand_read1_register_action.execute(switchml_md.pool_index);
     }
 
     /* If bitmap_before is 0 and type is CONSUME0, write values and read second value. */
