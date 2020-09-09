@@ -12,9 +12,11 @@ else
         shift
     else
         DEVICE=mlx5_0
-        ETHDEVICE=ens3f0
     fi
 fi
+
+# get ethernet device for Mellanox device
+ETHDEVICE="$(ibdev2netdev | grep mlx5_0 | awk '{print $5}')"
 
 
 # capture RoCE counters into associative array
@@ -26,7 +28,7 @@ do
 done
 
 declare -A ethtool
-for str in $(ethtool -S ens3f0 | tail -n+2 | awk '{print $1 $2}')
+for str in $(ethtool -S $ETHDEVICE | tail -n+2 | awk '{print $1 $2}')
 do
     name=${str%:*}
     value=${str##*:}
@@ -53,7 +55,7 @@ done
 echo "-----"
 echo "Changed ethtool counters for device $ETHDEVICE:"
 
-for str in $(ethtool -S ens3f0 | tail -n+2 | awk '{print $1 $2}')
+for str in $(ethtool -S $ETHDEVICE | tail -n+2 | awk '{print $1 $2}')
 do
     name=${str%:*}
     new_value=${str##*:}
