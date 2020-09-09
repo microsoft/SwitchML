@@ -135,6 +135,7 @@ header exponents_h {
 }
 
 // 128-byte data header
+@pa_container_size("ingress", "hdr.d1.d00", 16, 16) // BUG: works around weird bug that zeros out half of this container
 header data_h {
     data_t d00;
     data_t d01;
