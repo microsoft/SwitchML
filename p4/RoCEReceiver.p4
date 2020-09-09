@@ -201,7 +201,7 @@ control RoCEReceiver(
         ig_md.worker_bitmap   = worker_bitmap;
         ig_md.num_workers     = num_workers;
 
-        ig_md.switchml_md.setValid();
+        //ig_md.switchml_md.setValid(); // should already be set in parser to get here
 
         // group ID for this job
         ig_md.switchml_md.mgid = mgid;
@@ -211,7 +211,7 @@ control RoCEReceiver(
         ig_md.switchml_md.dst_port = hdr.udp.src_port;
 
 
-        ig_md.switchml_rdma_md.setValid();
+        //ig_md.switchml_rdma_md.setValid(); // should already be set in parser to get there
         ig_md.switchml_rdma_md.rdma_addr = hdr.ib_reth.addr; // TODO: make this an index rather than an address
         ig_md.switchml_md.tsi = hdr.ib_reth.len; // TODO: put this in a better place
 
@@ -234,7 +234,7 @@ control RoCEReceiver(
         hdr.ib_bth.setInvalid(); // TODO: copy qpn to a better place and re-eenable here
         hdr.ib_reth.setInvalid();
         hdr.ib_immediate.setInvalid();
-        hdr.ib_icrc.setInvalid();
+        //hdr.ib_icrc.setInvalid(); // this won't be set, since we leave it in the packet memory
 
         // record packet size for use in recirculation
         ig_md.switchml_md.packet_size = packet_size;

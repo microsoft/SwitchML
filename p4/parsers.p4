@@ -199,7 +199,7 @@ parser IngressParser(
     state parse_ib_payload {
         pkt.extract(hdr.d0);
         pkt.extract(hdr.d1);
-        pkt.extract(hdr.ib_icrc);
+        //pkt.extract(hdr.ib_icrc); // do NOT extract ICRC, since this might be in the middle of a >256B packet. 
         ig_md.switchml_md.setValid();
         ig_md.switchml_md.packet_type = packet_type_t.CONSUME0;
         ig_md.switchml_rdma_md.setValid();

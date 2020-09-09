@@ -71,7 +71,7 @@ control RoCESender(
         hdr.ipv4.version = 4;
         hdr.ipv4.ihl = 5;
         hdr.ipv4.diffserv = 0x02;
-        //hdr.ipv4.total_len = ipv4_length; // to be filled in later
+        hdr.ipv4.total_len = 0; // to be filled in later
         hdr.ipv4.identification = 0x0001;
         hdr.ipv4.flags = 0b010;
         hdr.ipv4.frag_offset = 0;
@@ -83,7 +83,11 @@ control RoCESender(
         eg_md.update_ipv4_checksum = true;
 
         hdr.udp.setValid();
-        hdr.udp.src_port = 0x2345;
+        // TODO: BUG: this line being uncommented 
+        //hdr.udp.src_port = 0x8000 | eg_md.switchml_md.worker_id; // form a consistent source port for this worker
+        // This works okay! 
+        hdr.udp.src_port = 1w1 ++ eg_md.switchml_md.worker_id[14:0]; // form a consistent source port for this worker
+        //hdr.udp.src_port = 0x2345;
         hdr.udp.dst_port = UDP_PORT_ROCEV2;
         //hdr.udp.length = udp_length; // to be filled in later
         hdr.udp.checksum = 0; // disabled for RoCEv2
@@ -103,9 +107,12 @@ control RoCESender(
         hdr.ib_bth.reserved2 = 0;
         hdr.ib_bth.psn = 0; // to be filled in later
 
-        // TODO: can't do this here because we haven't parsed data. Add a header with 0's in ingress for now.
-        // hdr.ib_icrc.setValid();
-        // hdr.ib_icrc.icrc = 0; // to be filled in later (or ignored with the right NIC settings)
+        // NOTE: we don't add an ICRC header here for two reasons:
+        // 1. we haven't parsed the payload in egress, so we can't place it at the right point
+        // 2. the payload may be too big for us to parse (1024B packets)
+        // Thus, we just leave the existing ICRC in the packet buffer
+        // during ingress processing, and leave it at the right point
+        // in the egress packet. This works because we're having the NICs ignore it.
 
         // count
         rdma_send_counter.count();
@@ -209,7 +216,7 @@ control RoCESender(
     // and subtract:
     // * switchml_md header
     // * switchml_rdma_md header
-    // * 6?!? TODO: where does this come from?
+    // * 6?!? TODO: where does this come from? but this makes the length correct.
     #define UDP_BASE_LENGTH (\
         hdr.d0.minSizeInBytes() + \
         hdr.ib_bth.minSizeInBytes() + \
@@ -230,7 +237,7 @@ control RoCESender(
         hdr.ib_immediate.setValid();
         // TODO: put something here
         //hdr.ib_immediate.immediate = 17w0 ++ eg_md.switchml_md.pool_index;
-        hdr.ib_immediate.immediate = 17w0 ++ eg_md.switchml_md.pool_index;
+        hdr.ib_immediate.immediate = 0x12345678;
     }
 
     action set_rdma() {
@@ -282,7 +289,7 @@ control RoCESender(
         hdr.udp.length = eg_intr_md.pkt_length + (bit<16>) (hdr.ib_immediate.minSizeInBytes() + hdr.ib_reth.minSizeInBytes() + UDP_BASE_LENGTH);
         hdr.ipv4.total_len = eg_intr_md.pkt_length + (bit<16>) (hdr.ib_immediate.minSizeInBytes() + hdr.ib_reth.minSizeInBytes() + IPV4_BASE_LENGTH);
     }
-    
+
     table set_opcodes {
         key = {
             //eg_md.switchml_md.pool_index : ternary;
