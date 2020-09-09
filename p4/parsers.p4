@@ -10,14 +10,14 @@
 #include "types.p4"
 #include "headers.p4"
 
-parser SwitchMLIngressParser(
+parser IngressParser(
     packet_in pkt,
     out header_t hdr,
     out ingress_metadata_t ig_md,
     out ingress_intrinsic_metadata_t ig_intr_md) {
 
     Checksum() ipv4_checksum;
-    ParserCounter() counter;
+    //ParserCounter() counter;
 
     state start {
         pkt.extract(ig_intr_md);
@@ -47,7 +47,7 @@ parser SwitchMLIngressParser(
         pkt.advance(64);
         #endif
         // decide what to do with recirculated packets now
-        counter.set(8w0);
+        //counter.set(8w0);
         transition select(ig_intr_md.ingress_port) {
             // not currently using PCIe CPU port for recirculation; just parse ethernet
             64: parse_recirculate;
@@ -77,7 +77,7 @@ parser SwitchMLIngressParser(
         pkt.extract(ig_md.switchml_md);
         pkt.extract(ig_md.switchml_rdma_md);
         //ig_md.switchml_md.packet_type = packet_type_t.HARVEST7; // already set before recirculation
-        counter.set(8w1);  // remember we don't need to parse 
+        //counter.set(8w1);  // remember we don't need to parse 
         //hdr.d1.setValid(); // this will be filled in by the pipeline
         // now parse the rest of the packet
         transition select(ig_md.switchml_md.worker_type, ig_md.switchml_md.packet_type) {
@@ -223,12 +223,12 @@ parser SwitchMLIngressParser(
     //@critical
     state parse_data0 {
         pkt.extract(hdr.d0);
-        // was this packet recirculated?
-        transition select(counter.is_zero()) { // 0 ==> not recirculated
-            true  : parse_data1; // not recirculated; continue parsing and set packet type
-            _     : accept;      // recirculated; SwitchML packet type already set
-        }
-        //transition parse_data1; // not recirculated; continue parsing and set packet type
+        // // was this packet recirculated?
+        // transition select(counter.is_zero()) { // 0 ==> not recirculated
+        //     true  : parse_data1; // not recirculated; continue parsing and set packet type
+        //     _     : accept;      // recirculated; SwitchML packet type already set
+        // }
+        transition parse_data1; // not recirculated; continue parsing and set packet type
     }
 
     // mark as @critical to ensure minimum cycles for extraction
@@ -254,7 +254,7 @@ parser SwitchMLIngressParser(
     
 }
 
-control SwitchMLIngressDeparser(
+control IngressDeparser(
     packet_out pkt,
     inout header_t hdr,
     in ingress_metadata_t ig_md,
@@ -321,7 +321,7 @@ control SwitchMLIngressDeparser(
     }
 }
 
-parser SwitchMLEgressParser(
+parser EgressParser(
     packet_in pkt,
     out header_t hdr,
     out egress_metadata_t eg_md,
@@ -411,7 +411,7 @@ parser SwitchMLEgressParser(
     // }
 }
 
-control SwitchMLEgressDeparser(
+control EgressDeparser(
     packet_out pkt,
     inout header_t hdr,
     in egress_metadata_t eg_md,

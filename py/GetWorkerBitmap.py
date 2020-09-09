@@ -23,7 +23,7 @@ class GetWorkerBitmap(Table):
         
 
         # get this table
-        self.table = self.bfrt_info.table_get("pipe.SwitchMLIngress.get_worker_bitmap.get_worker_bitmap")
+        self.table = self.bfrt_info.table_get("pipe.Ingress.get_worker_bitmap.get_worker_bitmap")
 
         # set format annotations
         self.table.info.key_field_annotation_add("hdr.ethernet.dst_addr", "mac")
@@ -110,7 +110,7 @@ class GetWorkerBitmap(Table):
                                    gc.DataTuple('complete_bitmap', (1 << num_workers) - 1),
                                    gc.DataTuple('pool_base', pool_base), 
                                    gc.DataTuple('pool_size_minus_1', pool_size - 1)],
-                             'SwitchMLIngress.get_worker_bitmap.set_bitmap')])
+                             'Ingress.get_worker_bitmap.set_bitmap')])
 
 
     def print_counters(self):

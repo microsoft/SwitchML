@@ -22,8 +22,8 @@ class UpdateAndCheckWorkerBitmap(Table):
         self.logger.info("Setting up update_and_check_worker_bitmap table...")
         
         # get this table
-        self.table    = self.bfrt_info.table_get("pipe.SwitchMLIngress.update_and_check_worker_bitmap.update_and_check_worker_bitmap")
-        self.register = self.bfrt_info.table_get("pipe.SwitchMLIngress.update_and_check_worker_bitmap.worker_bitmap")
+        self.table    = self.bfrt_info.table_get("pipe.Ingress.update_and_check_worker_bitmap.update_and_check_worker_bitmap")
+        self.register = self.bfrt_info.table_get("pipe.Ingress.update_and_check_worker_bitmap.worker_bitmap")
 
         # clear and add defaults
         self.clear() # don't clear entries from p4 code; just clear registers
@@ -59,8 +59,8 @@ class UpdateAndCheckWorkerBitmap(Table):
 
             #print k, v
             pool_index = k['$REGISTER_INDEX']['value']
-            set0 = v['SwitchMLIngress.update_and_check_worker_bitmap.worker_bitmap.first'][0]
-            set1 = v['SwitchMLIngress.update_and_check_worker_bitmap.worker_bitmap.second'][0]
+            set0 = v['Ingress.update_and_check_worker_bitmap.worker_bitmap.first'][0]
+            set1 = v['Ingress.update_and_check_worker_bitmap.worker_bitmap.second'][0]
             print("Pool index 0x{:04x}: set 0: 0x{:08x} set 1:0x{:08x}".format(pool_index, set0, set1))
 
     def show_weird_bitmaps(self):
@@ -74,8 +74,8 @@ class UpdateAndCheckWorkerBitmap(Table):
             k = k.to_dict()
 
             pool_index = k['$REGISTER_INDEX']['value']
-            set0 = v['SwitchMLIngress.update_and_check_worker_bitmap.worker_bitmap.first'][0]
-            set1 = v['SwitchMLIngress.update_and_check_worker_bitmap.worker_bitmap.second'][0]
+            set0 = v['Ingress.update_and_check_worker_bitmap.worker_bitmap.first'][0]
+            set1 = v['Ingress.update_and_check_worker_bitmap.worker_bitmap.second'][0]
 
             if set0 is not 0 and set1 is not 0:
                 print("Pool index 0x{:04x}: set 0: 0x{:08x} set 1:0x{:08x}".format(pool_index, set0, set1))

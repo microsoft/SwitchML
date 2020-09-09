@@ -22,8 +22,8 @@ class CountWorkers(Table):
         self.logger.info("Setting up count_workers table...")
         
         # get this table
-        self.table    = self.bfrt_info.table_get("pipe.SwitchMLIngress.count_workers.count_workers")
-        self.register = self.bfrt_info.table_get("pipe.SwitchMLIngress.count_workers.worker_count")
+        self.table    = self.bfrt_info.table_get("pipe.Ingress.count_workers.count_workers")
+        self.register = self.bfrt_info.table_get("pipe.Ingress.count_workers.worker_count")
 
         # clear and add defaults
         self.clear()

@@ -25,6 +25,7 @@ from UpdateAndCheckWorkerBitmap import UpdateAndCheckWorkerBitmap
 from CountWorkers import CountWorkers
 from ExponentMax import ExponentMax
 from SignificandStage import SignificandStage
+from SignificandSum import SignificandSum
 from SetDstAddr import SetDstAddr
 from PRE import PRE
 from NonSwitchMLForward import NonSwitchMLForward
@@ -763,7 +764,9 @@ class Job(Cmd, object):
         
 
     def __init__(self, gc, bfrt_info,
-                 switch_ip, switch_mac, switch_udp_port, switch_udp_port_mask, workers=None, ports_file=None, job_file=None):
+                 switch_ip, switch_mac, switch_udp_port=0xbee0, switch_udp_port_mask=0xfff0,
+                 workers=None, ports_file=None, job_file=None):
+        
         # call Cmd constructor
         super(Job, self).__init__()
         self.intro = "SwitchML command loop. Use 'help' or '?' to list commands."
@@ -837,22 +840,28 @@ class Job(Cmd, object):
         self.registers_to_clear.append(self.exponent_max)
         
         # add rules for data registers and clear registers
-        self.significands_00_01_02_03 = SignificandStage(self.gc, self.bfrt_info,  0,  1,  2,  3)
-        self.registers_to_clear.append(self.significands_00_01_02_03)
-        self.significands_04_05_06_07 = SignificandStage(self.gc, self.bfrt_info,  4,  5,  6,  7)
-        self.registers_to_clear.append(self.significands_04_05_06_07)
-        self.significands_08_09_10_11 = SignificandStage(self.gc, self.bfrt_info,  8,  9, 10, 11)
-        self.registers_to_clear.append(self.significands_08_09_10_11)
-        self.significands_12_13_14_15 = SignificandStage(self.gc, self.bfrt_info, 12, 13, 14, 15)
-        self.registers_to_clear.append(self.significands_12_13_14_15)
-        self.significands_16_17_18_19 = SignificandStage(self.gc, self.bfrt_info, 16, 17, 18, 19)
-        self.registers_to_clear.append(self.significands_16_17_18_19)
-        self.significands_20_21_22_23 = SignificandStage(self.gc, self.bfrt_info, 20, 21, 22, 23)
-        self.registers_to_clear.append(self.significands_20_21_22_23)
-        self.significands_24_25_26_27 = SignificandStage(self.gc, self.bfrt_info, 24, 25, 26, 27)
-        self.registers_to_clear.append(self.significands_24_25_26_27)
-        self.significands_28_29_30_31 = SignificandStage(self.gc, self.bfrt_info, 28, 29, 30, 31)
-        self.registers_to_clear.append(self.significands_28_29_30_31)
+        self.significands = []
+        for i in range(32):
+            x = SignificandSum(self.gc, self.bfrt_info, i)
+            self.significands.append(x)
+            self.registers_to_clear.append(x)
+            
+        # self.significands_00_01_02_03 = SignificandStage(self.gc, self.bfrt_info,  0,  1,  2,  3)
+        # self.registers_to_clear.append(self.significands_00_01_02_03)
+        # self.significands_04_05_06_07 = SignificandStage(self.gc, self.bfrt_info,  4,  5,  6,  7)
+        # self.registers_to_clear.append(self.significands_04_05_06_07)
+        # self.significands_08_09_10_11 = SignificandStage(self.gc, self.bfrt_info,  8,  9, 10, 11)
+        # self.registers_to_clear.append(self.significands_08_09_10_11)
+        # self.significands_12_13_14_15 = SignificandStage(self.gc, self.bfrt_info, 12, 13, 14, 15)
+        # self.registers_to_clear.append(self.significands_12_13_14_15)
+        # self.significands_16_17_18_19 = SignificandStage(self.gc, self.bfrt_info, 16, 17, 18, 19)
+        # self.registers_to_clear.append(self.significands_16_17_18_19)
+        # self.significands_20_21_22_23 = SignificandStage(self.gc, self.bfrt_info, 20, 21, 22, 23)
+        # self.registers_to_clear.append(self.significands_20_21_22_23)
+        # self.significands_24_25_26_27 = SignificandStage(self.gc, self.bfrt_info, 24, 25, 26, 27)
+        # self.registers_to_clear.append(self.significands_24_25_26_27)
+        # self.significands_28_29_30_31 = SignificandStage(self.gc, self.bfrt_info, 28, 29, 30, 31)
+        # self.registers_to_clear.append(self.significands_28_29_30_31)
 
         # add workers to multicast groups.
         self.cpu_port = 4 # dev port for CPU mirroring

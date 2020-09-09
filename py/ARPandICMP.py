@@ -22,7 +22,7 @@ class ARPandICMP(Table):
         self.logger.info("Setting up arp_and_icmp table...")
         
         # get this table
-        self.table = self.bfrt_info.table_get("pipe.SwitchMLIngress.arp_and_icmp.arp_and_icmp")
+        self.table = self.bfrt_info.table_get("pipe.Ingress.arp_and_icmp.arp_and_icmp")
 
         self.switch_mac = None
         self.switch_ip = None
@@ -30,10 +30,10 @@ class ARPandICMP(Table):
         # add annotations
         self.table.info.key_field_annotation_add("hdr.ipv4.dst_addr", "ipv4")
         self.table.info.key_field_annotation_add("hdr.arp_ipv4.dst_proto_addr", "ipv4")
-        self.table.info.data_field_annotation_add("switch_mac", 'SwitchMLIngress.arp_and_icmp.send_arp_reply', "mac")
-        self.table.info.data_field_annotation_add("switch_ip",  'SwitchMLIngress.arp_and_icmp.send_arp_reply', "ipv4")
-        self.table.info.data_field_annotation_add("switch_mac", 'SwitchMLIngress.arp_and_icmp.send_icmp_echo_reply', "mac")
-        self.table.info.data_field_annotation_add("switch_ip",  'SwitchMLIngress.arp_and_icmp.send_icmp_echo_reply', "ipv4")
+        self.table.info.data_field_annotation_add("switch_mac", 'Ingress.arp_and_icmp.send_arp_reply', "mac")
+        self.table.info.data_field_annotation_add("switch_ip",  'Ingress.arp_and_icmp.send_arp_reply', "ipv4")
+        self.table.info.data_field_annotation_add("switch_mac", 'Ingress.arp_and_icmp.send_icmp_echo_reply', "mac")
+        self.table.info.data_field_annotation_add("switch_ip",  'Ingress.arp_and_icmp.send_icmp_echo_reply', "ipv4")
 
         # clear and add defaults
         self.clear()
@@ -66,7 +66,7 @@ class ARPandICMP(Table):
                                               0x00000000)])],
             [self.table.make_data([gc.DataTuple('switch_mac', self.switch_mac),
                                    gc.DataTuple('switch_ip',  self.switch_ip)],
-                                  'SwitchMLIngress.arp_and_icmp.send_arp_reply')])
+                                  'Ingress.arp_and_icmp.send_arp_reply')])
 
         # add entry to reply to icmp echo requests
         self.table.entry_add(
@@ -90,7 +90,7 @@ class ARPandICMP(Table):
                                               0xffffffff)])],
             [self.table.make_data([gc.DataTuple('switch_mac', self.switch_mac),
                                    gc.DataTuple('switch_ip',  self.switch_ip)],
-                                  'SwitchMLIngress.arp_and_icmp.send_icmp_echo_reply')])
+                                  'Ingress.arp_and_icmp.send_icmp_echo_reply')])
 
 
         

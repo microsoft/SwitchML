@@ -21,15 +21,15 @@ class NextStep(Table):
         self.logger.info("Setting up next_step table...")
 
         # get table
-        self.table = self.bfrt_info.table_get("pipe.SwitchMLIngress.next_step.next_step")
+        self.table = self.bfrt_info.table_get("pipe.Ingress.next_step.next_step")
 
         # get counters
-        #self.consume_counter = self.bfrt_info.table_get("pipe.SwitchMLIngress.next_step.consume_counter")
-        #self.harvest_counter = self.bfrt_info.table_get("pipe.SwitchMLIngress.next_step.harvest_counter")
-        self.recirculate_counter = self.bfrt_info.table_get("pipe.SwitchMLIngress.next_step.recirculate_counter")
-        self.broadcast_counter = self.bfrt_info.table_get("pipe.SwitchMLIngress.next_step.broadcast_counter")
-        self.retransmit_counter = self.bfrt_info.table_get("pipe.SwitchMLIngress.next_step.retransmit_counter")
-        self.drop_counter = self.bfrt_info.table_get("pipe.SwitchMLIngress.next_step.drop_counter")
+        #self.consume_counter = self.bfrt_info.table_get("pipe.Ingress.next_step.consume_counter")
+        #self.harvest_counter = self.bfrt_info.table_get("pipe.Ingress.next_step.harvest_counter")
+        self.recirculate_counter = self.bfrt_info.table_get("pipe.Ingress.next_step.recirculate_counter")
+        self.broadcast_counter = self.bfrt_info.table_get("pipe.Ingress.next_step.broadcast_counter")
+        self.retransmit_counter = self.bfrt_info.table_get("pipe.Ingress.next_step.retransmit_counter")
+        self.drop_counter = self.bfrt_info.table_get("pipe.Ingress.next_step.drop_counter")
 
         # clear and add defaults
         #self.clear()
@@ -117,18 +117,18 @@ class NextStep(Table):
                 values[3][index]))
             
 
-        # get direct counter
-        print("Stuff!")
-        self.table.operations_execute(self.target, 'SyncCounters')
-        resp = self.table.entry_get(
-            self.target)
-        # ,
-        #     [self.table.make_key([gc.KeyTuple('$COUNTER_INDEX', i)])
-        #          for i in range(start, start+count)],
-        #         flags={"from_hw": False})
+        # # get direct counter
+        # print("Stuff!")
+        # self.table.operations_execute(self.target, 'SyncCounters')
+        # resp = self.table.entry_get(
+        #     self.target)
+        # # ,
+        # #     [self.table.make_key([gc.KeyTuple('$COUNTER_INDEX', i)])
+        # #          for i in range(start, start+count)],
+        # #         flags={"from_hw": False})
 
-        for v, k in resp:
-            v = v.to_dict()
-            k = k.to_dict()
+        # for v, k in resp:
+        #     v = v.to_dict()
+        #     k = k.to_dict()
 
-            pprint((k, v))
+        #     pprint((k, v))

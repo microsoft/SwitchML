@@ -24,14 +24,14 @@ class SetDstAddr(Table):
         self.switch_ip = switch_ip
 
         # get these tables
-        self.switch_mac_and_ip = self.bfrt_info.table_get("pipe.SwitchMLEgress.set_dst_addr.switch_mac_and_ip")
-        self.table = self.bfrt_info.table_get("pipe.SwitchMLEgress.set_dst_addr.set_dst_addr")
+        self.switch_mac_and_ip = self.bfrt_info.table_get("pipe.Egress.set_dst_addr.switch_mac_and_ip")
+        self.table = self.bfrt_info.table_get("pipe.Egress.set_dst_addr.set_dst_addr")
 
         # set format annotations
-        self.switch_mac_and_ip.info.data_field_annotation_add("switch_mac", 'SwitchMLEgress.set_dst_addr.set_switch_mac_and_ip', "mac")
-        self.switch_mac_and_ip.info.data_field_annotation_add("switch_ip",  'SwitchMLEgress.set_dst_addr.set_switch_mac_and_ip', "ipv4")
-        self.table.info.data_field_annotation_add("ip_dst_addr",  'SwitchMLEgress.set_dst_addr.set_dst_addr_for_SwitchML_UDP', "ipv4")
-        self.table.info.data_field_annotation_add("eth_dst_addr", 'SwitchMLEgress.set_dst_addr.set_dst_addr_for_SwitchML_UDP', "mac")
+        self.switch_mac_and_ip.info.data_field_annotation_add("switch_mac", 'Egress.set_dst_addr.set_switch_mac_and_ip', "mac")
+        self.switch_mac_and_ip.info.data_field_annotation_add("switch_ip",  'Egress.set_dst_addr.set_switch_mac_and_ip', "ipv4")
+        self.table.info.data_field_annotation_add("ip_dst_addr",  'Egress.set_dst_addr.set_dst_addr_for_SwitchML_UDP', "ipv4")
+        self.table.info.data_field_annotation_add("eth_dst_addr", 'Egress.set_dst_addr.set_dst_addr_for_SwitchML_UDP', "mac")
 
         # clear and add defaults
         self.clear()
@@ -47,7 +47,7 @@ class SetDstAddr(Table):
             self.target,
             self.switch_mac_and_ip.make_data([gc.DataTuple('switch_mac', self.switch_mac),
                                               gc.DataTuple('switch_ip', self.switch_ip)],
-                                             'SwitchMLEgress.set_dst_addr.set_switch_mac_and_ip'))
+                                             'Egress.set_dst_addr.set_switch_mac_and_ip'))
 
     def clear_udp_entries(self):
         self.table.entry_del(self.target)
@@ -65,7 +65,7 @@ class SetDstAddr(Table):
                                               worker_rid)])],
             [self.table.make_data([gc.DataTuple('eth_dst_addr', worker_mac),
                                    gc.DataTuple('ip_dst_addr', worker_ip)],
-                                  'SwitchMLEgress.set_dst_addr.set_dst_addr_for_SwitchML_UDP')])
+                                  'Egress.set_dst_addr.set_dst_addr_for_SwitchML_UDP')])
 
     def print_counters(self):
         self.table.operations_execute(self.target, 'SyncCounters')

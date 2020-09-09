@@ -24,10 +24,10 @@ class RoCEReceiver(Table):
         
 
         # get this table
-        self.table = self.bfrt_info.table_get("pipe.SwitchMLIngress.roce_receiver.receive_roce")
-        self.rdma_packet_counter = self.bfrt_info.table_get("pipe.SwitchMLIngress.roce_receiver.rdma_packet_counter")
-        self.rdma_message_counter = self.bfrt_info.table_get("pipe.SwitchMLIngress.roce_receiver.rdma_message_counter")
-        self.rdma_sequence_violation_counter = self.bfrt_info.table_get("pipe.SwitchMLIngress.roce_receiver.rdma_sequence_violation_counter")
+        self.table = self.bfrt_info.table_get("pipe.Ingress.roce_receiver.receive_roce")
+        self.rdma_packet_counter = self.bfrt_info.table_get("pipe.Ingress.roce_receiver.rdma_packet_counter")
+        self.rdma_message_counter = self.bfrt_info.table_get("pipe.Ingress.roce_receiver.rdma_message_counter")
+        self.rdma_sequence_violation_counter = self.bfrt_info.table_get("pipe.Ingress.roce_receiver.rdma_sequence_violation_counter")
         
         # set format annotations
         self.table.info.key_field_annotation_add("hdr.ipv4.dst_addr", "ipv4")
@@ -97,18 +97,18 @@ class RoCEReceiver(Table):
 
         # add entry for each opcode for each worker
         for opcode, action in [
-                # (roce_opcode_s2n['UC_SEND_FIRST'],  'SwitchMLIngress.roce_receiver.first_packet'),
-                # (roce_opcode_s2n['UC_SEND_MIDDLE'], 'SwitchMLIngress.roce_receiver.middle_packet'),
-                # (roce_opcode_s2n['UC_SEND_LAST'],   'SwitchMLIngress.roce_receiver.last_packet'),
-                # (roce_opcode_s2n['UC_SEND_ONLY'],   'SwitchMLIngress.roce_receiver.only_packet'),
-                # (roce_opcode_s2n['UC_SEND_LAST_IMMEDIATE'],   'SwitchMLIngress.roce_receiver.last_packet'),
-                # (roce_opcode_s2n['UC_SEND_ONLY_IMMEDIATE'],   'SwitchMLIngress.roce_receiver.only_packet'),
-                (roce_opcode_s2n['UC_RDMA_WRITE_FIRST'],  'SwitchMLIngress.roce_receiver.first_packet'),
-                (roce_opcode_s2n['UC_RDMA_WRITE_MIDDLE'], 'SwitchMLIngress.roce_receiver.middle_packet'),
-                (roce_opcode_s2n['UC_RDMA_WRITE_LAST'],   'SwitchMLIngress.roce_receiver.last_packet'),
-                (roce_opcode_s2n['UC_RDMA_WRITE_ONLY'],   'SwitchMLIngress.roce_receiver.only_packet'),
-                (roce_opcode_s2n['UC_RDMA_WRITE_LAST_IMMEDIATE'],   'SwitchMLIngress.roce_receiver.last_packet'),
-                (roce_opcode_s2n['UC_RDMA_WRITE_ONLY_IMMEDIATE'],   'SwitchMLIngress.roce_receiver.only_packet')]:
+                # (roce_opcode_s2n['UC_SEND_FIRST'],  'Ingress.roce_receiver.first_packet'),
+                # (roce_opcode_s2n['UC_SEND_MIDDLE'], 'Ingress.roce_receiver.middle_packet'),
+                # (roce_opcode_s2n['UC_SEND_LAST'],   'Ingress.roce_receiver.last_packet'),
+                # (roce_opcode_s2n['UC_SEND_ONLY'],   'Ingress.roce_receiver.only_packet'),
+                # (roce_opcode_s2n['UC_SEND_LAST_IMMEDIATE'],   'Ingress.roce_receiver.last_packet'),
+                # (roce_opcode_s2n['UC_SEND_ONLY_IMMEDIATE'],   'Ingress.roce_receiver.only_packet'),
+                (roce_opcode_s2n['UC_RDMA_WRITE_FIRST'],  'Ingress.roce_receiver.first_packet'),
+                (roce_opcode_s2n['UC_RDMA_WRITE_MIDDLE'], 'Ingress.roce_receiver.middle_packet'),
+                (roce_opcode_s2n['UC_RDMA_WRITE_LAST'],   'Ingress.roce_receiver.last_packet'),
+                (roce_opcode_s2n['UC_RDMA_WRITE_ONLY'],   'Ingress.roce_receiver.only_packet'),
+                (roce_opcode_s2n['UC_RDMA_WRITE_LAST_IMMEDIATE'],   'Ingress.roce_receiver.last_packet'),
+                (roce_opcode_s2n['UC_RDMA_WRITE_ONLY_IMMEDIATE'],   'Ingress.roce_receiver.only_packet')]:
             qpn_top_bits = 0x800000 | ((worker_rid & 0xff) << 16)
             self.table.entry_add(
                 self.target,

@@ -21,8 +21,8 @@ class ExponentMax(Table):
         self.logger.info("Setting up exponent_max table...")
         
         # get this table
-        self.table    = self.bfrt_info.table_get("pipe.SwitchMLIngress.exponent_max.exponent_max")
-        self.register = self.bfrt_info.table_get("pipe.SwitchMLIngress.exponent_max.exponents")
+        self.table    = self.bfrt_info.table_get("pipe.Ingress.exponent_max.exponent_max")
+        self.register = self.bfrt_info.table_get("pipe.Ingress.exponent_max.exponents")
 
         # clear and add defaults
         self.clear() # Don't clear table; it's programmed in the P4 code

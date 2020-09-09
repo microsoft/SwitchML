@@ -23,7 +23,7 @@ class SignificandStage(Table):
         self.logger.info("Setting up significand sum stage for indices {}, {}, {}, and {}...".format(aa, bb, cc, dd))
 
         # store control name for future register accesses
-        self.control_name = "SwitchMLIngress.significands_{:02d}_{:02d}_{:02d}_{:02d}".format(aa, bb, cc, dd)
+        self.control_name = "Ingress.significands_{:02d}_{:02d}_{:02d}_{:02d}".format(aa, bb, cc, dd)
 
         # get registers
         self.registers = []
