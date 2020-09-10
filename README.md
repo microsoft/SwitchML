@@ -16,6 +16,7 @@ Features:
 Limitations:
 * Only the first pipeline's front-panel ports (dev_ports 0 through 63) are currently supported, in order to support 1024 byte packets
 * When used with RDMA, ICRC checking on the NIC must be disabled. See README.md in RDMAExampleClient for more info.
+* The tests are not fully functional right now.
 
 Requirements
 ------------

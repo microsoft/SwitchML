@@ -21,8 +21,7 @@
 #include "DropSimulator.p4"
 #include "UpdateAndCheckWorkerBitmap.p4"
 #include "ExponentMax.p4"
-#include "SignificandStage.p4"
-//#include "SpecialSignificandSum.p4"
+#include "SignificandSum.p4"
 #include "CountWorkers.p4"
 #include "SetDstAddr.p4"
 #include "NonSwitchMLForward.p4"
@@ -49,11 +48,7 @@ control Ingress(
 
     ExponentMax() exponent_max;
 
-    // SignificandSum() sumXX;
-    // SignificandSum() sumYY;
-    // SignificandSum() sumZZ;
-
-//    SpecialSignificandSum() sum00;
+    SignificandSum() sum00;
     SignificandSum() sum01;
     SignificandSum() sum02;
     SignificandSum() sum03;
@@ -85,15 +80,6 @@ control Ingress(
     SignificandSum() sum29;
     SignificandSum() sum30;
     SignificandSum() sum31;
-    
-    // SignificandStage() significands_00_01_02_03;
-    // SignificandStage() significands_04_05_06_07;
-    // SignificandStage() significands_08_09_10_11;
-    // SignificandStage() significands_12_13_14_15;
-    // SignificandStage() significands_16_17_18_19;
-    // SignificandStage() significands_20_21_22_23;
-    // SignificandStage() significands_24_25_26_27;
-    // SignificandStage() significands_28_29_30_31;
     
     CountWorkers() count_workers;
 
@@ -145,24 +131,6 @@ control Ingress(
                 exponent_max.apply(hdr.exponents.e0, hdr.exponents.e0, hdr.exponents.e0, _, hdr, ig_md);
                 
                 // aggregate significands
-//                 // use a macro to reduce a little typing.
-// #define APPLY_SIGNIFICAND_STAGE(AA, BB, CC, DD)       \
-//                 significands_##AA##_##BB##_##CC##_##DD.apply( \
-//                     hdr.d0.d##AA, hdr.d1.d##AA,            \
-//                     hdr.d0.d##BB, hdr.d1.d##BB,            \
-//                     hdr.d0.d##CC, hdr.d1.d##CC,            \
-//                     hdr.d0.d##DD, hdr.d1.d##DD,            \
-//                     hdr.d0.d##AA, hdr.d1.d##AA,            \
-//                     hdr.d0.d##BB, hdr.d1.d##BB,            \
-//                     hdr.d0.d##CC, hdr.d1.d##CC,            \
-//                     hdr.d0.d##DD, hdr.d1.d##DD,            \
-//                     ig_md.switchml_md)
-
-                //sum00.apply(hdr.d0.d00, hdr.d1.d00, hdr, ig_md.switchml_md);
-                // sumXX.apply(hdr.d0.d00, hdr.d1.d00, _, _, ig_md.switchml_md);
-                // sumYY.apply(hdr.d0.d00, hdr.d1.d00, _, _, ig_md.switchml_md);
-                // sumZZ.apply(hdr.d0.d00, hdr.d1.d00, _, _, ig_md.switchml_md);
-
                 sum00.apply(hdr.d0.d00, hdr.d1.d00, hdr.d0.d00, hdr.d1.d00, ig_md.switchml_md);
                 sum01.apply(hdr.d0.d01, hdr.d1.d01, hdr.d0.d01, hdr.d1.d01, ig_md.switchml_md);
                 sum02.apply(hdr.d0.d02, hdr.d1.d02, hdr.d0.d02, hdr.d1.d02, ig_md.switchml_md);
@@ -195,39 +163,6 @@ control Ingress(
                 sum29.apply(hdr.d0.d29, hdr.d1.d29, hdr.d0.d29, hdr.d1.d29, ig_md.switchml_md);
                 sum30.apply(hdr.d0.d30, hdr.d1.d30, hdr.d0.d30, hdr.d1.d30, ig_md.switchml_md);
                 sum31.apply(hdr.d0.d31, hdr.d1.d31, hdr.d0.d31, hdr.d1.d31, ig_md.switchml_md);
-                //sumXX.apply(hdr.d0.dXX, hdr.d1.dXX, hdr.d0.dXX, hdr.d1.dXX, ig_md.switchml_md);                
-                
-                // bit<32> temp;
-                // significands_00_01_02_03.apply(
-                //     hdr.d0.d00, hdr.d1.d00,
-                //     hdr.d0.d01, hdr.d1.d01,
-                //     hdr.d0.d02, hdr.d1.d02,
-                //     hdr.d0.d03, hdr.d1.d03,
-                //     hdr.d0.d00, temp, //hdr.d1.d00,
-                //     //hdr.d0.d00, hdr.d1.d00,
-                //     hdr.d0.d01, hdr.d1.d01,
-                //     hdr.d0.d02, hdr.d1.d02,
-                //     hdr.d0.d03, hdr.d1.d03,
-                //     ig_md.switchml_md);
-                // //@stage(11)
-                // //sum00.apply(hdr.d0.d00, hdr.d1.d00, hdr, ig_md.switchml_md);
-                
-                // // sum01.apply(hdr.d0.d01, hdr.d1.d01, hdr, ig_md.switchml_md);
-                // // sum02.apply(hdr.d0.d02, hdr.d1.d02, hdr, ig_md.switchml_md);
-                // // sum03.apply(hdr.d0.d03, hdr.d1.d03, hdr, ig_md.switchml_md);
-                // //APPLY_SIGNIFICAND_STAGE(00, 01, 02, 03);
-                // APPLY_SIGNIFICAND_STAGE(04, 05, 06, 07);
-                // APPLY_SIGNIFICAND_STAGE(08, 09, 10, 11);
-                // APPLY_SIGNIFICAND_STAGE(12, 13, 14, 15);
-                // APPLY_SIGNIFICAND_STAGE(16, 17, 18, 19);
-                // APPLY_SIGNIFICAND_STAGE(20, 21, 22, 23);
-                // APPLY_SIGNIFICAND_STAGE(24, 25, 26, 27);
-                // APPLY_SIGNIFICAND_STAGE(28, 29, 30, 31);
-
-                //sum00.apply(hdr.d0.d00, hdr.d1.d00, hdr.d0.d00, hdr.d1.d00, hdr, switchml_md);
-                // if (hdr.d1.isValid()) {
-                //     hdr.d1.d00 = temp;
-                // }
                 
                 // decide what to do with this packet
                 next_step.apply(hdr, ig_md, ig_intr_md, ig_dprsr_md, ig_tm_md);
