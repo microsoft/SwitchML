@@ -1,6 +1,5 @@
-######################################################
-#   Copyright (C) Microsoft. All rights reserved.    #
-######################################################
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT License.
 
 import logging
 from pprint import pprint, pformat

@@ -1,8 +1,5 @@
-/********************************************************
-*                                                       *
-*   Copyright (C) Microsoft. All rights reserved.       *
-*                                                       *
-********************************************************/
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 
 #ifndef _UPDATE_WORKER_BITMAP_
 #define _UPDATE_WORKER_BITMAP_

@@ -1,8 +1,5 @@
-/********************************************************
-*                                                       *
-*   Copyright (C) Microsoft. All rights reserved.       *
-*                                                       *
-********************************************************/
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 
 #ifndef _ARP_AND_ICMP_
 #define _ARP_AND_ICMP_

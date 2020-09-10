@@ -1,8 +1,5 @@
-/********************************************************
-*                                                       *
-*   Copyright (C) Microsoft. All rights reserved.       *
-*                                                       *
-********************************************************/
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 
 #ifndef _SIGNIFICAND_STAGE_
 #define _SIGNIFICAND_STAGE_
