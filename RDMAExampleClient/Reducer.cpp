@@ -8,7 +8,7 @@ Reducer::Reducer(Connections & c)
   : connections(c)
   , endpoint(c.endpoint)
   , threads()
-  , barrier(FLAGS_cores + 1) // FLAGS_cores worker threads plus master thread
+  , barrier(FLAGS_cores + 1) // FLAGS_cores worker threads plus main thread
   , shutdown(false)
   , src_buffer(nullptr)
   , dst_buffer(nullptr)
