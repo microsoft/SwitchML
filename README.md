@@ -1,61 +1,47 @@
 SwitchML in P4_16
 =================
 
-This is an implementation of the SwitchML concept, but done in P4_16
-and tweaked to support larger packets and RDMA via RoCE. It's very
-much a work in progress.
-
+This is an implementation of SwitchML in P4_16, with support for large packets and RDMA via RoCE.
 
 Status
 ------
 
-This is a preliminary version of the P4_16 code; it works as described
-in the paper, but I have lots of plans to improve it.
+This is a work in progress.
 
-Things to do:
-* This code is impacted by a number of compiler bugs, all of which
-  have been reported. When fixed, the workarounds will need to be
-  undone. Search for "BUG" in the code to find these places.
-* The control plane and tests use the BF Runtime GRPC API, which was
-  still under development when this code was written against SDE
-  9.1.0. The API may change in future releases of the SDE, and this
-  code will benefit from being updated (in particular, faster register
-  clearing will be handy)
-* The code has the beginnings of isolation support for multiple jobs,
-  but this is currently not implemented.
-* The code has the beginnings of support for hierarchical and
-  multi-pipeline reductions, but this is currently not implemented.
-* The code has the beginnings of support for non-SwitchML-UDP packets,
-  including RDMA/RoCE and SwitchML-Ethernet, but these are not yet
-  implemented.
-* Right now all payloads must be padded to the full payload size set
-  in configuration.p4
-* The current design uses only one recirculation port per pipeline, so
-  the minimum supported job size at full line rate may be limited by
-  recirculation bandwidth to about 7 or 8 workers. We can cut that in
-  half by modifying the code to use two recirculation ports.
-* Drop simulation is not currently supported.
+Features:
+* 256 byte (64 entry) or 1024 byte (256 entry) packets
+* Up to 4 8-bit exponents per message
+* Up to 32 workers in a job
+
+Limitations:
+* Only the first pipeline's front-panel ports (dev_ports 0 through 63) are currently supported, in order to support 1024 byte packets
+* When used with RDMA, ICRC checking on the NIC must be disabled. See README.md in RDMAExampleClient for more info.
 
 Requirements
 ------------
 
-For the SwitchML p4 code, the main requirement is SDE 9.1.0.
+The p4 code requires SDE 9.1.0 or above.
 
 For the control plane, Python 2.7 with Scapy and other SDE dependences
-is required. This should be installed on any machine with the SDE
+is required. This should be installed on any machine/switch with the SDE
 installed. 
 
+For use with RDMA, additional dependencies are required. See RDMAExampleClient/README.md for more details.
 
 Instructions
 ------------
 
 * Clone the switchml repo.
 * Build the P4 code with a command like ```p4_build.sh p4/switchml.p4``` or the equivalent.
-* Either  edit ```py/switchml.py``` for your job configuration, or make your own version of ```py/prometheus-fib.yml``` and ```py/prometheus-switchML.yml``` files, to be used with the ```--ports``` and ```--job``` arguments, respectively.
-* Run your modified control plane in a shell with the $SDE environment variable set: ```python py/switchml.py```
-  * If you are using YAML files, run like ```python py/switchml.py --ports <FIB file> --job <job file>```
-* Ensure Daiet is configured with ```num_updates = 64```.
-* Run your job using the SwitchML server-side code.
+* Run the control plane with a command like ```python py/switchml.py```.
+  * Set the switch MAC and IP with the ```--switch_mac``` and ```--switch_ip``` arguments.
+  * To specify ports and MAC addresses, either edit ```py/switchml.py``` or make a version ```py/prometheus-fib.yml``` and load using the ```--ports``` argument.
+* For RDMA, job configuration is done via GRPC.
+* For SwitchML-UDP, job configuration can be done by loading a file like ```py/prometheus-fib.yml``` with the ```--job``` argument or the ```worker_file``` command in the CLI.
+
+For use with Daiet, ensure Daiet is configured with ```num_updates = 64``` or ```num_updates = 256```.
+
+For use with the RDMA example client, follow the directions in README.md in RDMAExampleClient.
 
 Testing
 -------
@@ -72,108 +58,46 @@ Glossary
 
 *Slot*: register storage for one packet's worth of data
 
-*Set*: each pool element is divided into two sets: odd and even. Pools should
-always be allocated in multiples of two, so that we have storage for
-both sets.
+*Set*: each pool element is divided into two sets: odd and even. Pool sizes should always be multiples of two, so that we have storage for both sets.
 
 *Consume*: adding values into registers
 
 *Harvest*: reading aggregated values out of registers
 
 
-SwitchML packet format
-----------------------
+SwitchML packet formats
+-----------------------
 
-NOTE: for now only the SwitchML UDP packet format is supported.
- 
-Eventually, there are four ways to send packets to be aggreagted:
-* SwitchML/UDP: data is sent with SwitchML header inside UDP/IP/Ethernet
-* SwitchML/Ethernet: data is sent with SwitchML header inside Ethernet
-* RoCEv2: data is sent in IB_BTH frames in UDP/IP/Ethernet. RoCE data includes SwitchML header.
-* RoCEv1: data is sent in IB_BTH frames in IB_GRH/Ethernet. RoCE data includes SwitchML header.
+This code supports two packet formats: the original UDP format, and RoCE v2.
 
-
-This design expects the packet to be laid out like this:
+For SwitchML-UDP, the packet is laid out like this:
 * Ethernet
 * IP
-* UDP (port 0xbee0)
+* UDP (base port 0xbee0)
 * SwitchML header
-* SwitchML exponents
-* SwitchML significands
+* SwitchML exponent header
+* SwitchML significands (either 256 bytes or 1024 bytes
+* Ethernet FCS
 
-The current code is set up for one exponent and 64 significands per
-packet. The code should be easily modifiable to change this.
-
-To deal with the Tofino 1 imbalance between register write and read
-bandwidth, each packet is divided into two halves. Both halves are
-consumed in the packet's first trip through the pipeline, but only the
-first half is harvested. When it is time to send an aggregated packet,
-the packet is recirculated and the second half is harvested before the
-packet is replicated and sent out.
+For SwitchML-RDMA, the packet layout is slightly different depending on which part of a message a packet contains. A message with a single packet looks like this:
+* Ethernet
+* IP
+* UDP (dest port: RoCEv2 (4791))
+* IB BTH
+* IB RETH, with the following components:
+  * Address: virtual address response should be directed to
+  * rkey: 
+    * bits 31:16: currently unused
+    * bits 15:1: pool index
+    * bit 0: set bit
+* IB IMM: contains 4 8-bit exponents
+* Payload: significands, either 256 bytes or 1024 bytes
+* IB ICRC: ignored
+* Ethernet FCS
 
 
 Design overview
 ---------------
 
 TBD
-
-Maximum register size
----------------------
-
-What's the maximum register size we can allocate in Tofino 1 and 2?
-
-From a per-stage perspective, here are the limits:
-* each stage has 80 128x1024b SRAM blocks
-* each stage can support 4 registers (and we want 4 so that we get the
-  highest ALU bandwidth)
-* each register can be up to 2x32b=64b wide
-* each register requires 1 extra SRAM block for simultaneous read/write
-* a single register can use up to 35(+1 extra)=36 SRAM blocks
-* each stage can support up to 48 blocks for register memories (including the 1 extra)
-
-This is based on the Tofino 1 and 2 Switch Architecture Specifications
-and the Stateful Processing in 10K Series documents. I believe Tofino
-2 has the same properties per stage; it just has more stages.
-
-If we could use all the SRAM blocks in a stage for registers, that
-would be 80 - 1*4 = 76, or 76 / 4 = 19 = 38912 64-bit entries. But
-this isn't supported.
-
-If we only wanted a single register in a stage, we'd hit the 36-block
-limit first. That would use 35 blocks for data and 1 for simultaneous
-read/write, or 71680 64-bit entries.
-
-But we want to use all 4 ALU blocks in a stage. That means we will hit
-the 48-block limit first. We want each register to be the same size,
-so that means each register then can be only 12 total blocks, or 11
-for data and 1 for simultaneous read/write. That is 22528 64-bit
-entries.
-
-So the total number of slots allocated per pipeline in this design is
-22528.
-
-Endianness conversion
----------------------
-
-TBD. Currently we don't do endianness conversion in the switch.
-
-There are two natural ways to do endianness conversion in
-Tofino 1. The first is in the parser, using 8-bit extractors. This is
-only practical at small scales, since we can only extract 4 8-bit
-values per cycle.
-
-The second is using the hash calculation units. There are 8 per pipe
-stage, and each can output 52 bits, so in theory we could do 8*52=416,
-or 13 32-bit conversions per stage. However, I believe that we have to
-use a hash distribution unit to get the output of a hash calculation
-unit into the PHV, and there are only 6 16-bit hash distribution units
-per pipe stage. That limits us to 3 32-bit conversions per
-stage. However, some of these are already being used for the register
-address calculation, so we might be even more limited in using this
-technique.
-
-There may be a better way to do this in the Tofino, but these are my
-preliminary thoughts. I did some implementation that suggested the
-compiler was doing something smarter than either of what I described,
-but I couldn't get it to work for all 64 parameters.
 
