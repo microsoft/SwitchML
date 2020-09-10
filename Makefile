@@ -1,9 +1,5 @@
-#############################################################################
-# MICROSOFT CONFIDENTIAL & PROPRIETARY
-# 
-# Copyright (c) 2019 Microsoft Corp.
-# All Rights Reserved.
-#############################################################################
+## Copyright (c) Microsoft Corporation.
+## Licensed under the MIT License.
 
 TARGET=client
 OBJECTS=client.o Endpoint.o Connections.o Reducer.o ClientThread.o GRPCClient.o SwitchML.pb.o SwitchML.grpc.pb.o

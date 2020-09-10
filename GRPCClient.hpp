@@ -1,9 +1,5 @@
-/*******************************************************************************
- * MICROSOFT CONFIDENTIAL & PROPRIETARY
- *
- * Copyright (c) 2019 Microsoft Corp.
- * All Rights Reserved.
- ******************************************************************************/
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 
 #ifndef __GRPCCLIENT__
 #define __GRPCCLIENT__
