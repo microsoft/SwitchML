@@ -1,3 +1,7 @@
+## Copyright (c) Microsoft Corporation.
+## Licensed under the MIT License.
+
+# simple example job configuration for prometheus cluster
 switch:
     switchML:
        workers_ports: [4, 8]

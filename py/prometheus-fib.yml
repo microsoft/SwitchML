@@ -1,3 +1,7 @@
+## Copyright (c) Microsoft Corporation.
+## Licensed under the MIT License.
+
+# simple example FIB for prometheus cluster
 switch:
     forward:
         0   : {mac: "b8:59:9f:c6:bc:ba", ip: "198.19.200.50", speed: "100G"} # 8

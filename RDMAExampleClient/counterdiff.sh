@@ -1,4 +1,6 @@
 #!/bin/bash
+## Copyright (c) Microsoft Corporation.
+## Licensed under the MIT License.
 
 # which device do we want counters for?
 if [ $# -lt 1 ]
