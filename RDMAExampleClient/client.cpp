@@ -1,9 +1,5 @@
-/*******************************************************************************
- * MICROSOFT CONFIDENTIAL & PROPRIETARY
- *
- * Copyright (c) 2019 Microsoft Corp.
- * All Rights Reserved.
- ******************************************************************************/
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
 
 #include "common.hpp"
 #include "Endpoint.hpp"
@@ -15,6 +11,7 @@
 #include <mpi.h>
 
 #include <iostream>
+#include <iomanip>
 #include <chrono>
 #include <cmath>
 
@@ -40,6 +37,7 @@ int main(int argc, char * argv[]) {
   }
 
   // Set up MPI context for exchanging RDMA context information.
+  std::cout << "Initializing MPI..." << std::endl;
   MPI_CHECK(MPI_Init(&argc, &argv)); 
 
   // get MPI job geometry
@@ -75,9 +73,9 @@ int main(int argc, char * argv[]) {
     //   buf[i] = -(i-1) / (FLAGS_packet_size / sizeof(int));
     // }
     } else if (0 == (i % 2)) {
-      buf[i] = i;
-    } else {
       buf[i] = -i;
+    } else {
+      buf[i] = i;
     }
 
     // convert to network byte order
@@ -153,9 +151,9 @@ int main(int argc, char * argv[]) {
     //   original = -(i-1) / (FLAGS_packet_size / sizeof(int));
     // }
     } else if (0 == (i % 2)) {
-      original = i;
-    } else {
       original = -i;
+    } else {
+      original = i;
     }
     // use that to compute expected reduction value after however many iterations we did
     int expected = original * multiplier;
@@ -164,10 +162,13 @@ int main(int argc, char * argv[]) {
     if (FLAGS_print_array) {
       if (rank == 0) {
         //std::cout << i << ": 0x" << std::hex << buf[i] << std::dec << std::endl;
-        std::cout << i
-                  << ": original " << original << "/0x" << std::hex << original << std::dec
-                  << " expected " << expected << "/0x" << std::hex << expected << std::dec
-                  << ", got " << buf[i] << "/0x" << std::hex << buf[i] << std::dec;
+        std::cout << std::setw(10) << i
+                  << ": original " << std::setw(10) << original
+                  << "/0x" << std::setw(8) << std::hex << original << std::dec
+                  << " expected " << std::setw(10) << expected
+                  << "/0x" << std::setw(8) << std::hex << expected << std::dec
+                  << ", got " << std::setw(10) << buf[i]
+                  << "/0x" << std::setw(8) << std::hex << buf[i] << std::dec;
         if (buf[i] != expected) {
           std::cout << " MISMATCH!";
         }
