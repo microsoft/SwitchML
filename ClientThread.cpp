@@ -230,7 +230,7 @@ void ClientThread::repost_send_wr(int i) {
   ++retransmissions;
 
 #ifdef ENABLE_RETRANSMISSION
-  // ensure this remove from timeout queue
+  // ensure this WR is removed from timeout queue
   timeouts.remove(i);
 #endif
 
