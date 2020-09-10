@@ -1,5 +1,5 @@
-SwitchML in P4_16
-=================
+Switch-Based Training Acceleration for Machine Learning (SwitchML)
+==================================================================
 
 This is an implementation of SwitchML in P4_16, with support for large packets and RDMA via RoCE.
 
