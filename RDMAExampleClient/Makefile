@@ -25,7 +25,7 @@ GRPC_CPP_PLUGIN_PATH ?= `which $(GRPC_CPP_PLUGIN)`
 $(TARGET): $(OBJECTS)
 	mpicxx $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
-%.o: %.cpp Makefile
+%.o: %.cpp $(GENERATED) Makefile
 	mpicxx $(CXXFLAGS) -c -o $@ $<
 
 .PRECIOUS: %.grpc.pb.cc
