@@ -12,9 +12,9 @@ import math
 
 from Table import Table
 from Worker import Worker, PacketSize
-from Packets import roce_opcode_s2n
+from Packets import rdma_opcode_s2n
 
-class RoCESender(Table):
+class RDMASender(Table):
 
     def __init__(self, client, bfrt_info,
                  switch_mac, switch_ip,
@@ -23,10 +23,10 @@ class RoCESender(Table):
                  use_rdma_write = True,
                  use_immediate  = True):
         # set up base class
-        super(RoCESender, self).__init__(client, bfrt_info)
+        super(RDMASender, self).__init__(client, bfrt_info)
 
-        self.logger = logging.getLogger('RoCESender')
-        self.logger.info("Setting up RoCE sender...")
+        self.logger = logging.getLogger('RDMASender')
+        self.logger.info("Setting up RDMA sender...")
         
         self.switch_mac = switch_mac
         self.switch_ip = switch_ip
@@ -54,49 +54,49 @@ class RoCESender(Table):
         
         # # compute correct opcodes and actions
         # if self.use_rdma_write:
-        #     self.first_opcode  = roce_opcode_s2n['UC_RDMA_WRITE_FIRST']
-        #     self.first_action  = 'Egress.roce_sender.set_rdma_opcode'            
-        #     self.middle_opcode = roce_opcode_s2n['UC_RDMA_WRITE_MIDDLE']
-        #     self.middle_action = 'Egress.roce_sender.set_opcode'
+        #     self.first_opcode  = rdma_opcode_s2n['UC_RDMA_WRITE_FIRST']
+        #     self.first_action  = 'Egress.rdma_sender.set_rdma_opcode'            
+        #     self.middle_opcode = rdma_opcode_s2n['UC_RDMA_WRITE_MIDDLE']
+        #     self.middle_action = 'Egress.rdma_sender.set_opcode'
         #     if self.use_immediate: 
-        #         self.last_opcode = roce_opcode_s2n['UC_RDMA_WRITE_LAST_IMMEDIATE']
-        #         self.last_action = 'Egress.roce_sender.set_immediate_opcode'            
-        #         self.only_opcode = roce_opcode_s2n['UC_RDMA_WRITE_ONLY_IMMEDIATE']
-        #         self.only_action = 'Egress.roce_sender.set_rdma_immediate_opcode'
+        #         self.last_opcode = rdma_opcode_s2n['UC_RDMA_WRITE_LAST_IMMEDIATE']
+        #         self.last_action = 'Egress.rdma_sender.set_immediate_opcode'            
+        #         self.only_opcode = rdma_opcode_s2n['UC_RDMA_WRITE_ONLY_IMMEDIATE']
+        #         self.only_action = 'Egress.rdma_sender.set_rdma_immediate_opcode'
         #     else:
-        #         self.last_opcode   = roce_opcode_s2n['UC_RDMA_WRITE_LAST']
-        #         self.last_action = 'Egress.roce_sender.set_opcode'
-        #         self.only_opcode   = roce_opcode_s2n['UC_RDMA_WRITE_ONLY']
-        #         self.only_action = 'Egress.roce_sender.set_rdma_opcode'
+        #         self.last_opcode   = rdma_opcode_s2n['UC_RDMA_WRITE_LAST']
+        #         self.last_action = 'Egress.rdma_sender.set_opcode'
+        #         self.only_opcode   = rdma_opcode_s2n['UC_RDMA_WRITE_ONLY']
+        #         self.only_action = 'Egress.rdma_sender.set_rdma_opcode'
         # else:
-        #     self.first_opcode  = roce_opcode_s2n['UC_SEND_FIRST']
-        #     self.first_action  = 'Egress.roce_sender.set_opcode'
-        #     self.middle_opcode = roce_opcode_s2n['UC_SEND_MIDDLE']
-        #     self.middle_action = 'Egress.roce_sender.set_opcode'
+        #     self.first_opcode  = rdma_opcode_s2n['UC_SEND_FIRST']
+        #     self.first_action  = 'Egress.rdma_sender.set_opcode'
+        #     self.middle_opcode = rdma_opcode_s2n['UC_SEND_MIDDLE']
+        #     self.middle_action = 'Egress.rdma_sender.set_opcode'
         #     if self.use_immediate: 
-        #         self.last_opcode = roce_opcode_s2n['UC_SEND_LAST_IMMEDIATE']
-        #         self.last_action = 'Egress.roce_sender.set_immediate_opcode'            
-        #         self.only_opcode = roce_opcode_s2n['UC_SEND_ONLY_IMMEDIATE']
-        #         self.only_action = 'Egress.roce_sender.set_immediate_opcode'            
+        #         self.last_opcode = rdma_opcode_s2n['UC_SEND_LAST_IMMEDIATE']
+        #         self.last_action = 'Egress.rdma_sender.set_immediate_opcode'            
+        #         self.only_opcode = rdma_opcode_s2n['UC_SEND_ONLY_IMMEDIATE']
+        #         self.only_action = 'Egress.rdma_sender.set_immediate_opcode'            
         #     else:
-        #         self.last_opcode = roce_opcode_s2n['UC_SEND_LAST']
-        #         self.last_action = 'Egress.roce_sender.set_opcode'            
-        #         self.only_opcode = roce_opcode_s2n['UC_SEND_ONLY']
-        #         self.only_action = 'Egress.roce_sender.set_opcode'            
+        #         self.last_opcode = rdma_opcode_s2n['UC_SEND_LAST']
+        #         self.last_action = 'Egress.rdma_sender.set_opcode'            
+        #         self.only_opcode = rdma_opcode_s2n['UC_SEND_ONLY']
+        #         self.only_action = 'Egress.rdma_sender.set_opcode'            
 
         # get tables
-        self.switch_mac_and_ip   = self.bfrt_info.table_get("pipe.Egress.roce_sender.switch_mac_and_ip")
-        self.create_roce_packet  = self.bfrt_info.table_get("pipe.Egress.roce_sender.create_roce_packet")
-        self.fill_in_qpn_and_psn = self.bfrt_info.table_get("pipe.Egress.roce_sender.fill_in_qpn_and_psn")
-        #self.set_opcodes         = self.bfrt_info.table_get("pipe.Egress.roce_sender.set_opcodes")
+        self.switch_mac_and_ip   = self.bfrt_info.table_get("pipe.Egress.rdma_sender.switch_mac_and_ip")
+        self.create_roce_packet  = self.bfrt_info.table_get("pipe.Egress.rdma_sender.create_roce_packet")
+        self.fill_in_qpn_and_psn = self.bfrt_info.table_get("pipe.Egress.rdma_sender.fill_in_qpn_and_psn")
+        #self.set_opcodes         = self.bfrt_info.table_get("pipe.Egress.rdma_sender.set_opcodes")
 
         # add annotations
-        self.switch_mac_and_ip.info.data_field_annotation_add("switch_mac", 'Egress.roce_sender.set_switch_mac_and_ip', "mac")
-        self.switch_mac_and_ip.info.data_field_annotation_add("switch_ip",  'Egress.roce_sender.set_switch_mac_and_ip', "ipv4")
-        self.create_roce_packet.info.data_field_annotation_add("dest_mac", 'Egress.roce_sender.fill_in_roce_fields', "mac")
-        self.create_roce_packet.info.data_field_annotation_add("dest_ip",  'Egress.roce_sender.fill_in_roce_fields', "ipv4")
-        self.create_roce_packet.info.data_field_annotation_add("dest_mac", 'Egress.roce_sender.fill_in_roce_write_fields', "mac")
-        self.create_roce_packet.info.data_field_annotation_add("dest_ip",  'Egress.roce_sender.fill_in_roce_write_fields', "ipv4")
+        self.switch_mac_and_ip.info.data_field_annotation_add("switch_mac", 'Egress.rdma_sender.set_switch_mac_and_ip', "mac")
+        self.switch_mac_and_ip.info.data_field_annotation_add("switch_ip",  'Egress.rdma_sender.set_switch_mac_and_ip', "ipv4")
+        self.create_roce_packet.info.data_field_annotation_add("dest_mac", 'Egress.rdma_sender.fill_in_roce_fields', "mac")
+        self.create_roce_packet.info.data_field_annotation_add("dest_ip",  'Egress.rdma_sender.fill_in_roce_fields', "ipv4")
+        self.create_roce_packet.info.data_field_annotation_add("dest_mac", 'Egress.rdma_sender.fill_in_roce_write_fields', "mac")
+        self.create_roce_packet.info.data_field_annotation_add("dest_ip",  'Egress.rdma_sender.fill_in_roce_write_fields', "ipv4")
 
         # clear and add defaults
         self.clear()
@@ -134,7 +134,7 @@ class RoCESender(Table):
                                               # #gc.DataTuple('base_opcode', self.base_opcode), 
                                               # gc.DataTuple('message_length', self.message_size),
                                               # gc.DataTuple('first_last_mask', self.first_last_mask)],
-                                             'Egress.roce_sender.set_switch_mac_and_ip'))
+                                             'Egress.rdma_sender.set_switch_mac_and_ip'))
 
         #def add_opcodes_for_worker(self, worker_id, message_size, packet_size):
         
@@ -184,7 +184,7 @@ class RoCESender(Table):
             [self.create_roce_packet.make_key([gc.KeyTuple('eg_md.switchml_md.worker_id', rid)])],
             [self.create_roce_packet.make_data([gc.DataTuple('dest_mac', mac),
                                                 gc.DataTuple('dest_ip', ip)],
-                                               'Egress.roce_sender.fill_in_roce_fields')])
+                                               'Egress.rdma_sender.fill_in_roce_fields')])
 
         # now, add entry to add QPN and PSN to packet
         self.fill_in_qpn_and_psn.entry_add(
@@ -192,8 +192,8 @@ class RoCESender(Table):
             [self.fill_in_qpn_and_psn.make_key([gc.KeyTuple('eg_md.switchml_md.worker_id', rid),
                                                 gc.KeyTuple('eg_md.switchml_md.pool_index', 0x00000, 0x00000)])],
             [self.fill_in_qpn_and_psn.make_data([gc.DataTuple('qpn', qpn),
-                                                 gc.DataTuple('Egress.roce_sender.psn_register.f1', initial_psn)],
-                                                'Egress.roce_sender.add_qpn_and_psn')])
+                                                 gc.DataTuple('Egress.rdma_sender.psn_register.f1', initial_psn)],
+                                                'Egress.rdma_sender.add_qpn_and_psn')])
 
 
     # RDMA write capable version
@@ -207,7 +207,7 @@ class RoCESender(Table):
                                                 gc.DataTuple('dest_ip', ip),
                                                 gc.DataTuple('base_addr', 0), # TODO: shouldn't need this when using 0-based addressing
                                                 gc.DataTuple('rkey', rkey)],                                                
-                                               'Egress.roce_sender.fill_in_roce_write_fields')])
+                                               'Egress.rdma_sender.fill_in_roce_write_fields')])
 
 
         if packet_size == PacketSize.IBV_MTU_128:
@@ -258,8 +258,8 @@ class RoCESender(Table):
                                                                 shifted_index,
                                                                 mask)])],
                 [self.fill_in_qpn_and_psn.make_data([gc.DataTuple('qpn', qpn),
-                                                     gc.DataTuple('Egress.roce_sender.psn_register.f1', initial_psn)],
-                                                    'Egress.roce_sender.add_qpn_and_psn')])
+                                                     gc.DataTuple('Egress.rdma_sender.psn_register.f1', initial_psn)],
+                                                    'Egress.rdma_sender.add_qpn_and_psn')])
 
 
 
@@ -291,7 +291,7 @@ class RoCESender(Table):
 
 
     def clear_counters(self):
-        self.logger.info("Clearing roce_sender counters...")
+        self.logger.info("Clearing rdma_sender counters...")
         self.create_roce_packet.operations_execute(self.target, 'SyncCounters')
         resp = self.create_roce_packet.entry_get(
             self.target,

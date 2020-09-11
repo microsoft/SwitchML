@@ -23,7 +23,7 @@ import bfrt_grpc.client as gc
 # import SwitchML job setup
 from SwitchML.Job import Job
 from SwitchML.Worker import Worker, WorkerType
-from SwitchML.Packets import make_switchml_udp, make_switchml_rdma, roce_opcode_s2n
+from SwitchML.Packets import make_switchml_udp, make_switchml_rdma, rdma_opcode_s2n
 
 # init logging
 logger = logging.getLogger('Test')
@@ -88,7 +88,7 @@ class SwitchMLTest(BfRuntimeTest):
                                        dst_mac=self.switch_mac,
                                        dst_ip=self.switch_ip,
                                        src_port=0x1234,
-                                       opcode=roce_opcode_s2n['UC_RDMA_WRITE_ONLY_IMMEDIATE'],
+                                       opcode=rdma_opcode_s2n['UC_RDMA_WRITE_ONLY_IMMEDIATE'],
                                        dst_qp=w.roce_base_qpn + pool_index,
                                        value_multiplier=value_multiplier)
                 e = make_switchml_rdma(src_mac=self.switch_mac,
@@ -96,7 +96,7 @@ class SwitchMLTest(BfRuntimeTest):
                                        dst_mac=w.mac,
                                        dst_ip=w.ip,
                                        src_port=0x2345,
-                                       opcode=roce_opcode_s2n['UC_RDMA_WRITE_ONLY_IMMEDIATE'],
+                                       opcode=rdma_opcode_s2n['UC_RDMA_WRITE_ONLY_IMMEDIATE'],
                                        dst_qp=w.roce_base_qpn + pool_index,
                                        value_multiplier=scaled_value_multiplier)
                 packets.append( (p, e) )

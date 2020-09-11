@@ -10,23 +10,23 @@ import struct
 
 from Table import Table
 from Worker import Worker, WorkerType, PacketSize
-from Packets import roce_opcode_s2n
+from Packets import rdma_opcode_s2n
 
-class RoCEReceiver(Table):
+class RDMAReceiver(Table):
 
     def __init__(self, client, bfrt_info):
         # set up base class
-        super(RoCEReceiver, self).__init__(client, bfrt_info)
+        super(RDMAReceiver, self).__init__(client, bfrt_info)
 
-        self.logger = logging.getLogger('RoCEReceiver')
+        self.logger = logging.getLogger('RDMAReceiver')
         self.logger.info("Setting up receive_roce table...")
         
 
         # get this table
-        self.table = self.bfrt_info.table_get("pipe.Ingress.roce_receiver.receive_roce")
-        self.rdma_packet_counter = self.bfrt_info.table_get("pipe.Ingress.roce_receiver.rdma_packet_counter")
-        self.rdma_message_counter = self.bfrt_info.table_get("pipe.Ingress.roce_receiver.rdma_message_counter")
-        self.rdma_sequence_violation_counter = self.bfrt_info.table_get("pipe.Ingress.roce_receiver.rdma_sequence_violation_counter")
+        self.table = self.bfrt_info.table_get("pipe.Ingress.rdma_receiver.receive_roce")
+        self.rdma_packet_counter = self.bfrt_info.table_get("pipe.Ingress.rdma_receiver.rdma_packet_counter")
+        self.rdma_message_counter = self.bfrt_info.table_get("pipe.Ingress.rdma_receiver.rdma_message_counter")
+        self.rdma_sequence_violation_counter = self.bfrt_info.table_get("pipe.Ingress.rdma_receiver.rdma_sequence_violation_counter")
         
         # set format annotations
         self.table.info.key_field_annotation_add("hdr.ipv4.dst_addr", "ipv4")
@@ -86,7 +86,7 @@ class RoCEReceiver(Table):
     def add_entry(self, switch_mac, switch_ip, switch_partition_key, switch_mgid,
                   worker_ip, worker_rid, worker_bitmap, worker_packet_size,
                   num_workers):
-        self.logger.info("Adding RoCE worker {}".format(worker_ip))
+        self.logger.info("Adding RDMA worker {}".format(worker_ip))
 
         if worker_rid >= 0x8000:
             self.logger.error("Worker RID {} too large; only 32K workers supported by this code.".format(worker_rid))
@@ -96,18 +96,18 @@ class RoCEReceiver(Table):
 
         # add entry for each opcode for each worker
         for opcode, action in [
-                # (roce_opcode_s2n['UC_SEND_FIRST'],  'Ingress.roce_receiver.first_packet'),
-                # (roce_opcode_s2n['UC_SEND_MIDDLE'], 'Ingress.roce_receiver.middle_packet'),
-                # (roce_opcode_s2n['UC_SEND_LAST'],   'Ingress.roce_receiver.last_packet'),
-                # (roce_opcode_s2n['UC_SEND_ONLY'],   'Ingress.roce_receiver.only_packet'),
-                # (roce_opcode_s2n['UC_SEND_LAST_IMMEDIATE'],   'Ingress.roce_receiver.last_packet'),
-                # (roce_opcode_s2n['UC_SEND_ONLY_IMMEDIATE'],   'Ingress.roce_receiver.only_packet'),
-                (roce_opcode_s2n['UC_RDMA_WRITE_FIRST'],  'Ingress.roce_receiver.first_packet'),
-                (roce_opcode_s2n['UC_RDMA_WRITE_MIDDLE'], 'Ingress.roce_receiver.middle_packet'),
-                (roce_opcode_s2n['UC_RDMA_WRITE_LAST'],   'Ingress.roce_receiver.last_packet'),
-                (roce_opcode_s2n['UC_RDMA_WRITE_ONLY'],   'Ingress.roce_receiver.only_packet'),
-                (roce_opcode_s2n['UC_RDMA_WRITE_LAST_IMMEDIATE'],   'Ingress.roce_receiver.last_packet'),
-                (roce_opcode_s2n['UC_RDMA_WRITE_ONLY_IMMEDIATE'],   'Ingress.roce_receiver.only_packet')]:
+                # (rdma_opcode_s2n['UC_SEND_FIRST'],  'Ingress.rdma_receiver.first_packet'),
+                # (rdma_opcode_s2n['UC_SEND_MIDDLE'], 'Ingress.rdma_receiver.middle_packet'),
+                # (rdma_opcode_s2n['UC_SEND_LAST'],   'Ingress.rdma_receiver.last_packet'),
+                # (rdma_opcode_s2n['UC_SEND_ONLY'],   'Ingress.rdma_receiver.only_packet'),
+                # (rdma_opcode_s2n['UC_SEND_LAST_IMMEDIATE'],   'Ingress.rdma_receiver.last_packet'),
+                # (rdma_opcode_s2n['UC_SEND_ONLY_IMMEDIATE'],   'Ingress.rdma_receiver.only_packet'),
+                (rdma_opcode_s2n['UC_RDMA_WRITE_FIRST'],  'Ingress.rdma_receiver.first_packet'),
+                (rdma_opcode_s2n['UC_RDMA_WRITE_MIDDLE'], 'Ingress.rdma_receiver.middle_packet'),
+                (rdma_opcode_s2n['UC_RDMA_WRITE_LAST'],   'Ingress.rdma_receiver.last_packet'),
+                (rdma_opcode_s2n['UC_RDMA_WRITE_ONLY'],   'Ingress.rdma_receiver.only_packet'),
+                (rdma_opcode_s2n['UC_RDMA_WRITE_LAST_IMMEDIATE'],   'Ingress.rdma_receiver.last_packet'),
+                (rdma_opcode_s2n['UC_RDMA_WRITE_ONLY_IMMEDIATE'],   'Ingress.rdma_receiver.only_packet')]:
             qpn_top_bits = 0x800000 | ((worker_rid & 0xff) << 16)
             self.table.entry_add(
                 self.target,
@@ -246,7 +246,7 @@ class RoCEReceiver(Table):
 
             
     def clear_counters(self):
-        self.logger.info("Clearing roce_receiver counters...")
+        self.logger.info("Clearing rdma_receiver counters...")
         self.table.operations_execute(self.target, 'SyncCounters')
         resp = self.table.entry_get(
             self.target,

@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-#ifndef _ROCESENDER_
-#define _ROCESENDER_
+#ifndef _RDMASENDER_
+#define _RDMASENDER_
 
-control RoCESender(
+control RDMASender(
     inout header_t hdr,
     inout egress_metadata_t eg_md,
     in egress_intrinsic_metadata_t eg_intr_md,
@@ -332,4 +332,4 @@ control RoCESender(
 }
 
 
-#endif /* _ROCESENDER_ */
+#endif /* _RDMASENDER_ */

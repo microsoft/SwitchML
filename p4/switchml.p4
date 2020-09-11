@@ -26,8 +26,8 @@
 #include "SetDstAddr.p4"
 #include "NonSwitchMLForward.p4"
 #include "NextStep.p4"
-#include "RoCEReceiver.p4"
-#include "RoCESender.p4"
+#include "RDMAReceiver.p4"
+#include "RDMASender.p4"
 
 control Ingress(
     inout header_t hdr,
@@ -86,7 +86,7 @@ control Ingress(
     NextStep() next_step;
     NonSwitchMLForward() non_switchml_forward;
 
-    RoCEReceiver() roce_receiver;
+    RDMAReceiver() rdma_receiver;
 
     apply {
         
@@ -96,7 +96,7 @@ control Ingress(
         // (do only on first pipeline pass, not on recirculated CONSUME passes)
         if (ig_md.switchml_md.packet_type == packet_type_t.CONSUME0) {
             if (hdr.ib_bth.isValid()) {
-                roce_receiver.apply(hdr, ig_md, ig_intr_md, ig_prsr_md, ig_dprsr_md, ig_tm_md);
+                rdma_receiver.apply(hdr, ig_md, ig_intr_md, ig_prsr_md, ig_dprsr_md, ig_tm_md);
             } else {
                 get_worker_bitmap.apply(hdr, ig_md, ig_intr_md, ig_prsr_md, ig_dprsr_md, ig_tm_md);
             }
@@ -188,7 +188,7 @@ control Egress(
 
     EgressDropSimulator() drop_sim;
     SetDestinationAddress() set_dst_addr;
-    RoCESender() roce_sender;
+    RDMASender() rdma_sender;
     
     apply {
         if (eg_md.switchml_md.packet_type == packet_type_t.BROADCAST ||
@@ -204,7 +204,7 @@ control Egress(
             }
             
             if (eg_md.switchml_md.worker_type == worker_type_t.ROCEv2) {
-                roce_sender.apply(hdr, eg_md, eg_intr_md, eg_intr_md_from_prsr, eg_intr_dprs_md);
+                rdma_sender.apply(hdr, eg_md, eg_intr_md, eg_intr_md_from_prsr, eg_intr_dprs_md);
             } else { // must be UDP
                 set_dst_addr.apply(eg_md, eg_intr_md, hdr);
             }

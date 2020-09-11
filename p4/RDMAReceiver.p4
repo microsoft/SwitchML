@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-#ifndef _ROCERECEIVER_
-#define _ROCERECEIVER_
+#ifndef _RDMARECEIVER_
+#define _RDMARECEIVER_
 
 /*
 
@@ -88,7 +88,7 @@ struct receiver_data_t {
     bit<32> pool_index;
 }
     
-control RoCEReceiver(
+control RDMAReceiver(
     inout header_t hdr,
     inout ingress_metadata_t ig_md,
     in ingress_intrinsic_metadata_t ig_intr_md,
@@ -503,4 +503,4 @@ control RoCEReceiver(
 }
 
 
-#endif /* _ROCERECEIVER_ */
+#endif /* _RDMARECEIVER_ */

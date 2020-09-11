@@ -31,8 +31,8 @@ from NonSwitchMLForward import NonSwitchMLForward
 from Worker import Worker, WorkerType
 from Ports import Ports
 from ARPandICMP import ARPandICMP
-from RoCESender import RoCESender
-from RoCEReceiver import RoCEReceiver
+from RDMASender import RDMASender
+from RDMAReceiver import RDMAReceiver
 from NextStep import NextStep
 from Mirror import Mirror
 from DropSimulator import DropSimulator
@@ -162,9 +162,9 @@ class Job(Cmd, object):
 
             # now print counters
             self.get_worker_bitmap.print_counters()
-            self.roce_receiver.print_counters()
+            self.rdma_receiver.print_counters()
             self.set_dst_addr.print_counters()
-            self.roce_sender.print_counters()
+            self.rdma_sender.print_counters()
 
             print("Showing {} pool index counters starting from {}.".format(count, start)) 
             self.next_step.print_counters(start, count)
@@ -192,7 +192,7 @@ class Job(Cmd, object):
             count = int(args[1], 0)
 
         print("Showing {} queue pair counters starting from {}.".format(count, start))
-        self.roce_receiver.get_queue_pair_counters(start, count)
+        self.rdma_receiver.get_queue_pair_counters(start, count)
                 
         
     def do_clear_counters(self, arg):
@@ -648,7 +648,7 @@ class Job(Cmd, object):
         worker_type = WorkerType.SWITCHML_UDP
 
         # add to ingress pipeline
-        self.roce_receiver.add_entry(
+        self.rdma_receiver.add_entry(
             # destination address for packets
             self.switch_mac,
             self.switch_ip,
@@ -673,7 +673,7 @@ class Job(Cmd, object):
         pprint(worker_qpns_and_psns)
         
         # add to egress pipeline
-        self.roce_sender.add_write_worker(worker_rid, worker_mac, worker_ip, worker_rkey,
+        self.rdma_sender.add_write_worker(worker_rid, worker_mac, worker_ip, worker_rkey,
                                           worker_packet_size, worker_message_size,
                                           worker_qpns_and_psns)
 
@@ -684,19 +684,19 @@ class Job(Cmd, object):
 
     def worker_list(self):
         self.get_worker_bitmap.print_counters()
-        self.roce_receiver.print_counters()
+        self.rdma_receiver.print_counters()
         self.set_dst_addr.print_counters()
-        self.roce_sender.print_counters()
+        self.rdma_sender.print_counters()
 
 
     def worker_clear_all(self):
         self.get_worker_bitmap.clear()
-        self.roce_receiver.clear()
+        self.rdma_receiver.clear()
         self.clear_registers()
         self.clear_counters()
         self.pre.worker_clear_all(self.switchml_workers_mgid)
         self.set_dst_addr.clear_udp_entries()
-        self.roce_sender.clear_workers()
+        self.rdma_sender.clear_workers()
         self.drop_simulator.clear()
 
     def worker_load_file(self, filename):
@@ -822,9 +822,9 @@ class Job(Cmd, object):
         self.tables_to_clear.append(self.get_worker_bitmap)
         self.counters_to_clear.append(self.get_worker_bitmap)
 
-        self.roce_receiver = RoCEReceiver(self.gc, self.bfrt_info)
-        self.tables_to_clear.append(self.roce_receiver)
-        self.counters_to_clear.append(self.roce_receiver)
+        self.rdma_receiver = RDMAReceiver(self.gc, self.bfrt_info)
+        self.tables_to_clear.append(self.rdma_receiver)
+        self.counters_to_clear.append(self.rdma_receiver)
 
         # add update rules for bitmap and clear register
         self.update_and_check_worker_bitmap = UpdateAndCheckWorkerBitmap(self.gc, self.bfrt_info)
@@ -885,14 +885,14 @@ class Job(Cmd, object):
         self.tables_to_clear.append(self.set_dst_addr)
         self.counters_to_clear.append(self.set_dst_addr)
 
-        self.roce_sender = RoCESender(self.gc, self.bfrt_info,
+        self.rdma_sender = RDMASender(self.gc, self.bfrt_info,
                                       self.switch_mac, self.switch_ip)
                                       #message_size = 1 << 12,
                                       #message_size = 1 << 10, #32768, #16384, #4096, #1024,
                                       #message_size = 1 << 11,
                                       #packet_size = 256)
-        self.tables_to_clear.append(self.roce_sender)
-        self.counters_to_clear.append(self.roce_sender)
+        self.tables_to_clear.append(self.rdma_sender)
+        self.counters_to_clear.append(self.rdma_sender)
 
         # do this last to print more cleanly
         self.counters_to_clear.append(self.next_step)
