@@ -44,7 +44,7 @@ HOSTS=prometheus35,prometheus36,prometheus37,prometheus38,prometheus39,prometheu
 NUM_PROCS=2
 
 runswitch:: $(TARGET)
-	bash ../counterdiff.sh mpirun --host $(HOSTS) -np $(NUM_PROCS) --mca pml ucx -x UCX_TLS=tcp -x UCX_NET_DEVICES=eno5 --map-by core --bind-to none --tag-output ./$< --server 7170c $(ARGS)
+	bash ./counterdiff.sh mpirun --host $(HOSTS) -np $(NUM_PROCS) --mca pml ucx -x UCX_TLS=tcp -x UCX_NET_DEVICES=eno5 --map-by core --bind-to none --tag-output ./$< --server 7170c $(ARGS)
 
 
 debug:: $(TARGET)
