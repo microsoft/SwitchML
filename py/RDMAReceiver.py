@@ -27,6 +27,7 @@ class RDMAReceiver(Table):
         self.rdma_packet_counter = self.bfrt_info.table_get("pipe.Ingress.rdma_receiver.rdma_packet_counter")
         self.rdma_message_counter = self.bfrt_info.table_get("pipe.Ingress.rdma_receiver.rdma_message_counter")
         self.rdma_sequence_violation_counter = self.bfrt_info.table_get("pipe.Ingress.rdma_receiver.rdma_sequence_violation_counter")
+        self.simulated_drop_counter = self.bfrt_info.table_get("pipe.Ingress.update_and_check_worker_bitmap.simulated_drop_packet_counter")
         
         # set format annotations
         self.table.info.key_field_annotation_add("hdr.ipv4.dst_addr", "ipv4")
@@ -57,6 +58,8 @@ class RDMAReceiver(Table):
             message_values = []
             sequence_violation_keys = []
             sequence_violation_values = []
+            drop_keys = []
+            drop_values = []
             for i in range(self.rdma_message_counter.info.size):
                 packet_keys.append(self.rdma_packet_counter.make_key([gc.KeyTuple('$COUNTER_INDEX', i)]))
                 packet_values.append(self.rdma_packet_counter.make_data([gc.DataTuple('$COUNTER_SPEC_PKTS', 0)]))
@@ -64,6 +67,8 @@ class RDMAReceiver(Table):
                 message_values.append(self.rdma_message_counter.make_data([gc.DataTuple('$COUNTER_SPEC_PKTS', 0)]))
                 sequence_violation_keys.append(self.rdma_sequence_violation_counter.make_key([gc.KeyTuple('$COUNTER_INDEX', i)]))
                 sequence_violation_values.append(self.rdma_sequence_violation_counter.make_data([gc.DataTuple('$COUNTER_SPEC_PKTS', 0)]))
+                drop_keys.append(self.simulated_drop_counter.make_key([gc.KeyTuple('$COUNTER_INDEX', i)]))
+                drop_values.append(self.simulated_drop_counter.make_data([gc.DataTuple('$COUNTER_SPEC_PKTS', 0)]))
 
             self.rdma_packet_counter.entry_add(
                 self.target,
@@ -80,6 +85,10 @@ class RDMAReceiver(Table):
                 sequence_violation_keys,
                 sequence_violation_values)
 
+            self.simulated_drop_counter.entry_add(
+                self.target,
+                drop_keys,
+                drop_values)
 
         
     # Add SwitchML RoCE v2 entry to table
@@ -197,6 +206,7 @@ class RDMAReceiver(Table):
         self.rdma_packet_counter.operations_execute(self.target, 'Sync')
         self.rdma_message_counter.operations_execute(self.target, 'Sync')
         self.rdma_sequence_violation_counter.operations_execute(self.target, 'Sync')
+        self.simulated_drop_counter.operations_execute(self.target, 'Sync')
 
         packets_resp = self.rdma_packet_counter.entry_get(
             self.target,
@@ -213,6 +223,11 @@ class RDMAReceiver(Table):
             [self.rdma_sequence_violation_counter.make_key([gc.KeyTuple('$COUNTER_INDEX', i)])
              for i in range(start, start+count)],
             flags={"from_hw": True})
+        drop_resp = self.simulated_drop_counter.entry_get(
+            self.target,
+            [self.simulated_drop_counter.make_key([gc.KeyTuple('$COUNTER_INDEX', i)])
+             for i in range(start, start+count)],
+            flags={"from_hw": True})
         # else:
         #     r1 = self.rdma_message_counter.entry_get(
         #         self.target,
@@ -224,6 +239,7 @@ class RDMAReceiver(Table):
         packets = {}
         messages = {}
         sequence_violations = {}
+        drops = {}
         
         for v, k in packets_resp:
             v = v.to_dict()
@@ -240,9 +256,15 @@ class RDMAReceiver(Table):
             k = k.to_dict()
             sequence_violations[k['$COUNTER_INDEX']['value']] = v['$COUNTER_SPEC_PKTS']
 
-        print("Queue Pair Number Packets     Messages   Sequence Violations")
+        for v, k in drop_resp:
+            v = v.to_dict()
+            k = k.to_dict()
+            drops[k['$COUNTER_INDEX']['value']] = v['$COUNTER_SPEC_PKTS']
+
+            
+        print("Queue Pair Number Packets     Messages   Sequence Violations Simulated Drops")
         for i in messages:
-            print("{:>16} {:>10} {:>10} {:>20}".format(i, packets[i], messages[i], sequence_violations[i]))
+            print("{:>16} {:>10} {:>10} {:>20} {:>15}".format(i, packets[i], messages[i], sequence_violations[i], drops[i]))
 
             
     def clear_counters(self):
@@ -272,5 +294,7 @@ class RDMAReceiver(Table):
             keys,
             values)
 
+        self.rdma_packet_counter.entry_del(self.target)
         self.rdma_message_counter.entry_del(self.target)
         self.rdma_sequence_violation_counter.entry_del(self.target)
+        self.simulated_drop_counter.entry_del(self.target)

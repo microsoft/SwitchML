@@ -37,12 +37,9 @@ parser IngressParser(
     }
 
     state parse_port_metadata {
-        // skip port metadata header
-        #if __TARGET_TOFINO__ == 2
-        pkt.advance(192);
-        #else
-        pkt.advance(64);
-        #endif
+        // parse port metadata
+        ig_md.port_metadata = port_metadata_unpack<port_metadata_t>(pkt);
+
         // decide what to do with recirculated packets now
         //counter.set(8w0);
         transition select(ig_intr_md.ingress_port) {

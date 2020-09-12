@@ -44,8 +44,13 @@ const int max_num_workers_log2 = 5;  // log base 2 of max_num_workers
 const int max_num_non_switchml = 1024; 
 
 // how many destination queue pairs do we support across all workers??
+#ifdef SWITCHML_TEST
+const int max_num_queue_pairs_per_worker = 16;
+const int max_num_queue_pairs_per_worker_log2 = 4;
+#else
 const int max_num_queue_pairs_per_worker = 512;
 const int max_num_queue_pairs_per_worker_log2 = 9;
+#endif
 // const int max_num_queue_pairs_per_worker = 256;
 // const int max_num_queue_pairs_per_worker_log2 = 8;
 const int max_num_queue_pairs = max_num_queue_pairs_per_worker * max_num_workers;

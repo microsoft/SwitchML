@@ -122,8 +122,10 @@ enum bit<3> packet_size_t {
 //typedef bit<12> drop_random_value_t;
 //typedef bit<11> drop_random_value_t;
 //typedef bit<16> drop_probability_t;  // signed drop probability; set between 0 and 32767
-typedef bit<15> drop_random_value_t; // will be 0-extended to make positive random value
+//typedef bit<15> drop_random_value_t; // will be 0-extended to make positive random value
+//typedef bit<12> drop_probability_t; // try to make this work with gateways
 typedef bit<16> drop_probability_t;  // signed drop probability; set between 0 and 32767
+//typedef int<16> drop_probability_t;  // signed drop probability; set between 0 and 32767
 
 typedef bit<32> counter_t;
 
@@ -150,6 +152,13 @@ enum bit<4> packet_type_t {
     HARVEST6   = 0xe, // pipe 0
     HARVEST7   = 0xf  // pipe 0
 }
+
+// port metadata, used for drop simulation
+struct port_metadata_t {
+    drop_probability_t ingress_drop_probability;
+    drop_probability_t egress_drop_probability;
+}
+
 
 // SwitchML metadata header; bridged for recirculation (and not exposed outside the switch)
 // We should keep this <= 28 bytes to avoid impacting non-SwitchML minimum size packets.
@@ -207,9 +216,12 @@ header switchml_md_h {
 
     // @padding
     // bit<5> pad2;
-    
+
     PortId_t ingress_port;
     //bit<64> rdma_addr;
+
+    //bool simulate_ingress_drop;
+    bool simulate_egress_drop;
 }
 //switchml_md_h switchml_md_initializer = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
@@ -282,8 +294,7 @@ struct ingress_metadata_t {
     mac_addr_t switch_mac;
     ipv4_addr_t switch_ip;
 
-    // signed difference between rng and drop probability for this worker; negative means we should drop
-    drop_probability_t drop_calculation;
+    port_metadata_t port_metadata;
 }
 //const ingress_metadata_t ingress_metadata_initializer = {{0, 0, true, 0, 0, packet_type_t.IGNORE, 0, 0, 0, 0, 0, 0}, 0, 0, 0, 0, 0, false, 0, 0};
 

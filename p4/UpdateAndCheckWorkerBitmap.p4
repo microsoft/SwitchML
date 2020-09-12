@@ -18,6 +18,8 @@ control UpdateAndCheckWorkerBitmap(
 
     Register<worker_bitmap_pair_t, pool_index_by2_t>(num_slots) worker_bitmap;
 
+    Counter<counter_t, queue_pair_index_t>(max_num_queue_pairs, CounterType_t.PACKETS) simulated_drop_packet_counter;
+
     RegisterAction<worker_bitmap_pair_t, pool_index_by2_t, worker_bitmap_t>(worker_bitmap) worker_bitmap_update_set0 = {
         void apply(inout worker_bitmap_pair_t value, out worker_bitmap_t return_value) {
             //if (ig_md.drop_calculation == 0) {
@@ -50,6 +52,11 @@ control UpdateAndCheckWorkerBitmap(
         ig_md.switchml_md.packet_type = packet_type_t.IGNORE;
     }
 
+    action simulate_drop() {
+        simulated_drop_packet_counter.count(ig_md.switchml_md.recirc_port_selector);
+        drop();
+    }
+    
     action check_worker_bitmap_action() {
         // set map result to nonzero if this packet is a retransmission
         ig_md.switchml_md.map_result = ig_md.switchml_md.worker_bitmap_before & ig_md.worker_bitmap;
@@ -76,7 +83,8 @@ control UpdateAndCheckWorkerBitmap(
             //ig_md.pool_set : ternary;
             ig_md.switchml_md.pool_index : ternary;
             ig_md.switchml_md.packet_type : ternary;  // only act on packets of type CONSUME0
-            ig_md.pool_remaining : ternary; // if sign bit is set, pool index was too large, so drop
+            //ig_md.pool_remaining : ternary; // if sign bit is set, pool index was too large, so drop
+            ig_md.port_metadata.ingress_drop_probability : ternary; // if nonzero, drop packet
             //ig_md.drop_calculation : ternary; // if sign bit is set, pool index was too large, so drop
             //drop_calculation : ternary; // if sign bit is set, pool index was too large, so drop
             // TODO: disable for now
@@ -86,15 +94,20 @@ control UpdateAndCheckWorkerBitmap(
             update_worker_bitmap_set0_action;
             update_worker_bitmap_set1_action;
             drop;
+            simulate_drop;
             NoAction;
         }
-        size = 4;
         const entries = {
+            // drop packets indicated by the drop simulator
+            (            _, packet_type_t.CONSUME0, 0xffff) : simulate_drop();
+            
             // direct updates to the correct set
-            (15w0 &&& 15w1, packet_type_t.CONSUME0, 0x0000 &&& 0x8000) : update_worker_bitmap_set0_action();
-            (15w1 &&& 15w1, packet_type_t.CONSUME0, 0x0000 &&& 0x8000) : update_worker_bitmap_set1_action();
-            // drop packets that have indices that extend beyond what's allowed
-            (            _, packet_type_t.CONSUME0, 0x8000 &&& 0x8000) : drop();
+            (15w0 &&& 15w1, packet_type_t.CONSUME0,      _) : update_worker_bitmap_set0_action();
+            (15w1 &&& 15w1, packet_type_t.CONSUME0,      _) : update_worker_bitmap_set1_action();
+
+            
+            // // drop packets that have indices that extend beyond what's allowed
+            // (            _, packet_type_t.CONSUME0, 0x8000 &&& 0x8000) : drop();
 
             // // direct updates to the correct set
             // (15w0 &&& 15w1, packet_type_t.CONSUME, 0x0000 &&& 0x8000,                 _) : update_worker_bitmap_set0_action();

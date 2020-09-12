@@ -41,9 +41,11 @@ control Ingress(
     // instantiate controls for tables and actions
     //
 
+    IngressDropSimulator() ingress_drop_sim;
+    EgressDropSimulator() egress_drop_sim;
+
     ARPandICMP() arp_and_icmp;
     GetWorkerBitmap() get_worker_bitmap;
-    //DropRNG() drop_rng;
     UpdateAndCheckWorkerBitmap() update_and_check_worker_bitmap;
 
     ExponentMax() exponent_max;
@@ -89,7 +91,7 @@ control Ingress(
     RDMAReceiver() rdma_receiver;
 
     apply {
-        
+
         // see if this is a SwitchML packet
         // get worker masks, pool base index, other parameters for this packet
         // add switchml_md header if it isn't already added
@@ -100,8 +102,12 @@ control Ingress(
             } else {
                 get_worker_bitmap.apply(hdr, ig_md, ig_intr_md, ig_prsr_md, ig_dprsr_md, ig_tm_md);
             }
+
+            // Simulate packet drops. Only applies to SwitchML packets.
+            ingress_drop_sim.apply(ig_md.port_metadata);
         }
 
+        
         // if it's still a SwitchML packet, continue processing.
         // (do only on first pipeline pass, not on recirculated CONSUME passes)
         if (ig_dprsr_md.drop_ctl[0:0] == 1w0) {
@@ -166,6 +172,9 @@ control Ingress(
                 
                 // decide what to do with this packet
                 next_step.apply(hdr, ig_md, ig_intr_md, ig_dprsr_md, ig_tm_md);
+
+                // set bit to drop in egress
+                egress_drop_sim.apply(ig_md.port_metadata, ig_md.switchml_md.simulate_egress_drop);
             } else {
                 // handle ARP and ICMP requests
                 arp_and_icmp.apply(hdr, ig_md, ig_intr_md, ig_prsr_md, ig_dprsr_md, ig_tm_md);
@@ -186,7 +195,6 @@ control Egress(
     inout egress_intrinsic_metadata_for_deparser_t eg_intr_dprs_md,
     inout egress_intrinsic_metadata_for_output_port_t eg_intr_oport_md) {
 
-    EgressDropSimulator() drop_sim;
     SetDestinationAddress() set_dst_addr;
     RDMASender() rdma_sender;
     
@@ -195,7 +203,10 @@ control Egress(
             eg_md.switchml_md.packet_type == packet_type_t.RETRANSMIT) {
 
             // Simulate packet drops
-            drop_sim.apply(eg_md.switchml_md, eg_intr_dprs_md);
+            if (eg_md.switchml_md.simulate_egress_drop) {
+                eg_md.switchml_md.packet_type = packet_type_t.IGNORE;
+                eg_intr_dprs_md.drop_ctl[0:0] = 1;
+            }
 
             // if it's BROADCAST, copy rid from PRE to worker id field
             // so tables see it.

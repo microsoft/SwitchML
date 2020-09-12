@@ -36,7 +36,6 @@ from RDMAReceiver import RDMAReceiver
 from NextStep import NextStep
 from Mirror import Mirror
 from DropSimulator import DropSimulator
-#from MACLearning import MACLearning
 
 # import RPC server
 from GRPCServer import GRPCServer
@@ -112,7 +111,7 @@ class Job(Cmd, object):
         # self.clear_counters()
         # self.clear_tables()
         self.clear_all()
-        print "Registers, counters, and drop simulator cleared."
+        print "Registers, counters, and tables cleared."
         
     def do_bitmaps(self, arg):
         'Show the bitmaps for the first n slots. 8 is default, or specify a count.'
@@ -497,10 +496,28 @@ class Job(Cmd, object):
     # drop simulator
     #
     def do_drop_probability(self, arg):
-        'Set drop probability for drop simulator. Usage: drop_probability <probability>'
-        self.drop_simulator.set_egress_drop_probability(float(arg))
-        
+        'Set drop probability for drop simulator. Usage: drop_probability <ingress drop probability> <egress drop probability>'
 
+        try:
+            result = arg.split()
+            
+            try:
+                ingress_drop_probability = float(result[0])
+            except:
+                ingress_drop_probability = 0.0
+
+            try:
+                egress_drop_probability = float(result[1])
+            except:
+                egress_drop_probability = 0.0
+
+            print("Setting drop probabilities. Ingress: {} Egress: {}".format(ingress_drop_probability, egress_drop_probability))
+            self.drop_simulator.set_drop_probabilities(ingress_drop_probability, egress_drop_probability)
+
+        except Exception as e:
+            print("Error: {}".format(traceback.format_exc()))
+            print("Usage:\n   {}".format(self.do_worker_add_roce.__doc__))
+            return
 
 
         
@@ -870,6 +887,7 @@ class Job(Cmd, object):
 
         self.mirror = Mirror(self.gc, self.bfrt_info, self.cpu_port)
 
+        # set up drop simulator
         self.drop_simulator = DropSimulator(self.gc, self.bfrt_info)
         self.tables_to_clear.append(self.drop_simulator)
         
