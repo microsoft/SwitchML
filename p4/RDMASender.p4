@@ -19,7 +19,8 @@ control RDMASender(
     mac_addr_t rdma_switch_mac;
     ipv4_addr_t rdma_switch_ip;
 
-
+    bit<32> temp_psn;
+    
     DirectCounter<counter_t>(CounterType_t.PACKETS_AND_BYTES) rdma_send_counter;
     
     //
@@ -68,7 +69,6 @@ control RDMASender(
         hdr.ipv4.version = 4;
         hdr.ipv4.ihl = 5;
         hdr.ipv4.diffserv = 0x02;
-        hdr.ipv4.total_len = 0; // to be filled in later
         hdr.ipv4.identification = 0x0001;
         hdr.ipv4.flags = 0b010;
         hdr.ipv4.frag_offset = 0;
@@ -77,6 +77,16 @@ control RDMASender(
         hdr.ipv4.hdr_checksum = 0; // To be filled in by deparser
         hdr.ipv4.src_addr = rdma_switch_ip;
         hdr.ipv4.dst_addr = dest_ip;
+
+        // set base IPv4 packet length; will be updated later based on
+        // payload size and headers
+        hdr.ipv4.total_len = ( \
+            hdr.ib_icrc.minSizeInBytes() + \
+            hdr.ib_bth.minSizeInBytes() + \
+            hdr.udp.minSizeInBytes() + \
+            hdr.ipv4.minSizeInBytes());
+
+        // update IPv4 checksum
         eg_md.update_ipv4_checksum = true;
 
         hdr.udp.setValid();
@@ -86,8 +96,15 @@ control RDMASender(
         hdr.udp.src_port = 1w1 ++ eg_md.switchml_md.worker_id[14:0]; // form a consistent source port for this worker
         //hdr.udp.src_port = 0x2345;
         hdr.udp.dst_port = UDP_PORT_ROCEV2;
-        //hdr.udp.length = udp_length; // to be filled in later
         hdr.udp.checksum = 0; // disabled for RoCEv2
+
+        // set base IPv4 packet length; will be updated later based on
+        // payload size and headers
+        hdr.udp.length = ( \
+            hdr.ib_icrc.minSizeInBytes() + \
+            hdr.ib_bth.minSizeInBytes() + \
+            hdr.udp.minSizeInBytes());
+
         
         hdr.ib_bth.setValid();
         hdr.ib_bth.opcode = ib_opcode_t.UC_RDMA_WRITE_ONLY; // to be filled in later
@@ -102,7 +119,7 @@ control RDMASender(
         hdr.ib_bth.dst_qp = 0; // to be filled in later
         hdr.ib_bth.ack_req = 0;
         hdr.ib_bth.reserved2 = 0;
-        hdr.ib_bth.psn = 0; // to be filled in later
+        //hdr.ib_bth.psn = 0; // to be filled in later
 
         // NOTE: we don't add an ICRC header here for two reasons:
         // 1. we haven't parsed the payload in egress, so we can't place it at the right point
@@ -169,13 +186,16 @@ control RDMASender(
             read_value = masked_sequence_number;
 
             // increment sequence number
-            value = value + 1;
+            bit<32> incremented_value = value + 1;
+            value = incremented_value;
         }
     };
 
     action add_qpn_and_psn(queue_pair_t qpn) {
         hdr.ib_bth.dst_qp = qpn;
-        hdr.ib_bth.psn = (sequence_number_t) psn_action.execute();
+        //hdr.ib_bth.psn = (sequence_number_t) psn_action.execute();
+        //hdr.ib_bth.psn = psn_action.execute()[23:0];
+        temp_psn = psn_action.execute();
     }
     
     table fill_in_qpn_and_psn {
@@ -185,7 +205,6 @@ control RDMASender(
         }
         actions = {
             add_qpn_and_psn;
-            //add_qpn_and_psn_and_rdma; // TODO: rethink this before using
         }
         size = max_num_queue_pairs;
         registers = psn_register;
@@ -194,38 +213,7 @@ control RDMASender(
     //
     // set opcodes as appropriate, and fill in packet-dependent fields
     //
-    // the python code can add UC_SEND or UC_RDMA_WRITE opcodes here as appropriate.
-    //
 
-    // macros to define packet lengths, since doing compile-time
-    // addition on const variables doesn't seem to work in the
-    // compiler yet.
-    //
-    // This is an adjustment to the packet size at *ingress*, which
-    // will contain the switchml_md, switchml_rdma_md, icrc, and all
-    // but 128B of data.
-    //
-    // We need to add
-    // * the last 128B of data
-    // * the ip, udp, ib_bth headers
-    // * optionally, reth header
-    // * optionally, immediate header
-    // and subtract:
-    // * switchml_md header
-    // * switchml_rdma_md header
-    // * 6?!? TODO: where does this come from? but this makes the length correct.
-    #define UDP_BASE_LENGTH (\
-        hdr.d0.minSizeInBytes() + \
-        hdr.ib_bth.minSizeInBytes() + \
-        hdr.udp.minSizeInBytes() - \
-        6 -\
-        eg_md.switchml_md.minSizeInBytes() - \
-        eg_md.switchml_rdma_md.minSizeInBytes())
-    
-    #define IPV4_BASE_LENGTH (\
-        hdr.ipv4.minSizeInBytes() + \
-        UDP_BASE_LENGTH)
-    
     action set_opcode_common(ib_opcode_t opcode) {
         hdr.ib_bth.opcode = opcode;
     }
@@ -247,44 +235,34 @@ control RDMASender(
         hdr.ib_reth.addr = eg_md.switchml_rdma_md.rdma_addr; // TODO: ???
     }
     
-    // action set_opcode(ib_opcode_t opcode) { //}
-    //     set_opcode_common(opcode);
     action set_opcode() {
         set_opcode_common(ib_opcode_t.UC_RDMA_WRITE_MIDDLE);
-
-        hdr.udp.length = eg_intr_md.pkt_length + (bit<16>) UDP_BASE_LENGTH;
-        hdr.ipv4.total_len = eg_intr_md.pkt_length + (bit<16>) IPV4_BASE_LENGTH;
+        // use default adjusted length for UDP and IPv4 headers
     }
     
-    // action set_immediate_opcode(ib_opcode_t opcode) { //}
-    //     set_opcode_common(opcode);
     action set_immediate_opcode() {        
         set_opcode_common(ib_opcode_t.UC_RDMA_WRITE_LAST_IMMEDIATE);
         set_immediate();
 
-        hdr.udp.length = eg_intr_md.pkt_length + (bit<16>) (hdr.ib_immediate.minSizeInBytes() + UDP_BASE_LENGTH);
-        hdr.ipv4.total_len = eg_intr_md.pkt_length + (bit<16>) (hdr.ib_immediate.minSizeInBytes() + IPV4_BASE_LENGTH);
+        hdr.udp.length = hdr.udp.length + (bit<16>) hdr.ib_immediate.minSizeInBytes();
+        hdr.ipv4.total_len = hdr.ipv4.total_len + (bit<16>) hdr.ib_immediate.minSizeInBytes();
     }
     
-    // action set_rdma_opcode(ib_opcode_t opcode) { //}
-    //     set_opcode_common(opcode);
     action set_rdma_opcode() {
         set_opcode_common(ib_opcode_t.UC_RDMA_WRITE_FIRST);
         set_rdma();
 
-        hdr.udp.length = eg_intr_md.pkt_length + (bit<16>) (hdr.ib_reth.minSizeInBytes() + UDP_BASE_LENGTH);
-        hdr.ipv4.total_len = eg_intr_md.pkt_length + (bit<16>) (hdr.ib_reth.minSizeInBytes() + IPV4_BASE_LENGTH);
+        hdr.udp.length = hdr.udp.length + (bit<16>) hdr.ib_reth.minSizeInBytes();
+        hdr.ipv4.total_len = hdr.ipv4.total_len + (bit<16>) hdr.ib_reth.minSizeInBytes();
     }
     
-    // action set_rdma_immediate_opcode(ib_opcode_t opcode) { //}
-        //     set_opcode_common(opcode);p
     action set_rdma_immediate_opcode() {        
         set_opcode_common(ib_opcode_t.UC_RDMA_WRITE_ONLY_IMMEDIATE);
         set_rdma();
         set_immediate();
 
-        hdr.udp.length = eg_intr_md.pkt_length + (bit<16>) (hdr.ib_immediate.minSizeInBytes() + hdr.ib_reth.minSizeInBytes() + UDP_BASE_LENGTH);
-        hdr.ipv4.total_len = eg_intr_md.pkt_length + (bit<16>) (hdr.ib_immediate.minSizeInBytes() + hdr.ib_reth.minSizeInBytes() + IPV4_BASE_LENGTH);
+        hdr.udp.length = hdr.udp.length + (bit<16>) (hdr.ib_immediate.minSizeInBytes() + hdr.ib_reth.minSizeInBytes());
+        hdr.ipv4.total_len = hdr.ipv4.total_len + (bit<16>) (hdr.ib_immediate.minSizeInBytes() + hdr.ib_reth.minSizeInBytes());
     }
 
     table set_opcodes {
@@ -301,10 +279,10 @@ control RDMASender(
         }
         //size = 3 * max_num_workers; // either one for _ONLY or three for _FIRST, _MIDDLE, and _LAST
         const entries = {
-            ( true, false) :           set_rdma_opcode();//ib_opcode_t.UC_RDMA_WRITE_FIRST);
-            (false, false) :                set_opcode();//ib_opcode_t.UC_RDMA_WRITE_MIDDLE);
-            (false,  true) :      set_immediate_opcode();//ib_opcode_t.UC_RDMA_WRITE_LAST_IMMEDIATE);
-            ( true,  true) : set_rdma_immediate_opcode();//ib_opcode_t.UC_RDMA_WRITE_ONLY_IMMEDIATE);
+            ( true, false) :           set_rdma_opcode();//ib_opcode_t.UC_RDMA_WRITE_FIRST;
+            (false, false) :                set_opcode();//ib_opcode_t.UC_RDMA_WRITE_MIDDLE;
+            (false,  true) :      set_immediate_opcode();//ib_opcode_t.UC_RDMA_WRITE_LAST_IMMEDIATE;
+            ( true,  true) : set_rdma_immediate_opcode();//ib_opcode_t.UC_RDMA_WRITE_ONLY_IMMEDIATE;
         }
     }
     
@@ -319,8 +297,20 @@ control RDMASender(
         // fill in headers for ROCE packet
         create_roce_packet.apply();
 
+        // add payload size
+        if (eg_md.switchml_md.packet_size == packet_size_t.IBV_MTU_256) {
+            hdr.ipv4.total_len = hdr.ipv4.total_len + 256;
+            hdr.udp.length = hdr.udp.length + 256;
+        }
+        else if (eg_md.switchml_md.packet_size == packet_size_t.IBV_MTU_1024) {
+            hdr.ipv4.total_len = hdr.ipv4.total_len + 1024;
+            hdr.udp.length = hdr.udp.length + 1024;
+        }
+            
         // fill in queue pair number of sequence number
-        fill_in_qpn_and_psn.apply();
+        if (fill_in_qpn_and_psn.apply().hit) {
+            hdr.ib_bth.psn = temp_psn[23:0];
+        }
         
         // fill in opcode based on pool index
         set_opcodes.apply();

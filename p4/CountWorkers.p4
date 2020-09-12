@@ -29,11 +29,16 @@ control CountWorkers(
         ig_md.switchml_md.first_last_flag = worker_count_action.execute(ig_md.switchml_md.pool_index);
     }
 
-    action single_worker_action() {
+    action single_worker_count_action() {
         // execute register action even though it's irrelevant with a single worker
         worker_count_action.execute(ig_md.switchml_md.pool_index);
-        // with a single worker, every packet is the last packet
+        // called for a new packet in a single worker job, so mark as last packet
         ig_md.switchml_md.first_last_flag = 1;
+    }
+
+    action single_worker_read_action() {
+        // called for a retransmitted packet in a single-worker job
+        ig_md.switchml_md.first_last_flag = 0;
     }
 
     RegisterAction<num_workers_pair_t, pool_index_t, num_workers_t>(worker_count) read_worker_count_action = {
@@ -58,19 +63,24 @@ control CountWorkers(
             ig_md.switchml_md.packet_type: ternary;
         }
         actions = {
-            single_worker_action;
+            single_worker_count_action;
+            single_worker_read_action;
             count_workers_action;
             read_count_workers_action;
             @defaultonly NoAction;
         }
-        size = 3;
         const entries = {
             // special case for single-worker jobs
-            (1,    _, packet_type_t.CONSUME0) : single_worker_action();
             // if map_result is all 0's and type is CONSUME0, this is the first time we've seen this packet
-            (_, 32w0, packet_type_t.CONSUME0) : count_workers_action();
+            (1, 0, packet_type_t.CONSUME0) : single_worker_count_action();
+            // if we've seen this packet before, don't count, just read
+            (1, _, packet_type_t.CONSUME0) : single_worker_read_action();
+
+            // multi-worker jobs
+            // if map_result is all 0's and type is CONSUME0, this is the first time we've seen this packet
+            (_, 0, packet_type_t.CONSUME0) : count_workers_action();
             // if map_result is not all 0's and type is CONSUME0, don't count, just read
-            (_,    _, packet_type_t.CONSUME0) : read_count_workers_action();
+            (_, _, packet_type_t.CONSUME0) : read_count_workers_action();
         }            
         const default_action = NoAction;
     }

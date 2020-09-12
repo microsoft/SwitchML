@@ -23,7 +23,7 @@ from pprint import pprint, pformat
 
 import random
 
-from SwitchML.Packets import make_switchml_rdma, roce_opcode_s2n
+from SwitchML.Packets import make_switchml_rdma, rdma_opcode_s2n
 from SwitchML.ARPandICMP import ARPandICMP
 from SwitchML.Job import Job
 from SwitchML.Worker import Worker
