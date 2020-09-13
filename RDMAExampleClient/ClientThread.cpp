@@ -194,6 +194,7 @@ void ClientThread::post_next_send_wr(int i) {
     // send_wrs[i].wr.remote_addr = (intptr_t) indices[i];
 
 #ifdef ENABLE_RETRANSMISSION
+    if (DEBUG) std::cout << "Removing " << i << " from timeout queue." << std::endl;
     // remove from timeout queue
     timeouts.remove(i);
 #endif
@@ -201,6 +202,7 @@ void ClientThread::post_next_send_wr(int i) {
     // post
     if (DEBUG) std::cout << ">>>>>>>>>>>>>>>>              Thread " << thread_id
                          << " QP " << queue_pairs[i]->qp_num
+                         << " index " << i 
                          << " posting send from " << (void*) send_sges[i].addr
                          << " len " << (void*) send_sges[i].length
                          << " slot " << (void*) (send_wrs[i].wr.rdma.rkey & 1)
@@ -225,33 +227,34 @@ void ClientThread::post_next_send_wr(int i) {
   }
 }
 
+#ifdef ENABLE_RETRANSMISSION
 void ClientThread::repost_send_wr(int i) {
   // count retransmission
   ++retransmissions;
 
-#ifdef ENABLE_RETRANSMISSION
   // ensure this WR is removed from timeout queue
+  if (DEBUG) std::cout << "Removing " << i << " from timeout queue before reposting." << std::endl;
   timeouts.remove(i);
-#endif
 
   // repost
   if (DEBUG) std::cout << ">>>>>>>>>>>>>>>>              Thread " << thread_id
+               //std::cout << ">>>>>>>>>>>>>>>>              Thread " << thread_id
                        << " QP " << queue_pairs[i]->qp_num
+                       << " index " << i
                        << " re-posting send from " << (void*) send_sges[i].addr
                        << " len " << (void*) send_sges[i].length
                        << " slot " << (void*) (send_wrs[i].wr.rdma.rkey & 1)
                        << " rkey " << (void*) send_wrs[i].wr.rdma.rkey
-               //<< " qp " << send_wrs[i].
+                       << " retransmissions " << retransmissions
                        << std::endl;
   reducer->connections.post_send(queue_pairs[i], &send_wrs[i]);
 
-#ifdef ENABLE_RETRANSMISSION
   // count retransmission
   ++retransmission_count;
-#endif
   
   if (DEBUG) std::cout << "Re-posting send successful...." << std::endl;
 }
+#endif
 
 void ClientThread::handle_recv_completion(const ibv_wc & wc, const uint64_t timestamp) {
   if (DEBUG) std::cout << "Got RECV completion for " << (void*) wc.wr_id
@@ -282,6 +285,9 @@ void ClientThread::handle_write_completion(const ibv_wc & wc, const uint64_t tim
   int qp_index = (wc.wr_id & 0xffff) % FLAGS_slots_per_core;
 
 #ifdef ENABLE_RETRANSMISSION
+  if (DEBUG) std::cout << "Adding " << qp_index
+                       << " to timeout queue at timestamp " << timestamp
+                       << "." << std::endl;
   // add to timeout queue
   timeouts.push(qp_index, timestamp);
 #endif
@@ -292,12 +298,21 @@ void ClientThread::check_for_timeouts(const uint64_t timestamp) {
   int qp_index = -1;
   uint64_t old_timestamp = 0;
 
+  //if (DEBUG) std::cout << "Checking for timeouts at timestamp " << timestamp << std::endl;
+  
   // get oldest queue entry
   std::tie(qp_index, old_timestamp) = timeouts.bottom();
-
+  
   // if entry has timed out
   if ((qp_index != -1) &&
       (timestamp - old_timestamp > timeout_ticks)) {
+    if (DEBUG) std::cout << "Detected timeout for  " << qp_index
+                         << " at " << old_timestamp
+                         << " difference " << timestamp - old_timestamp
+                         << " compared with " << timeout_ticks
+                         << ": " << ((timestamp - old_timestamp) > timeout_ticks)
+                         << "; reposting...."
+                         << std::endl;
     repost_send_wr(qp_index);
   }
 }

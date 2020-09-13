@@ -35,6 +35,7 @@ public:
   // older than any previous entry.
   void push(int index, uint64_t timestamp) {
     if (DEBUG) std::cout << "PriorityQueue: adding " << index << " with timestamp " << timestamp << std::endl;
+    if (DEBUG) print();
       
     if (index < (entries.size() - 1)) { // don't change tail entry
       // warn if new insertion is older than current head
@@ -61,11 +62,15 @@ public:
       // change head
       head = index;
     }
+
+    if (DEBUG) std::cout << "PriorityQueue: added " << index << " with timestamp " << timestamp << std::endl;
+    if (DEBUG) print();
   }
 
   // remove particular entry
   void remove(int index) {
     if (DEBUG) std::cout << "PriorityQueue: removing " << index << " with timestamp " << entries[index].timestamp << std::endl;
+    if (DEBUG) print();
     
     if (index < (entries.size() - 1)) { // don't remove tail entry
       // if the entry has a previous link
@@ -84,7 +89,15 @@ public:
       if (head == index) {
         head = entries[index].next;
       }
+
+      // zero out entry
+      entries[index].timestamp = 0;
+      entries[index].next = -1;
+      entries[index].previous = -1;
     }
+
+    if (DEBUG) std::cout << "PriorityQueue: removed " << index << " with timestamp " << entries[index].timestamp << std::endl;
+    if (DEBUG) print();
   }
 
   // pop entry at head of queue
@@ -107,8 +120,21 @@ public:
     }
 
     if (DEBUG) std::cout << "PriorityQueue: tail is " << tail << " with timestamp " << timestamp << std::endl;
+    print();
 
     return std::make_pair(tail, timestamp);
+  }
+
+  void print() const {
+    for (int i; i < entries.size(); ++i) {
+      std::cout << "(" << i
+                << ": " << entries[i].previous
+                << " " << entries[i].timestamp
+                << " " << entries[i].next
+                << ")";
+    }
+    std::cout << "(head: " << head
+              << ")" << std::endl;
   }
 };
   

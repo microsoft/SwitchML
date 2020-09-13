@@ -6,7 +6,7 @@
 
 //#include "Endpoint.hpp"
 #include "Reducer.hpp"
-#include "PriorityQueue.hpp"
+#include "TimeoutQueue.hpp"
 
 // 
 #define ENABLE_RETRANSMISSION
@@ -31,7 +31,7 @@ private:
   const int32_t base_pool_index;
   
 #ifdef ENABLE_RETRANSMISSION
-  PriorityQueue timeouts;
+  TimeoutQueue timeouts;
   uint64_t timeout_ticks;
   uint64_t retransmission_count;
 #endif
@@ -51,7 +51,9 @@ private:
   
   void post_initial_writes();
   void post_next_send_wr(const int i);
+#ifdef ENABLE_RETRANSMISSION
   void repost_send_wr(const int i);
+#endif
   void handle_recv_completion(const ibv_wc &, const uint64_t timestamp);
   void handle_write_completion(const ibv_wc &, const uint64_t timestamp);
   void run();
