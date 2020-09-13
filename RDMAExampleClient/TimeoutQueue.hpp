@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-#ifndef __PRIORITYQUEUE__
-#define __PRIORITYQUEUE__
+#ifndef __TIMEOUTQUEUE__
+#define __TIMEOUTQUEUE__
 
 #include <vector>
 #include <iostream>
 
-class PriorityQueue {
+class TimeoutQueue {
 private:
 
   struct Entry {
@@ -24,7 +24,7 @@ private:
   //const int DEBUG = true;
   
 public:
-  PriorityQueue(const int num_entries)
+  TimeoutQueue(const int num_entries)
     : entries(num_entries+1) // add an extra for the tail
     , head(num_entries) // point at last, tail entry
   {
@@ -34,7 +34,7 @@ public:
   // insert entry into queue. it is assumed that entry will not be
   // older than any previous entry.
   void push(int index, uint64_t timestamp) {
-    if (DEBUG) std::cout << "PriorityQueue: adding " << index << " with timestamp " << timestamp << std::endl;
+    if (DEBUG) std::cout << "TimeoutQueue: adding " << index << " with timestamp " << timestamp << std::endl;
     if (DEBUG) print();
       
     if (index < (entries.size() - 1)) { // don't change tail entry
@@ -63,13 +63,13 @@ public:
       head = index;
     }
 
-    if (DEBUG) std::cout << "PriorityQueue: added " << index << " with timestamp " << timestamp << std::endl;
+    if (DEBUG) std::cout << "TimeoutQueue: added " << index << " with timestamp " << timestamp << std::endl;
     if (DEBUG) print();
   }
 
   // remove particular entry
   void remove(int index) {
-    if (DEBUG) std::cout << "PriorityQueue: removing " << index << " with timestamp " << entries[index].timestamp << std::endl;
+    if (DEBUG) std::cout << "TimeoutQueue: removing " << index << " with timestamp " << entries[index].timestamp << std::endl;
     if (DEBUG) print();
     
     if (index < (entries.size() - 1)) { // don't remove tail entry
@@ -96,7 +96,7 @@ public:
       entries[index].previous = -1;
     }
 
-    if (DEBUG) std::cout << "PriorityQueue: removed " << index << " with timestamp " << entries[index].timestamp << std::endl;
+    if (DEBUG) std::cout << "TimeoutQueue: removed " << index << " with timestamp " << entries[index].timestamp << std::endl;
     if (DEBUG) print();
   }
 
@@ -107,7 +107,7 @@ public:
 
   // peek at entry at head of queue
   std::pair<int, uint64_t> top() const {
-    if (DEBUG) std::cout << "PriorityQueue: head is " << head << " with timestamp " << entries[head].timestamp << std::endl;
+    if (DEBUG) std::cout << "TimeoutQueue: head is " << head << " with timestamp " << entries[head].timestamp << std::endl;
     return std::make_pair(head, entries[head].timestamp);
   }
 
@@ -119,7 +119,7 @@ public:
       timestamp = entries[tail].timestamp;
     }
 
-    if (DEBUG) std::cout << "PriorityQueue: tail is " << tail << " with timestamp " << timestamp << std::endl;
+    if (DEBUG) std::cout << "TimeoutQueue: tail is " << tail << " with timestamp " << timestamp << std::endl;
     print();
 
     return std::make_pair(tail, timestamp);
@@ -139,4 +139,4 @@ public:
 };
   
 
-#endif //  __PRIORITYQUEUE__
+#endif //  __TIMEOUTQUEUE__
