@@ -120,7 +120,7 @@ public:
     }
 
     if (DEBUG) std::cout << "TimeoutQueue: tail is " << tail << " with timestamp " << timestamp << std::endl;
-    print();
+    if (DEBUG) print();
 
     return std::make_pair(tail, timestamp);
   }
