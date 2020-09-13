@@ -27,7 +27,7 @@ class RDMAReceiver(Table):
         self.rdma_packet_counter = self.bfrt_info.table_get("pipe.Ingress.rdma_receiver.rdma_packet_counter")
         self.rdma_message_counter = self.bfrt_info.table_get("pipe.Ingress.rdma_receiver.rdma_message_counter")
         self.rdma_sequence_violation_counter = self.bfrt_info.table_get("pipe.Ingress.rdma_receiver.rdma_sequence_violation_counter")
-        self.simulated_drop_counter = self.bfrt_info.table_get("pipe.Ingress.update_and_check_worker_bitmap.simulated_drop_packet_counter")
+        self.simulated_drop_counter = self.bfrt_info.table_get("pipe.Ingress.egress_drop_sim.simulated_drop_packet_counter")
         
         # set format annotations
         self.table.info.key_field_annotation_add("hdr.ipv4.dst_addr", "ipv4")

@@ -91,7 +91,6 @@ control Ingress(
     RDMAReceiver() rdma_receiver;
 
     apply {
-
         // see if this is a SwitchML packet
         // get worker masks, pool base index, other parameters for this packet
         // add switchml_md header if it isn't already added
@@ -103,8 +102,13 @@ control Ingress(
                 get_worker_bitmap.apply(hdr, ig_md, ig_intr_md, ig_prsr_md, ig_dprsr_md, ig_tm_md);
             }
 
-            // Simulate packet drops. Only applies to SwitchML packets.
+            // Simulate ingress packet drops. 
             ingress_drop_sim.apply(ig_md.port_metadata);
+
+            // Set bit to simulate packet drops in egress.
+            egress_drop_sim.apply(ig_md.port_metadata,
+                ig_md.switchml_md.recirc_port_selector,
+                ig_md.switchml_md.simulate_egress_drop);
         }
 
         
@@ -112,9 +116,6 @@ control Ingress(
         // (do only on first pipeline pass, not on recirculated CONSUME passes)
         if (ig_dprsr_md.drop_ctl[0:0] == 1w0) {
             if (ig_md.switchml_md.packet_type == packet_type_t.CONSUME0) { 
-                // // support dropping packets with some probability by commputing random number here
-                // drop_rng.apply(ig_md.switchml_md.drop_random_value);
-                
                 // for CONSUME packets, record packet reception and check if this packet is a retransmission.
                 update_and_check_worker_bitmap.apply(hdr, ig_md, ig_intr_md, ig_dprsr_md, ig_tm_md);
                 
@@ -125,6 +126,7 @@ control Ingress(
 
 
         if (ig_dprsr_md.drop_ctl[0:0] == 1w0) {
+            
             // if it's a SwitchML packet that should be processed in ingress, do so
             // if ((ig_md.switchml_md.packet_type == packet_type_t.CONSUME) ||
             //     (ig_md.switchml_md.packet_type == packet_type_t.HARVEST)) { //}
@@ -172,9 +174,6 @@ control Ingress(
                 
                 // decide what to do with this packet
                 next_step.apply(hdr, ig_md, ig_intr_md, ig_dprsr_md, ig_tm_md);
-
-                // set bit to drop in egress
-                egress_drop_sim.apply(ig_md.port_metadata, ig_md.switchml_md.simulate_egress_drop);
             } else {
                 // handle ARP and ICMP requests
                 arp_and_icmp.apply(hdr, ig_md, ig_intr_md, ig_prsr_md, ig_dprsr_md, ig_tm_md);

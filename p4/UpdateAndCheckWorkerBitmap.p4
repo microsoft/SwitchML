@@ -18,8 +18,6 @@ control UpdateAndCheckWorkerBitmap(
 
     Register<worker_bitmap_pair_t, pool_index_by2_t>(num_slots) worker_bitmap;
 
-    Counter<counter_t, queue_pair_index_t>(max_num_queue_pairs, CounterType_t.PACKETS) simulated_drop_packet_counter;
-
     RegisterAction<worker_bitmap_pair_t, pool_index_by2_t, worker_bitmap_t>(worker_bitmap) worker_bitmap_update_set0 = {
         void apply(inout worker_bitmap_pair_t value, out worker_bitmap_t return_value) {
             //if (ig_md.drop_calculation == 0) {
@@ -53,7 +51,6 @@ control UpdateAndCheckWorkerBitmap(
     }
 
     action simulate_drop() {
-        simulated_drop_packet_counter.count(ig_md.switchml_md.recirc_port_selector);
         drop();
     }
     
@@ -128,7 +125,7 @@ control UpdateAndCheckWorkerBitmap(
         //drop_calculation = rng.get();
 
         update_and_check_worker_bitmap.apply();
-
+        
         // ig_md.drop_calculation = ig_md.drop_calculation |-| rng.get();
 
         // if (ig_md.drop_calculation != 0) {

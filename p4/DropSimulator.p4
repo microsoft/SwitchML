@@ -33,11 +33,14 @@ control IngressDropSimulator(
 control EgressDropSimulator(
     // used for drop probability
     inout port_metadata_t port_metadata,
+    in queue_pair_index_t recirc_port_selector,
     // used to signal egress drop
     out bool simulate_egress_drop) {
 
     Random<drop_probability_t>() rng;
     
+    Counter<counter_t, queue_pair_index_t>(max_num_queue_pairs, CounterType_t.PACKETS) simulated_drop_packet_counter;
+
     apply {
         // If drop probability from parser is nonzero, decide if we should drop this packet.
         // Do so by adding random value to drop probability.
@@ -50,6 +53,11 @@ control EgressDropSimulator(
         simulate_egress_drop = false;
         if (port_metadata.egress_drop_probability == 0xffff) {
             simulate_egress_drop = true;
+        }
+
+        if (port_metadata.ingress_drop_probability == 0xffff ||
+            port_metadata.egress_drop_probability  == 0xffff) {
+            simulated_drop_packet_counter.count(recirc_port_selector);
         }
     }
 }
