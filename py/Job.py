@@ -359,6 +359,25 @@ class Job(Cmd, object):
             print("Usage:\n   {}".format(self.do_port_clear_counters.__doc__))
             return
 
+    #
+    # hacky recirc port commands
+    # TODO: replace this once BFRT-GRPC can properly enable the secondary recirc ports.
+    #
+    def do_alternate_recirc_port_enable(self, arg):
+        """Enable alternate recirc port in pipe 1 (dev port 192). 
+
+           NOTE:
+           You must "remove" the ports in the CLI before this code will work right now.
+           bf-sde.port_mgr> bf_port_rmv 0 1 64
+        """
+        self.ports.enable_alternate_recirc_port()
+        self.next_step.enable_alternate_recirc_port()
+
+    def do_alternate_recirc_port_disable(self, arg):
+        'Disable alternate recirc port in pipe 1 (dev port 192).'
+        self.next_step.disable_alternate_recirc_port()
+        self.ports.disable_alternate_recirc_port()
+
         
     #
     # commands to manipulate switch address
@@ -899,7 +918,7 @@ class Job(Cmd, object):
         # self.registers_to_clear.append(self.significands_28_29_30_31)
 
         # add workers to multicast groups.
-        self.cpu_port = 4 # dev port for CPU mirroring
+        self.cpu_port = 320 # dev port for CPU mirroring
         self.pre = PRE(self.gc, self.bfrt_info, self.ports,
                        self.switchml_workers_mgid, self.all_ports_mgid,
                        self.cpu_port)

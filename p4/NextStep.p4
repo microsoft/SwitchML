@@ -14,6 +14,8 @@
 #define LOOPBACK_DEBUG
 #endif
 
+#define LOOPBACK_DEBUG
+
 control NextStep(
     inout header_t hdr,
     inout ingress_metadata_t ig_md,
@@ -21,6 +23,24 @@ control NextStep(
     inout ingress_intrinsic_metadata_for_deparser_t ig_dprsr_md,
     inout ingress_intrinsic_metadata_for_tm_t ig_tm_md) {
 
+    // hack to allow switching on and off the alternate recirc port in pipes 1 and 3
+    PortId_t alternate_recirc_port;
+    bool use_alternate_recirc_port;
+    
+    action set_alternate_recirc_port(PortId_t port) {
+        alternate_recirc_port = port;
+        use_alternate_recirc_port = true;
+    }
+    
+    table recirc_port {
+        actions = {
+            @defaultonly set_alternate_recirc_port;
+            @defaultonly NoAction;
+        }
+        //default_action = set_alternate_recirc_port(68); // default is oversubscribed port
+        default_action = NoAction;
+    }
+    
 
     bool count_consume;
     bool count_harvest;
@@ -99,6 +119,11 @@ control NextStep(
         //next_step_counter.count();
     }
 
+    action recirculate_for_HARVEST7_alternate_port() {
+        hdr.d0.setInvalid();
+        recirculate_for_harvest(packet_type_t.HARVEST7, 2w3 ++ alternate_recirc_port[6:0]);
+    }
+
     action recirculate_for_HARVEST7_same_port() {
         hdr.d0.setInvalid();
         recirculate_for_harvest(packet_type_t.HARVEST7, ig_intr_md.ingress_port);
@@ -130,6 +155,11 @@ control NextStep(
         recirculate_for_harvest(packet_type_t.HARVEST7,recirc_port);
     }
 
+    action recirculate_for_HARVEST6_alternate_port() {
+        hdr.d1.setInvalid();
+        recirculate_for_harvest(packet_type_t.HARVEST6, 2w3 ++ alternate_recirc_port[6:0]);
+    }
+
     action recirculate_for_HARVEST6(PortId_t recirc_port) {
         hdr.d1.setInvalid();
         recirculate_for_harvest(packet_type_t.HARVEST6, recirc_port);
@@ -143,6 +173,12 @@ control NextStep(
     action recirculate_for_HARVEST5_same_port() {
         hdr.d0.setInvalid();
         recirculate_for_harvest(packet_type_t.HARVEST5, ig_intr_md.ingress_port);
+    }
+
+    action recirculate_for_HARVEST5_alternate_port() {
+        hdr.d0.setInvalid();
+        //recirculate_for_harvest(packet_type_t.HARVEST5, alternate_recirc_port);
+        recirculate_for_harvest(packet_type_t.HARVEST5, 2w1 ++ alternate_recirc_port[6:0]);
     }
 
     action recirculate_for_HARVEST4(PortId_t recirc_port) {
@@ -166,18 +202,7 @@ control NextStep(
     }
 
     action recirculate_for_HARVEST1_same_port_1024B() {
-        // this is called on the last consume pass for 1024B packets,
-        // so the first 128B of updates is in hdr.d1.
-
-        // get rid of input data in hdr.d0
         hdr.d0.setInvalid();
-
-
-        // Just use existing ICRC we left in packet buffer!
-        // // add empty ICRC header since this is the deepest we'll be in the packet
-        // hdr.ib_icrc.setValid();
-
-        // go collect the next 128B
         recirculate_for_harvest(packet_type_t.HARVEST1, ig_intr_md.ingress_port);
     }
     
@@ -248,18 +273,20 @@ control NextStep(
             ig_md.switchml_md.packet_size : ternary;
 
             // decide how to spread recirculation load across the ports in each pipe
-            ig_md.switchml_md.recirc_port_selector : ternary;
+            //ig_md.switchml_md.recirc_port_selector : ternary;
             //ig_md.switchml_md.pool_index : ternary; // leads to retransmissions
-            //ig_md.switchml_md.worker_id : ternary; // leads to retransmissions
+            ig_md.switchml_md.worker_id : ternary; // leads to retransmissions
             
             ig_md.switchml_md.packet_type : ternary;
             ig_md.switchml_md.first_last_flag : ternary; // 1: last 0: first
             ig_md.switchml_md.map_result : ternary;
             ig_md.switchml_md.worker_type : ternary;
-            hdr.d1.d00 : ternary; // TODO: not used. dummy input to monitor this value in the model.
+            //hdr.d1.d00 : ternary; // TODO: not used. dummy input to monitor this value in the model.
+            use_alternate_recirc_port : ternary;
         }
         actions = {
             recirculate_for_HARVEST7_256B;
+            recirculate_for_HARVEST6_alternate_port;
             recirculate_for_HARVEST6;
             recirculate_for_HARVEST4;
             recirculate_for_HARVEST2;
@@ -268,8 +295,10 @@ control NextStep(
             recirculate_for_CONSUME3_same_port_next_pipe;
             recirculate_for_HARVEST7;
             recirculate_for_HARVEST7_same_port;
+            recirculate_for_HARVEST7_alternate_port;
             recirculate_for_HARVEST5;
             recirculate_for_HARVEST5_same_port;
+            recirculate_for_HARVEST5_alternate_port;
             recirculate_for_HARVEST3_same_port;
             recirculate_for_HARVEST1_1024B;
             recirculate_for_HARVEST1_same_port_1024B;
@@ -303,23 +332,27 @@ control NextStep(
             
             // For CONSUME packets that are the last packet, recirculate for harvest.
             // Choose between the two recirculation ports in pipe 0.
-#ifdef LOOPBACK_DEBUG
-            (packet_size_t.IBV_MTU_256, 0 &&& 1, packet_type_t.CONSUME0, 1, _, _, _) :recirculate_for_HARVEST7_256B(68);
-#else
-            (packet_size_t.IBV_MTU_256, 0 &&& 1, packet_type_t.CONSUME0, 1, _, _, _) :recirculate_for_HARVEST7_256B(64);            
-#endif
-            (packet_size_t.IBV_MTU_256, 1 &&& 1, packet_type_t.CONSUME0, 1, _, _, _) :recirculate_for_HARVEST7_256B(68);
+// #ifdef LOOPBACK_DEBUG
+//             (packet_size_t.IBV_MTU_256, 0 &&& 1, packet_type_t.CONSUME0, 1, _, _, _) :recirculate_for_HARVEST7_256B(452);
+// #else
+//             (packet_size_t.IBV_MTU_256, 0 &&& 1, packet_type_t.CONSUME0, 1, _, _, _) :recirculate_for_HARVEST7_256B(448);            
+// #endif
+            //(packet_size_t.IBV_MTU_256, 1 &&& 1, packet_type_t.CONSUME0, 1, _, _, _) :recirculate_for_HARVEST7_256B(452);
+            //(packet_size_t.IBV_MTU_256,       _, packet_type_t.CONSUME0, 1, _, _, _) :recirculate_for_HARVEST7_256B(452);
+            (packet_size_t.IBV_MTU_256,       _, packet_type_t.CONSUME0, 1, _, _, _) :recirculate_for_HARVEST7_256B(68);
             
             // just consume any CONSUME packets if they're not last and we haven't seen them before
             (packet_size_t.IBV_MTU_256,       _, packet_type_t.CONSUME0, _, 0, _, _) :finish_consume();
             
             // for CONSUME packets that are retransmitted packets to a full slot, recirculate for harvest
-#ifdef LOOPBACK_DEBUG
-            (packet_size_t.IBV_MTU_256, 0 &&& 1, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST7_256B(68);
-#else
-            (packet_size_t.IBV_MTU_256, 0 &&& 1, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST7_256B(64);
-#endif
-            (packet_size_t.IBV_MTU_256, 2 &&& 2, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST7_256B(68);
+// #ifdef LOOPBACK_DEBUG
+//             (packet_size_t.IBV_MTU_256, 0 &&& 1, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST7_256B(452);
+// #else
+//             (packet_size_t.IBV_MTU_256, 0 &&& 1, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST7_256B(448);
+// #endif
+//            (packet_size_t.IBV_MTU_256, 1 &&& 1, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST7_256B(452);
+            //(packet_size_t.IBV_MTU_256,       _, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST7_256B(452);
+            (packet_size_t.IBV_MTU_256,       _, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST7_256B(68);
             
             // drop others
             (packet_size_t.IBV_MTU_256,       _, packet_type_t.CONSUME0, _, _, _, _) :drop();
@@ -336,10 +369,18 @@ control NextStep(
             // 1024B packets
             //
 
-            // If pipe 0 receives a CONSUME packet we haven't seen before, recirculate it to finish consuming.
+            //
+            // current recirculation pattern:
+            // consume: pipe 3 -> pipe 1 -> pipe 2 -> pipe 0
+            // harvest: pipe0 -> pipe 2 -> pipe 2 -> pipe 1  -> pipe 1 -> pipe 3 -> pipe 3 -> egress
+            //
+
+            // Pipe 3: first pipe
+            //
+            // If pipe 3 receives a CONSUME packet we haven't seen before, recirculate it to finish consuming.
             // Choose between the 16 front-panel loopback ports based on slot ID.
             // Break this out this way because of issues assigning bitfields to the egress port metadata field.
-            (packet_size_t.IBV_MTU_1024, 0x0 &&& 0xf, packet_type_t.CONSUME0, _, 0, _, _) :recirculate_for_CONSUME1(128);
+            (packet_size_t.IBV_MTU_1024, 0x0 &&& 0xf, packet_type_t.CONSUME0, _, 0, _, _) :recirculate_for_CONSUME1(128); // pipe 1
             (packet_size_t.IBV_MTU_1024, 0x1 &&& 0xf, packet_type_t.CONSUME0, _, 0, _, _) :recirculate_for_CONSUME1(132);
             (packet_size_t.IBV_MTU_1024, 0x2 &&& 0xf, packet_type_t.CONSUME0, _, 0, _, _) :recirculate_for_CONSUME1(136);
             (packet_size_t.IBV_MTU_1024, 0x3 &&& 0xf, packet_type_t.CONSUME0, _, 0, _, _) :recirculate_for_CONSUME1(140);
@@ -358,7 +399,7 @@ control NextStep(
 
             // For retransmitted packets to a full slot, recirculate for harvest.
             // Run through the same path as novel packets to ensure ordering.
-            (packet_size_t.IBV_MTU_1024, 0x0 &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_CONSUME1(128);
+            (packet_size_t.IBV_MTU_1024, 0x0 &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_CONSUME1(128); // pipe 1
             (packet_size_t.IBV_MTU_1024, 0x1 &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_CONSUME1(132);
             (packet_size_t.IBV_MTU_1024, 0x2 &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_CONSUME1(136);
             (packet_size_t.IBV_MTU_1024, 0x3 &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_CONSUME1(140);
@@ -376,25 +417,24 @@ control NextStep(
             (packet_size_t.IBV_MTU_1024, 0xf &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_CONSUME1(188);
 
             // // For retransmitted packets to a full slot, recirculate for harvest.
-            // // Skip to pipe 3 and start the harvest directly to leave bandwidth for the recirculation in pipes 1, 2, and 3
-            // // TODO: this doesn't solve the problem in pipe 0.
-            // //(packet_size_t.IBV_MTU_1024,           _, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST0(452);  // serialize harvest
-            // (packet_size_t.IBV_MTU_1024, 0x0 &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST0(384);
-            // (packet_size_t.IBV_MTU_1024, 0x1 &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST0(388);
-            // (packet_size_t.IBV_MTU_1024, 0x2 &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST0(392);
-            // (packet_size_t.IBV_MTU_1024, 0x3 &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST0(396);
-            // (packet_size_t.IBV_MTU_1024, 0x4 &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST0(400);
-            // (packet_size_t.IBV_MTU_1024, 0x5 &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST0(404);
-            // (packet_size_t.IBV_MTU_1024, 0x6 &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST0(408);
-            // (packet_size_t.IBV_MTU_1024, 0x7 &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST0(412);
-            // (packet_size_t.IBV_MTU_1024, 0x8 &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST0(416);
-            // (packet_size_t.IBV_MTU_1024, 0x9 &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST0(420);
-            // (packet_size_t.IBV_MTU_1024, 0xa &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST0(424);
-            // (packet_size_t.IBV_MTU_1024, 0xb &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST0(428);
-            // (packet_size_t.IBV_MTU_1024, 0xc &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST0(432);
-            // (packet_size_t.IBV_MTU_1024, 0xd &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST0(436);
-            // (packet_size_t.IBV_MTU_1024, 0xe &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST0(440);
-            // (packet_size_t.IBV_MTU_1024, 0xf &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST0(444);
+            // // Skip to last pipe and start the harvest directly to leave bandwidth for the recirculation in middle pipes
+            // //(packet_size_t.IBV_MTU_1024,           _, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST0(68);  // serialize harvest
+            // (packet_size_t.IBV_MTU_1024, 0x0 &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST0(0);
+            // (packet_size_t.IBV_MTU_1024, 0x1 &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST0(4);
+            // (packet_size_t.IBV_MTU_1024, 0x2 &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST0(8);
+            // (packet_size_t.IBV_MTU_1024, 0x3 &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST0(12);
+            // (packet_size_t.IBV_MTU_1024, 0x4 &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST0(16);
+            // (packet_size_t.IBV_MTU_1024, 0x5 &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST0(20);
+            // (packet_size_t.IBV_MTU_1024, 0x6 &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST0(24);
+            // (packet_size_t.IBV_MTU_1024, 0x7 &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST0(28);
+            // (packet_size_t.IBV_MTU_1024, 0x8 &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST0(32);
+            // (packet_size_t.IBV_MTU_1024, 0x9 &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST0(36);
+            // (packet_size_t.IBV_MTU_1024, 0xa &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST0(40);
+            // (packet_size_t.IBV_MTU_1024, 0xb &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST0(44);
+            // (packet_size_t.IBV_MTU_1024, 0xc &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST0(48);
+            // (packet_size_t.IBV_MTU_1024, 0xd &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST0(52);
+            // (packet_size_t.IBV_MTU_1024, 0xe &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST0(56);
+            // (packet_size_t.IBV_MTU_1024, 0xf &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST0(60);
             
             // drop others
             // DEBUG: reached here
@@ -402,90 +442,112 @@ control NextStep(
             // ig_md_switchml_md_map_result               0x1
             (packet_size_t.IBV_MTU_1024,           _, packet_type_t.CONSUME0, _, _, _, _) :drop();
 
-            // Pipe 1
+            // Pipe 1: second pipe
             (packet_size_t.IBV_MTU_1024, _, packet_type_t.CONSUME1, _, _, _, _) :recirculate_for_CONSUME2_same_port_next_pipe();
 
-            // Pipe 2
+            // Pipe 2: third pipe
             (packet_size_t.IBV_MTU_1024, _, packet_type_t.CONSUME2, _, _, _, _) :recirculate_for_CONSUME3_same_port_next_pipe();
 
-            // Pipe 3
+            // Pipe 0: fourth and last pipe
             // For CONSUME packets that are the last packet, recirculate for harvest.
             // The last pass is a combined consume/harvest pass, so skip directly to HARVEST1
-            //(packet_size_t.IBV_MTU_1024, _, packet_type_t.CONSUME3, 1, _, _, _) :recirculate_for_HARVEST1_1024B(452); // serialize harvest
-            (packet_size_t.IBV_MTU_1024, _, packet_type_t.CONSUME3, 1, _, _, _) :recirculate_for_HARVEST1_same_port_1024B();
+            //(packet_size_t.IBV_MTU_1024, _, packet_type_t.CONSUME3, 1, _, _, _) :recirculate_for_HARVEST1_1024B(68); // serialize harvest
+            (packet_size_t.IBV_MTU_1024, _, packet_type_t.CONSUME3, 1, _, _, _) :recirculate_for_HARVEST1_1024B(452); // serialize harvest
+            // // BUG: this causes some sort of weird CRC errors when using front-panel ports in loopback
+            //(packet_size_t.IBV_MTU_1024, _, packet_type_t.CONSUME3, 1, _, _, _) :recirculate_for_HARVEST1_same_port_1024B();
             
             // just consume any CONSUME packets if they're not last and we haven't seen them before
             (packet_size_t.IBV_MTU_1024, _, packet_type_t.CONSUME3, _, 0, _, _) :finish_consume();
             
             // for CONSUME packets that are retransmitted packets to a full slot, recirculate for harvest
             // The last pass is a combined consume/harvest pass, so skip directly to HARVEST1
-            //(packet_size_t.IBV_MTU_1024, _, packet_type_t.CONSUME3, 0, _, _, _) :recirculate_for_HARVEST1_1024B(452); // serialize harvest
-            (packet_size_t.IBV_MTU_1024, _, packet_type_t.CONSUME3, 0, _, _, _) :recirculate_for_HARVEST1_same_port_1024B();
+            //(packet_size_t.IBV_MTU_1024, _, packet_type_t.CONSUME3, 0, _, _, _) :recirculate_for_HARVEST1_1024B(68); // serialize harvest
+            (packet_size_t.IBV_MTU_1024, _, packet_type_t.CONSUME3, 0, _, _, _) :recirculate_for_HARVEST1_1024B(452); // serialize harvest
+            // // BUG: this causes some sort of weird CRC errors when using front-panel ports in loopback
+            // (packet_size_t.IBV_MTU_1024, _, packet_type_t.CONSUME3, 0, _, _, _) :recirculate_for_HARVEST1_same_port_1024B();
             
             // drop others
             (packet_size_t.IBV_MTU_1024, _, packet_type_t.CONSUME3, _, _, _, _) :drop();
 
-            // start harvesting first 128B in pipe 3
-            //(packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST0, _, _, _, _) :recirculate_for_HARVEST1_1024B(452);  // serialize harvest
-            (packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST0, _, _, _, _) :recirculate_for_HARVEST1_same_port_1024B();
+            // start harvesting first 128B in last pipe
+            //(packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST0, _, _, _, _) :recirculate_for_HARVEST1_1024B(68);  // serialize harvest
+            (packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST0, _, _, _, _) :recirculate_for_HARVEST1_1024B(452);  // serialize harvest
+            // // BUG: this causes some sort of weird CRC errors when using front-panel ports in loopback
+            // (packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST0, _, _, _, _) :recirculate_for_HARVEST1_same_port_1024B();
             
-            // finish recirculation for 1024B in pipe 3 and continue in pipe 2
-            //(packet_size_t.IBV_MTU_1024,           _, packet_type_t.HARVEST1, _, _, _, _) :recirculate_for_HARVEST2(324);  // serialize harvest
-            (packet_size_t.IBV_MTU_1024, 0x0 &&& 0xf, packet_type_t.HARVEST1, _, _, _, _) :recirculate_for_HARVEST2(256);
-            (packet_size_t.IBV_MTU_1024, 0x1 &&& 0xf, packet_type_t.HARVEST1, _, _, _, _) :recirculate_for_HARVEST2(260);
-            (packet_size_t.IBV_MTU_1024, 0x2 &&& 0xf, packet_type_t.HARVEST1, _, _, _, _) :recirculate_for_HARVEST2(264);
-            (packet_size_t.IBV_MTU_1024, 0x3 &&& 0xf, packet_type_t.HARVEST1, _, _, _, _) :recirculate_for_HARVEST2(268);
-            (packet_size_t.IBV_MTU_1024, 0x4 &&& 0xf, packet_type_t.HARVEST1, _, _, _, _) :recirculate_for_HARVEST2(272);
-            (packet_size_t.IBV_MTU_1024, 0x5 &&& 0xf, packet_type_t.HARVEST1, _, _, _, _) :recirculate_for_HARVEST2(276);
-            (packet_size_t.IBV_MTU_1024, 0x6 &&& 0xf, packet_type_t.HARVEST1, _, _, _, _) :recirculate_for_HARVEST2(280);
-            (packet_size_t.IBV_MTU_1024, 0x7 &&& 0xf, packet_type_t.HARVEST1, _, _, _, _) :recirculate_for_HARVEST2(284);
-            (packet_size_t.IBV_MTU_1024, 0x8 &&& 0xf, packet_type_t.HARVEST1, _, _, _, _) :recirculate_for_HARVEST2(288);
-            (packet_size_t.IBV_MTU_1024, 0x9 &&& 0xf, packet_type_t.HARVEST1, _, _, _, _) :recirculate_for_HARVEST2(292);
-            (packet_size_t.IBV_MTU_1024, 0xa &&& 0xf, packet_type_t.HARVEST1, _, _, _, _) :recirculate_for_HARVEST2(296);
-            (packet_size_t.IBV_MTU_1024, 0xb &&& 0xf, packet_type_t.HARVEST1, _, _, _, _) :recirculate_for_HARVEST2(300);
-            (packet_size_t.IBV_MTU_1024, 0xc &&& 0xf, packet_type_t.HARVEST1, _, _, _, _) :recirculate_for_HARVEST2(304);
-            (packet_size_t.IBV_MTU_1024, 0xd &&& 0xf, packet_type_t.HARVEST1, _, _, _, _) :recirculate_for_HARVEST2(308);
-            (packet_size_t.IBV_MTU_1024, 0xe &&& 0xf, packet_type_t.HARVEST1, _, _, _, _) :recirculate_for_HARVEST2(312);
-            (packet_size_t.IBV_MTU_1024, 0xf &&& 0xf, packet_type_t.HARVEST1, _, _, _, _) :recirculate_for_HARVEST2(316);
+            // finish recirculation for 1024B in last pipe and continue in third pipe
+            (packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST1, _, _, _, _) :recirculate_for_HARVEST2(324);  // serialize harvest
 
-            // recirculate one more time in pipe 2
+            // // BUG: this causes some sort of weird CRC errors when using front-panel ports in loopback
+            // (packet_size_t.IBV_MTU_1024, 0x0 &&& 0xf, packet_type_t.HARVEST1, _, _, _, _) :recirculate_for_HARVEST2(256);
+            // (packet_size_t.IBV_MTU_1024, 0x1 &&& 0xf, packet_type_t.HARVEST1, _, _, _, _) :recirculate_for_HARVEST2(260);
+            // (packet_size_t.IBV_MTU_1024, 0x2 &&& 0xf, packet_type_t.HARVEST1, _, _, _, _) :recirculate_for_HARVEST2(264);
+            // (packet_size_t.IBV_MTU_1024, 0x3 &&& 0xf, packet_type_t.HARVEST1, _, _, _, _) :recirculate_for_HARVEST2(268);
+            // (packet_size_t.IBV_MTU_1024, 0x4 &&& 0xf, packet_type_t.HARVEST1, _, _, _, _) :recirculate_for_HARVEST2(272);
+            // (packet_size_t.IBV_MTU_1024, 0x5 &&& 0xf, packet_type_t.HARVEST1, _, _, _, _) :recirculate_for_HARVEST2(276);
+            // (packet_size_t.IBV_MTU_1024, 0x6 &&& 0xf, packet_type_t.HARVEST1, _, _, _, _) :recirculate_for_HARVEST2(280);
+            // (packet_size_t.IBV_MTU_1024, 0x7 &&& 0xf, packet_type_t.HARVEST1, _, _, _, _) :recirculate_for_HARVEST2(284);
+            // (packet_size_t.IBV_MTU_1024, 0x8 &&& 0xf, packet_type_t.HARVEST1, _, _, _, _) :recirculate_for_HARVEST2(288);
+            // (packet_size_t.IBV_MTU_1024, 0x9 &&& 0xf, packet_type_t.HARVEST1, _, _, _, _) :recirculate_for_HARVEST2(292);
+            // (packet_size_t.IBV_MTU_1024, 0xa &&& 0xf, packet_type_t.HARVEST1, _, _, _, _) :recirculate_for_HARVEST2(296);
+            // (packet_size_t.IBV_MTU_1024, 0xb &&& 0xf, packet_type_t.HARVEST1, _, _, _, _) :recirculate_for_HARVEST2(300);
+            // (packet_size_t.IBV_MTU_1024, 0xc &&& 0xf, packet_type_t.HARVEST1, _, _, _, _) :recirculate_for_HARVEST2(304);
+            // (packet_size_t.IBV_MTU_1024, 0xd &&& 0xf, packet_type_t.HARVEST1, _, _, _, _) :recirculate_for_HARVEST2(308);
+            // (packet_size_t.IBV_MTU_1024, 0xe &&& 0xf, packet_type_t.HARVEST1, _, _, _, _) :recirculate_for_HARVEST2(312);
+            // (packet_size_t.IBV_MTU_1024, 0xf &&& 0xf, packet_type_t.HARVEST1, _, _, _, _) :recirculate_for_HARVEST2(316);
+
+            // recirculate one more time in third pipe
             (packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST2, _, _, _, _) :recirculate_for_HARVEST3_same_port();
 
-            // finish recirculation for 1024B in pipe 2 and continue in pipe 1
-            //(packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST3, _, _, _, _) :recirculate_for_HARVEST4(196);  // serialize harvest
-            (packet_size_t.IBV_MTU_1024, 0x0 &&& 0xf, packet_type_t.HARVEST3, _, _, _, _) :recirculate_for_HARVEST4(128);
-            (packet_size_t.IBV_MTU_1024, 0x1 &&& 0xf, packet_type_t.HARVEST3, _, _, _, _) :recirculate_for_HARVEST4(132);
-            (packet_size_t.IBV_MTU_1024, 0x2 &&& 0xf, packet_type_t.HARVEST3, _, _, _, _) :recirculate_for_HARVEST4(136);
-            (packet_size_t.IBV_MTU_1024, 0x3 &&& 0xf, packet_type_t.HARVEST3, _, _, _, _) :recirculate_for_HARVEST4(140);
-            (packet_size_t.IBV_MTU_1024, 0x4 &&& 0xf, packet_type_t.HARVEST3, _, _, _, _) :recirculate_for_HARVEST4(144);
-            (packet_size_t.IBV_MTU_1024, 0x5 &&& 0xf, packet_type_t.HARVEST3, _, _, _, _) :recirculate_for_HARVEST4(148);
-            (packet_size_t.IBV_MTU_1024, 0x6 &&& 0xf, packet_type_t.HARVEST3, _, _, _, _) :recirculate_for_HARVEST4(152);
-            (packet_size_t.IBV_MTU_1024, 0x7 &&& 0xf, packet_type_t.HARVEST3, _, _, _, _) :recirculate_for_HARVEST4(156);
-            (packet_size_t.IBV_MTU_1024, 0x8 &&& 0xf, packet_type_t.HARVEST3, _, _, _, _) :recirculate_for_HARVEST4(160);
-            (packet_size_t.IBV_MTU_1024, 0x9 &&& 0xf, packet_type_t.HARVEST3, _, _, _, _) :recirculate_for_HARVEST4(164);
-            (packet_size_t.IBV_MTU_1024, 0xa &&& 0xf, packet_type_t.HARVEST3, _, _, _, _) :recirculate_for_HARVEST4(168);
-            (packet_size_t.IBV_MTU_1024, 0xb &&& 0xf, packet_type_t.HARVEST3, _, _, _, _) :recirculate_for_HARVEST4(172);
-            (packet_size_t.IBV_MTU_1024, 0xc &&& 0xf, packet_type_t.HARVEST3, _, _, _, _) :recirculate_for_HARVEST4(176);
-            (packet_size_t.IBV_MTU_1024, 0xd &&& 0xf, packet_type_t.HARVEST3, _, _, _, _) :recirculate_for_HARVEST4(180);
-            (packet_size_t.IBV_MTU_1024, 0xe &&& 0xf, packet_type_t.HARVEST3, _, _, _, _) :recirculate_for_HARVEST4(184);
-            (packet_size_t.IBV_MTU_1024, 0xf &&& 0xf, packet_type_t.HARVEST3, _, _, _, _) :recirculate_for_HARVEST4(188);
+            // finish recirculation for 1024B in third pipe and continue in second pipe
+            //(packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST3, _, _, _, true) :recirculate_for_HARVEST4(192);  // alternate port
+            (packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST3, _, _, _, true) :recirculate_for_HARVEST4(188);  // alternate port
+            (packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST3, _, _, _,    _) :recirculate_for_HARVEST4(196);  // serialize harvest
+            
+            // // BUG: this causes some sort of weird CRC errors when using front-panel ports in loopback
+            // (packet_size_t.IBV_MTU_1024, 0x0 &&& 0xf, packet_type_t.HARVEST3, _, _, _, _) :recirculate_for_HARVEST4(128);
+            // (packet_size_t.IBV_MTU_1024, 0x1 &&& 0xf, packet_type_t.HARVEST3, _, _, _, _) :recirculate_for_HARVEST4(132);
+            // (packet_size_t.IBV_MTU_1024, 0x2 &&& 0xf, packet_type_t.HARVEST3, _, _, _, _) :recirculate_for_HARVEST4(136);
+            // (packet_size_t.IBV_MTU_1024, 0x3 &&& 0xf, packet_type_t.HARVEST3, _, _, _, _) :recirculate_for_HARVEST4(140);
+            // (packet_size_t.IBV_MTU_1024, 0x4 &&& 0xf, packet_type_t.HARVEST3, _, _, _, _) :recirculate_for_HARVEST4(144);
+            // (packet_size_t.IBV_MTU_1024, 0x5 &&& 0xf, packet_type_t.HARVEST3, _, _, _, _) :recirculate_for_HARVEST4(148);
+            // (packet_size_t.IBV_MTU_1024, 0x6 &&& 0xf, packet_type_t.HARVEST3, _, _, _, _) :recirculate_for_HARVEST4(152);
+            // (packet_size_t.IBV_MTU_1024, 0x7 &&& 0xf, packet_type_t.HARVEST3, _, _, _, _) :recirculate_for_HARVEST4(156);
+            // (packet_size_t.IBV_MTU_1024, 0x8 &&& 0xf, packet_type_t.HARVEST3, _, _, _, _) :recirculate_for_HARVEST4(160);
+            // (packet_size_t.IBV_MTU_1024, 0x9 &&& 0xf, packet_type_t.HARVEST3, _, _, _, _) :recirculate_for_HARVEST4(164);
+            // (packet_size_t.IBV_MTU_1024, 0xa &&& 0xf, packet_type_t.HARVEST3, _, _, _, _) :recirculate_for_HARVEST4(168);
+            // (packet_size_t.IBV_MTU_1024, 0xb &&& 0xf, packet_type_t.HARVEST3, _, _, _, _) :recirculate_for_HARVEST4(172);
+            // (packet_size_t.IBV_MTU_1024, 0xc &&& 0xf, packet_type_t.HARVEST3, _, _, _, _) :recirculate_for_HARVEST4(176);
+            // (packet_size_t.IBV_MTU_1024, 0xd &&& 0xf, packet_type_t.HARVEST3, _, _, _, _) :recirculate_for_HARVEST4(180);
+            // (packet_size_t.IBV_MTU_1024, 0xe &&& 0xf, packet_type_t.HARVEST3, _, _, _, _) :recirculate_for_HARVEST4(184);
+            // (packet_size_t.IBV_MTU_1024, 0xf &&& 0xf, packet_type_t.HARVEST3, _, _, _, _) :recirculate_for_HARVEST4(188);
 
-            // recirculate one more time in pipe 1
-            //(packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST4, _, _, _, _) :recirculate_for_HARVEST5(196); // serialize harvest
-            (packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST4, _, _, _, _) :recirculate_for_HARVEST5_same_port();
+            // recirculate one more time in second pipe
+            // put on second recirc port to provide sufficent bandwidth for line rate
+            // TODO: currently this requires manual intervention to enable the second port; if not enabled, we don't have enough bandwidth for line rate.
+            //(packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST4, _, _, _, _) :recirculate_for_HARVEST5_alternate_port(); // serialize harvest
+            //(packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST4, _, _, _, _) :recirculate_for_HARVEST5_same_port();
+            (packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST4, _, _, _, _) :recirculate_for_HARVEST5(196);
 
-            // finish recirculation for 1024B in pipe 1 and continue in pipe 0
-            //(packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST5, _, _, _, _) :recirculate_for_HARVEST6(64); // serialize harvest
-#ifdef LOOPBACK_DEBUG
-            (packet_size_t.IBV_MTU_1024, 0 &&& 1, packet_type_t.HARVEST5, _, _, _, _) :recirculate_for_HARVEST6(68);
-#else
-            (packet_size_t.IBV_MTU_1024, 0 &&& 1, packet_type_t.HARVEST5, _, _, _, _) :recirculate_for_HARVEST6(64);
-#endif
-            (packet_size_t.IBV_MTU_1024, 1 &&& 1, packet_type_t.HARVEST5, _, _, _, _) :recirculate_for_HARVEST6(68);
+            // finish recirculation for 1024B in second pipe and continue in first pipe
+            //(packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST5, _, _, _, _) :recirculate_for_HARVEST6(452); // serialize harvest
+            //(packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST5, _, _, _, _) :recirculate_for_HARVEST6_alternate_port(); // serialize harvest
+            //(packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST5, _, _, _, true) :recirculate_for_HARVEST6(448); // alternate port
+            //(packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST5, _, _, _, true) :recirculate_for_HARVEST6(444); // alternate port
+            //(packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST5, _, _, _,    _) :recirculate_for_HARVEST6(452); // serialize harvest
+            (packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST5, _, _, _, true) :recirculate_for_HARVEST6(64); // alternate port
+            (packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST5, _, _, _,    _) :recirculate_for_HARVEST6(68); // serialize harvest
+// #ifdef LOOPBACK_DEBUG
+//             (packet_size_t.IBV_MTU_1024, 0 &&& 1, packet_type_t.HARVEST5, _, _, _, _) :recirculate_for_HARVEST6(452);
+// #else
+//             (packet_size_t.IBV_MTU_1024, 0 &&& 1, packet_type_t.HARVEST5, _, _, _, _) :recirculate_for_HARVEST6(448);
+// #endif
+//             (packet_size_t.IBV_MTU_1024, 1 &&& 1, packet_type_t.HARVEST5, _, _, _, _) :recirculate_for_HARVEST6(452);
             
             // recirculate once in pipe 0 before finishing
-            //(packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST6, _, _, _, _) :recirculate_for_HARVEST7(68);  // serialize harvest
-            (packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST6, _, _, _, _) :recirculate_for_HARVEST7_same_port();
+            //(packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST6, _, _, _, _) :recirculate_for_HARVEST7(448);  // serialize harvest
+            //(packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST6, _, _, _, _) :recirculate_for_HARVEST7(452);
+            (packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST6, _, _, _, _) :recirculate_for_HARVEST7(68);
             
             //
             // Harvest pass 7: final pass
@@ -513,7 +575,7 @@ control NextStep(
     }
     
     //Random<drop_probability_t>() rng;
-
+    
     apply {
         // ig_md.drop_calculation = ig_md.drop_calculation |-| rng.get();
 
@@ -529,6 +591,9 @@ control NextStep(
         count_retransmit = false;
         count_recirculate = false;
         count_drop = false;
+
+        use_alternate_recirc_port = false;
+        recirc_port.apply();
         
         next_step.apply();
 

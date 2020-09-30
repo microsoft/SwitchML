@@ -21,6 +21,7 @@ class NextStep(Table):
 
         # get table
         self.table = self.bfrt_info.table_get("pipe.Ingress.next_step.next_step")
+        self.recirc_port = self.bfrt_info.table_get("pipe.Ingress.next_step.recirc_port")
 
         # get counters
         #self.consume_counter = self.bfrt_info.table_get("pipe.Ingress.next_step.consume_counter")
@@ -35,7 +36,8 @@ class NextStep(Table):
         ##self.add_default_entries()
 
     def clear(self):
-        # don't clear anything
+        # # no need to clear main table; just clear recirc port
+        # self.recirc_port.entry_del(self.target)
         pass
 
     def clear_counters(self):
@@ -131,3 +133,15 @@ class NextStep(Table):
         #     k = k.to_dict()
 
         #     pprint((k, v))
+
+    # enable secondary recirc port on pipe 1
+    def enable_alternate_recirc_port(self):
+        self.recirc_port.default_entry_set(
+            self.target,
+            self.recirc_port.make_data([gc.DataTuple('port', 192)],
+                                        'set_alternate_recirc_port'))
+
+    def disable_alternate_recirc_port(self):
+        self.recirc_port.default_entry_reset(self.target)
+        
+        

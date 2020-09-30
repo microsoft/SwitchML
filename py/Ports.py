@@ -94,7 +94,7 @@ class Ports(object):
                                   100: "BF_SPEED_100G"}
         
         fec_conversion_table = {'none': "BF_FEC_TYP_NONE",
-                                'fec': "BF_FEC_TYP_FC",
+                                'fc': "BF_FEC_TYP_FC",
                                 'rs': "BF_FEC_TYP_RS"}
         
         for (front_panel_port, lane, speed, fec) in port_list:
@@ -266,9 +266,12 @@ class Ports(object):
     def enable_loopback_ports(self):
         # enable loopback on front panel ports
         loopback_ports = ([64] +                # Pipe 0 CPU ethernet port
+                          #[444] +                # Pipe 0 CPU ethernet port
+                          #range(  0,  0+64,4) + # Pipe 0: all 16 front-panel ports
                           range(128,128+64,4) + # Pipe 1: all 16 front-panel ports
                           range(256,256+64,4) + # Pipe 2: all 16 front-panel ports
                           range(384,384+64,4))  # Pipe 3: all 16 front-panel ports
+            
 
         self.logger.info("Enabling loopback on {} front panel ports...".format(len(loopback_ports)))
 
@@ -283,7 +286,61 @@ class Ports(object):
 
 
         #self.enable_additional_loopback_ports()
+
+    def enable_alternate_recirc_port(self):
+        # pipes 0 and 1 (TODO: 0 doesn't work)
+        #ports = [64, 192]
         
+        # pipes 1 and 3
+        ports = [192, 448]
+        
+        print("Checking port state before enabling recirculation mode:")
+        resp = self.pktgen_port_cfg_table.entry_get(
+            self.target,
+            [self.pktgen_port_cfg_table.make_key([gc.KeyTuple('dev_port', port)])
+             for port in ports],
+            {'from_hw': False})
+
+        for v, k in resp:
+            v = v.to_dict()
+            k = k.to_dict()
+            pprint((k, v))
+
+        print("Enabling recirculation.")
+        try:
+            self.pktgen_port_cfg_table.entry_add(
+                self.target,
+                [self.pktgen_port_cfg_table.make_key([gc.KeyTuple('dev_port', port)])
+                 for port in ports],
+                [self.pktgen_port_cfg_table.make_data([
+                    gc.DataTuple('recirculation_enable', bool_val=True)])] * len(ports))
+        except:
+            print("""
+            NOTE:
+            You must "remove" the ports in the CLI before this code will work right now.
+            bf-sde.port_mgr> bf_port_rmv 0 1 64
+            bf-sde.port_mgr> bf_port_rmv 0 3 64
+            """)
+            raise
+        
+        print("Verifying port state after enabling recirculation:")
+        resp = self.pktgen_port_cfg_table.entry_get(
+            self.target,
+            [self.pktgen_port_cfg_table.make_key([gc.KeyTuple('dev_port', port)])
+             for port in ports],
+            {'from_hw': False})
+
+        for v, k in resp:
+            v = v.to_dict()
+            k = k.to_dict()
+            pprint((k, v))
+            
+
+    def disable_alternate_recirc_port(self):
+        # TODO: should we bother removing the port?
+        pass
+
+    
     def enable_additional_loopback_ports(self):
         # NOT USED
         # self.logger.info(pformat(self.bfrt_info.table_dict))

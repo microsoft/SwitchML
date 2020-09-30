@@ -16,6 +16,7 @@ parser IngressParser(
     Checksum() ipv4_checksum;
     //ParserCounter() counter;
 
+
     state start {
         pkt.extract(ig_intr_md);
         //ig_md = ingress_metadata_initializer;
@@ -43,13 +44,16 @@ parser IngressParser(
         // decide what to do with recirculated packets now
         //counter.set(8w0);
         transition select(ig_intr_md.ingress_port) {
-            // not currently using PCIe CPU port for recirculation; just parse ethernet
-            64: parse_recirculate;
-            68: parse_recirculate;
-            320: parse_ethernet;
-            0x080 &&& 0x180: parse_recirculate;
-            0x100 &&& 0x180: parse_recirculate;
-            0x180 &&& 0x180: parse_recirculate;
+            64: parse_recirculate; // pipe 0 CPU port
+            68: parse_recirculate; // pipe 0 recirc port
+            //448: parse_recirculate; // pipe 3 first recirc port
+            //452: parse_recirculate; // pipe 3 second recirc port
+            320: parse_ethernet; // pipe 2 CPU port
+            //444: parse_recirculate;
+            //0x000 &&& 0x180: parse_recirculate; // all pipe 0 ports
+            0x080 &&& 0x180: parse_recirculate; // all pipe 1 ports
+            0x100 &&& 0x180: parse_recirculate; // all pipe 2 ports
+            0x180 &&& 0x180: parse_recirculate; // all pipe 3 ports
             default:  parse_ethernet;
         }
         // transition select(ig_intr_md.ingress_port) {
@@ -70,6 +74,7 @@ parser IngressParser(
         // parse switchml metadata and mark as recirculated
         pkt.extract(ig_md.switchml_md);
         pkt.extract(ig_md.switchml_rdma_md);
+
         //ig_md.switchml_md.packet_type = packet_type_t.HARVEST7; // already set before recirculation
         //counter.set(8w1);  // remember we don't need to parse 
         //hdr.d1.setValid(); // this will be filled in by the pipeline
