@@ -129,6 +129,9 @@ typedef bit<16> drop_probability_t;  // signed drop probability; set between 0 a
 
 typedef bit<32> counter_t;
 
+// debug packet ID type. Only 19 bits due to hash limitations in logging module.
+typedef bit<19> debug_packet_id_t;
+
 typedef bit<4> packet_type_underlying_t;
 enum bit<4> packet_type_t {
     MIRROR     = 0x0,
@@ -167,10 +170,11 @@ struct port_metadata_t {
 
 //@pa_container_size("egress", "eg_md.switchml_md.pool_index", 32)
 //@pa_container_size("ingress", "ig_md.switchml_md.pool_index", 16)
+//@pa_container_size("ingress", "ig_md.switchml_md.debug_packet_id", 8, 8, 8, 8)
 
 @flexible
 header switchml_md_h {
-    MulticastGroupId_t mgid;
+    MulticastGroupId_t mgid; // 16 bits
 
     //bit<16> ingress_port;
     //bit<16> recirc_port_selector;
@@ -178,7 +182,7 @@ header switchml_md_h {
     //bit<8> ingress_port; // GRR
 
     // @padding
-    // bit<5> pad;
+    // bit<1> pad;
 
     packet_size_t packet_size;
 
@@ -220,13 +224,19 @@ header switchml_md_h {
     PortId_t ingress_port;
     //bit<64> rdma_addr;
 
-    //bool simulate_ingress_drop;
     bool simulate_egress_drop;
+
+    //bit<16> debug_packet_id;
+    debug_packet_id_t debug_packet_id;
 }
 //switchml_md_h switchml_md_initializer = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
+//@pa_container_size("ingress", "ig_md.switchml_rdma_md.rdma_addr", 32, 8, 8, 16)
 @flexible
 header switchml_rdma_md_h {
+    //@padding
+    //bit<6> pad;
+    
     bool first_packet; // set both for only packets
     bool last_packet;
     // // min message len is 256 bytes

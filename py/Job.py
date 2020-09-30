@@ -36,6 +36,7 @@ from RDMAReceiver import RDMAReceiver
 from NextStep import NextStep
 from Mirror import Mirror
 from DropSimulator import DropSimulator
+from DebugLog import DebugLog
 
 # import RPC server
 from GRPCServer import GRPCServer
@@ -135,6 +136,22 @@ class Job(Cmd, object):
         except:
             print "Didn't understand that. Continuing...."
 
+    def do_log_dump(self, arg):
+        'Dump log of recent packets.'
+        
+        self.debug_log.print_log()
+
+    def do_log_save(self, arg):
+        'Save log of recent packets to file.'
+        
+        self.debug_log.save_log(arg)
+
+    def do_log_clear(self, arg):
+        'Clear log of recent packets.'
+        
+        self.debug_log.clear_log()
+
+            
     def do_bitmaps_weirdness_search(self, arg):
         'Show any bitmaps where both sets are nonzero.'
         
@@ -519,7 +536,9 @@ class Job(Cmd, object):
             print("Usage:\n   {}".format(self.do_worker_add_roce.__doc__))
             return
 
-
+    def do_get_drop_probability(self, arg):
+        'Get drop probability currently set in drop simulator.'
+        self.drop_simulator.print_drop_probabilities()
         
     #
     # state management for job
@@ -890,6 +909,11 @@ class Job(Cmd, object):
         # set up drop simulator
         self.drop_simulator = DropSimulator(self.gc, self.bfrt_info)
         self.tables_to_clear.append(self.drop_simulator)
+
+        # setup debug log
+        self.debug_log = DebugLog(self.gc, self.bfrt_info)
+        self.tables_to_clear.append(self.debug_log)
+        self.registers_to_clear.append(self.debug_log)
         
         # set up counters in next step table
         self.next_step = NextStep(self.gc, self.bfrt_info)

@@ -28,6 +28,7 @@
 #include "NextStep.p4"
 #include "RDMAReceiver.p4"
 #include "RDMASender.p4"
+#include "DebugLog.p4"
 
 control Ingress(
     inout header_t hdr,
@@ -85,6 +86,9 @@ control Ingress(
     
     CountWorkers() count_workers;
 
+    DebugLog() debug_log;
+    DebugPacketId() debug_packet_id;
+    
     NextStep() next_step;
     NonSwitchMLForward() non_switchml_forward;
 
@@ -96,6 +100,8 @@ control Ingress(
         // add switchml_md header if it isn't already added
         // (do only on first pipeline pass, not on recirculated CONSUME passes)
         if (ig_md.switchml_md.packet_type == packet_type_t.CONSUME0) {
+            debug_packet_id.apply(hdr, ig_md, ig_intr_md, ig_prsr_md);
+            
             if (hdr.ib_bth.isValid()) {
                 rdma_receiver.apply(hdr, ig_md, ig_intr_md, ig_prsr_md, ig_dprsr_md, ig_tm_md);
             } else {
@@ -124,7 +130,6 @@ control Ingress(
             }
         }
 
-
         if (ig_dprsr_md.drop_ctl[0:0] == 1w0) {
             
             // if it's a SwitchML packet that should be processed in ingress, do so
@@ -133,6 +138,17 @@ control Ingress(
             if ((packet_type_underlying_t) ig_md.switchml_md.packet_type >=
                 (packet_type_underlying_t) packet_type_t.CONSUME0) { // all consume or harvest types
                 
+                // Log packets.
+                //
+                // At this location in the code, will only get CONSUME
+                // or HARVEST, but we probably don't care about IGNORE
+                // packets in ingress other than simulated drops, and
+                // we shouldn't see any other types in ingress.
+                //
+                // Unfortunately, placing it outside the enclosing if
+                // block leads to a too-large design.
+                debug_log.apply(hdr, ig_md, ig_intr_md, ig_prsr_md);
+        
                 // update max exponents
                 // for now, we'll stick with the original SwitchML design and use 1 16-bit exponent
                 // (using just half of the register unit). 
