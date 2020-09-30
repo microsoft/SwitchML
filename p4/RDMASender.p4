@@ -196,6 +196,7 @@ control RDMASender(
         //hdr.ib_bth.psn = (sequence_number_t) psn_action.execute();
         //hdr.ib_bth.psn = psn_action.execute()[23:0];
         temp_psn = psn_action.execute();
+        hdr.ib_bth.psn = temp_psn[23:0];
     }
     
     table fill_in_qpn_and_psn {
@@ -308,9 +309,10 @@ control RDMASender(
         }
             
         // fill in queue pair number of sequence number
-        if (fill_in_qpn_and_psn.apply().hit) {
-            hdr.ib_bth.psn = temp_psn[23:0];
-        }
+        fill_in_qpn_and_psn.apply();
+        // if (fill_in_qpn_and_psn.apply().hit) {
+        //     hdr.ib_bth.psn = temp_psn[23:0];
+        // }
         
         // fill in opcode based on pool index
         set_opcodes.apply();

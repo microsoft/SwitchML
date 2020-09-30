@@ -105,6 +105,7 @@ header ib_bth_h {
 // Make sure QP number and PSN are in 32-bit containers for register ops
 //@pa_container_size("ingress", "hdr.ib_bth.dst_qp", 32)
 @pa_container_size("ingress", "hdr.ib_bth.psn", 32)
+//@pa_container_size("egress", "hdr.ib_bth.psn", 8, 8, 8)
 
 // InfiniBand-RoCE RDMA Extended Transport Header
 header ib_reth_h {
@@ -114,7 +115,7 @@ header ib_reth_h {
 }
 
 
-@pa_container_size("egress", "hdr.ib_immediate.immediate", 16, 8, 8)
+//@pa_container_size("egress", "hdr.ib_immediate.immediate", 8, 8, 8, 8)
 
 // InfiniBand-RoCE Immediate Header
 header ib_immediate_h {
