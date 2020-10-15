@@ -19,8 +19,6 @@ control RDMASender(
     mac_addr_t rdma_switch_mac;
     ipv4_addr_t rdma_switch_ip;
 
-    bit<32> temp_psn;
-    
     DirectCounter<counter_t>(CounterType_t.PACKETS_AND_BYTES) rdma_send_counter;
     
     //
@@ -194,9 +192,9 @@ control RDMASender(
     action add_qpn_and_psn(queue_pair_t qpn) {
         hdr.ib_bth.dst_qp = qpn;
         //hdr.ib_bth.psn = (sequence_number_t) psn_action.execute();
-        //hdr.ib_bth.psn = psn_action.execute()[23:0];
-        temp_psn = psn_action.execute();
-        hdr.ib_bth.psn = temp_psn[23:0];
+        hdr.ib_bth.psn = psn_action.execute()[23:0];
+        //bit<32> temp_psn = psn_action.execute();
+        //hdr.ib_bth.psn = temp_psn[23:0];
     }
     
     table fill_in_qpn_and_psn {

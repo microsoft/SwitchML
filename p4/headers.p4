@@ -64,7 +64,6 @@ const udp_port_t UDP_PORT_SWITCHML_BASE = 0xbee0;
 const udp_port_t UDP_PORT_SWITCHML_MASK = 0xfff0;
 
 // SwitchML header
-//@pa_container_size("ingress", "hdr.switchml.pool_index", 32)
 header switchml_h {
     bit<4> msgType;
     bit<12> unused;
@@ -85,7 +84,6 @@ header switchml_h {
 // }
 
 // InfiniBand-RoCE Base Transport Header
-//@pa_container_size("ingress", "hdr.ib_bth.dst_qp", 16, 16)
 header ib_bth_h {
     ib_opcode_t       opcode;
     bit<1>            se;
@@ -102,10 +100,14 @@ header ib_bth_h {
     sequence_number_t psn;
 }
 
-// Make sure QP number and PSN are in 32-bit containers for register ops
-//@pa_container_size("ingress", "hdr.ib_bth.dst_qp", 32)
+
+// Make sure PSN is in 32-bit container in ingress for register ops.
+// Without this, I get
+// error: RDMAReceiver.p4(435): Could not place table
+// Ingress.rdma_receiver.receive_roce: The table
+// rdma_receiver_receive_roce could not fit within a single input
+// crossbar in an MAU stage
 @pa_container_size("ingress", "hdr.ib_bth.psn", 32)
-//@pa_container_size("egress", "hdr.ib_bth.psn", 8, 8, 8)
 
 // InfiniBand-RoCE RDMA Extended Transport Header
 header ib_reth_h {
@@ -113,9 +115,6 @@ header ib_reth_h {
     bit<32> r_key;
     bit<32> len;
 }
-
-
-//@pa_container_size("egress", "hdr.ib_immediate.immediate", 8, 8, 8, 8)
 
 // InfiniBand-RoCE Immediate Header
 header ib_immediate_h {
@@ -133,7 +132,6 @@ header exponents_h {
 }
 
 // 128-byte data header
-@pa_container_size("ingress", "hdr.d1.d00", 16, 16) // BUG: works around weird bug that zeros out half of this container
 header data_h {
     data_t d00;
     data_t d01;
