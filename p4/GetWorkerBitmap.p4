@@ -49,8 +49,8 @@ control GetWorkerBitmap(
         receive_counter.count();
         
         // bitmap representation for this worker
-        ig_md.worker_bitmap   = worker_bitmap;
-        ig_md.num_workers     = num_workers;
+        ig_md.worker_bitmap           = worker_bitmap;
+        ig_md.switchml_md.num_workers = num_workers;
         //ig_md.complete_bitmap = complete_bitmap; // TODO: probably delete this
 
         // group ID for this job

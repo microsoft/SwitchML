@@ -4,17 +4,67 @@
 #ifndef _UPDATE_WORKER_BITMAP_
 #define _UPDATE_WORKER_BITMAP_
 
+control ReconstructWorkerBitmap(
+    inout ingress_metadata_t ig_md) {
+
+    action reconstruct_worker_bitmap_from_worker_id(worker_bitmap_t bitmap) {
+        ig_md.worker_bitmap = bitmap;
+    }
+
+    table reconstruct_worker_bitmap {
+        key = {
+            ig_md.switchml_md.worker_id : ternary;
+        }
+        actions = {
+            reconstruct_worker_bitmap_from_worker_id;
+        }
+        const entries = {
+            0  &&& 0x1f : reconstruct_worker_bitmap_from_worker_id(1 << 0);
+            1  &&& 0x1f : reconstruct_worker_bitmap_from_worker_id(1 << 1);
+            2  &&& 0x1f : reconstruct_worker_bitmap_from_worker_id(1 << 2);
+            3  &&& 0x1f : reconstruct_worker_bitmap_from_worker_id(1 << 3);
+            4  &&& 0x1f : reconstruct_worker_bitmap_from_worker_id(1 << 4);
+            5  &&& 0x1f : reconstruct_worker_bitmap_from_worker_id(1 << 5);
+            6  &&& 0x1f : reconstruct_worker_bitmap_from_worker_id(1 << 6);
+            7  &&& 0x1f : reconstruct_worker_bitmap_from_worker_id(1 << 7);
+            8  &&& 0x1f : reconstruct_worker_bitmap_from_worker_id(1 << 8);
+            9  &&& 0x1f : reconstruct_worker_bitmap_from_worker_id(1 << 9);
+            10 &&& 0x1f : reconstruct_worker_bitmap_from_worker_id(1 << 10);
+            11 &&& 0x1f : reconstruct_worker_bitmap_from_worker_id(1 << 11);
+            12 &&& 0x1f : reconstruct_worker_bitmap_from_worker_id(1 << 12);
+            13 &&& 0x1f : reconstruct_worker_bitmap_from_worker_id(1 << 13);
+            14 &&& 0x1f : reconstruct_worker_bitmap_from_worker_id(1 << 14);
+            15 &&& 0x1f : reconstruct_worker_bitmap_from_worker_id(1 << 15);
+            16 &&& 0x1f : reconstruct_worker_bitmap_from_worker_id(1 << 16);
+            17 &&& 0x1f : reconstruct_worker_bitmap_from_worker_id(1 << 17);
+            18 &&& 0x1f : reconstruct_worker_bitmap_from_worker_id(1 << 18);
+            19 &&& 0x1f : reconstruct_worker_bitmap_from_worker_id(1 << 19);
+            20 &&& 0x1f : reconstruct_worker_bitmap_from_worker_id(1 << 20);
+            21 &&& 0x1f : reconstruct_worker_bitmap_from_worker_id(1 << 21);
+            22 &&& 0x1f : reconstruct_worker_bitmap_from_worker_id(1 << 22);
+            23 &&& 0x1f : reconstruct_worker_bitmap_from_worker_id(1 << 23);
+            24 &&& 0x1f : reconstruct_worker_bitmap_from_worker_id(1 << 24);
+            25 &&& 0x1f : reconstruct_worker_bitmap_from_worker_id(1 << 25);
+            26 &&& 0x1f : reconstruct_worker_bitmap_from_worker_id(1 << 26);
+            27 &&& 0x1f : reconstruct_worker_bitmap_from_worker_id(1 << 27);
+            28 &&& 0x1f : reconstruct_worker_bitmap_from_worker_id(1 << 28);
+            29 &&& 0x1f : reconstruct_worker_bitmap_from_worker_id(1 << 29);
+            30 &&& 0x1f : reconstruct_worker_bitmap_from_worker_id(1 << 30);
+            31 &&& 0x1f : reconstruct_worker_bitmap_from_worker_id(1 << 31);
+        }
+    }
+
+    apply {
+        reconstruct_worker_bitmap.apply();
+    }
+}
+
 control UpdateAndCheckWorkerBitmap(
     inout header_t hdr,
     inout ingress_metadata_t ig_md,
     in ingress_intrinsic_metadata_t ig_intr_md,
     inout ingress_intrinsic_metadata_for_deparser_t ig_dprsr_md,
     inout ingress_intrinsic_metadata_for_tm_t ig_tm_md) {
-
-    //Hash<drop_probability_t>(HashAlgorithm_t.RANDOM) rng;
-    //Random<drop_probability_t>() rng;
-
-    //drop_probability_t drop_calculation;
 
     Register<worker_bitmap_pair_t, pool_index_by2_t>(num_slots) worker_bitmap;
 
@@ -60,9 +110,6 @@ control UpdateAndCheckWorkerBitmap(
         // compute same updated bitmap that was stored in the register
         //ig_md.switchml_md.worker_bitmap_after = ig_md.switchml_md.worker_bitmap_before | ig_md.worker_bitmap;
 
-        // store original ingress port to be used in retransmissions (TODO: use worker ID instead?)
-        ig_md.switchml_md.ingress_port = ig_intr_md.ingress_port;
-
     }    
 
     action update_worker_bitmap_set0_action() {
@@ -98,42 +145,27 @@ control UpdateAndCheckWorkerBitmap(
             // drop packets indicated by the drop simulator
             (            _, packet_type_t.CONSUME0, 0xffff) : simulate_drop();
             
+            // // drop packets that have indices that extend beyond what's allowed for this job
+            // (            _, packet_type_t.CONSUME0, 0x8000 &&& 0x8000) : drop();
+            
             // direct updates to the correct set
             (15w0 &&& 15w1, packet_type_t.CONSUME0,      _) : update_worker_bitmap_set0_action();
             (15w1 &&& 15w1, packet_type_t.CONSUME0,      _) : update_worker_bitmap_set1_action();
 
-            
-            // // drop packets that have indices that extend beyond what's allowed
-            // (            _, packet_type_t.CONSUME0, 0x8000 &&& 0x8000) : drop();
+            (15w0 &&& 15w1, packet_type_t.CONSUME1,      _) : update_worker_bitmap_set0_action();
+            (15w1 &&& 15w1, packet_type_t.CONSUME1,      _) : update_worker_bitmap_set1_action();
 
-            // // direct updates to the correct set
-            // (15w0 &&& 15w1, packet_type_t.CONSUME, 0x0000 &&& 0x8000,                 _) : update_worker_bitmap_set0_action();
-            // (15w1 &&& 15w1, packet_type_t.CONSUME, 0x0000 &&& 0x8000,                 _) : update_worker_bitmap_set1_action();
-            // // drop packets that have indices that extend beyond what's allowed
-            // (            _, packet_type_t.CONSUME, 0x8000 &&& 0x8000,                 _) : drop();
-            // drop packets that have been randomly selected
-            //(            _, packet_type_t.CONSUME,                 _, 0x8000 &&& 0x8000) : drop();
+            (15w0 &&& 15w1, packet_type_t.CONSUME2,      _) : update_worker_bitmap_set0_action();
+            (15w1 &&& 15w1, packet_type_t.CONSUME2,      _) : update_worker_bitmap_set1_action();
+
+            (15w0 &&& 15w1, packet_type_t.CONSUME3,      _) : update_worker_bitmap_set0_action();
+            (15w1 &&& 15w1, packet_type_t.CONSUME3,      _) : update_worker_bitmap_set1_action();
         }
         const default_action = NoAction;
     }
 
-    //Random<drop_probability_t>() rng;
-    
     apply {
-        //ig_md.drop_calculation = rng.get({ig_intr_md.ingress_mac_tstamp});
-        //drop_calculation = rng.get({ig_intr_md.ingress_mac_tstamp});
-        //drop_calculation = rng.get();
-
         update_and_check_worker_bitmap.apply();
-        
-        // ig_md.drop_calculation = ig_md.drop_calculation |-| rng.get();
-
-        // if (ig_md.drop_calculation != 0) {
-        //     update_and_check_worker_bitmap.apply();
-        // } else {
-        //     drop();
-        // }
-        
     }
 }
 

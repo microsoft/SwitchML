@@ -196,7 +196,7 @@ control RDMAReceiver(
 
         // bitmap representation for this worker
         ig_md.worker_bitmap   = worker_bitmap;
-        ig_md.num_workers     = num_workers;
+        ig_md.switchml_md.num_workers     = num_workers;
 
         //ig_md.switchml_md.setValid(); // should already be set in parser to get here
 
@@ -239,8 +239,15 @@ control RDMAReceiver(
         
         //drop_random_value = rng.get();
         //ig_md.drop_calculation = drop_probability - (1w0 ++ rng.get());
-        //ig_md.drop_calculation = drop_probability - rng.get();
-        //ig_md.drop_calculation = rng.get({ig_prsr_md.global_tstamp, ig_intr_md.ingress_mac_tstamp});
+        //ig_md.drop_calculation = drop_probability & rng.get();
+        // compute pseudo-random value 
+
+        // drop_probability_t random_value = rng.get({
+        //         //ig_intr_md.ingress_port,
+        //         //ig_prsr_md.global_tstamp,
+        //         ig_intr_md.ingress_mac_tstamp});
+        // ig_md.drop_calculation = drop_probability & random_value;
+
         //ig_md.drop_calculation = hash1.get({ig_intr_md.ingress_mac_tstamp})[15:0];
         //ig_md.drop_calculation = drop_probability;
         

@@ -47,6 +47,8 @@ control Ingress(
 
     ARPandICMP() arp_and_icmp;
     GetWorkerBitmap() get_worker_bitmap;
+
+    ReconstructWorkerBitmap() reconstruct_worker_bitmap;
     UpdateAndCheckWorkerBitmap() update_and_check_worker_bitmap;
 
     ExponentMax() exponent_max;
@@ -94,6 +96,7 @@ control Ingress(
 
     RDMAReceiver() rdma_receiver;
 
+    
     apply {
         // see if this is a SwitchML packet
         // get worker masks, pool base index, other parameters for this packet
@@ -115,13 +118,24 @@ control Ingress(
             egress_drop_sim.apply(ig_md.port_metadata,
                 ig_md.switchml_md.recirc_port_selector,
                 ig_md.switchml_md.simulate_egress_drop);
+
+            // store original ingress port to be used in retransmissions (TODO: use worker ID instead?)
+            ig_md.switchml_md.ingress_port = ig_intr_md.ingress_port;
+        } else if (ig_md.switchml_md.packet_type == packet_type_t.CONSUME1 ||
+            ig_md.switchml_md.packet_type == packet_type_t.CONSUME2 ||
+            ig_md.switchml_md.packet_type == packet_type_t.CONSUME3) {
+            reconstruct_worker_bitmap.apply(ig_md);
         }
+
 
         
         // if it's still a SwitchML packet, continue processing.
-        // (do only on first pipeline pass, not on recirculated CONSUME passes)
+        // recompute in each pipeline in case of reordering.
         if (ig_dprsr_md.drop_ctl[0:0] == 1w0) {
-            if (ig_md.switchml_md.packet_type == packet_type_t.CONSUME0) { 
+            if (ig_md.switchml_md.packet_type == packet_type_t.CONSUME0 ||
+                ig_md.switchml_md.packet_type == packet_type_t.CONSUME1 ||
+                ig_md.switchml_md.packet_type == packet_type_t.CONSUME2 ||
+                ig_md.switchml_md.packet_type == packet_type_t.CONSUME3) { 
                 // for CONSUME packets, record packet reception and check if this packet is a retransmission.
                 update_and_check_worker_bitmap.apply(hdr, ig_md, ig_intr_md, ig_dprsr_md, ig_tm_md);
                 

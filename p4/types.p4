@@ -226,6 +226,8 @@ header switchml_md_h {
 
     bool simulate_egress_drop;
 
+    num_workers_t num_workers; // 1 byte
+
     //bit<16> debug_packet_id;
     debug_packet_id_t debug_packet_id;
 }
@@ -284,7 +286,7 @@ struct ingress_metadata_t {
 
     // how many workers in job?
     // communication between get_worker_bitmap and count_workers; not used in harvest
-    num_workers_t num_workers;
+    //num_workers_t num_workers;
 
     // check how many slots remain in this job's pool
     worker_pool_index_t pool_remaining;

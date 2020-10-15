@@ -435,12 +435,30 @@ control NextStep(
             // (packet_size_t.IBV_MTU_1024, 0xd &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST0(52);
             // (packet_size_t.IBV_MTU_1024, 0xe &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST0(56);
             // (packet_size_t.IBV_MTU_1024, 0xf &&& 0xf, packet_type_t.CONSUME0, 0, _, _, _) :recirculate_for_HARVEST0(60);
-            
+
             // drop others
+            // TODO: I reach here when workers have gotten out of sync.
             // DEBUG: reached here
             // ig_md_switchml_md_first_last_flag          0x1
             // ig_md_switchml_md_map_result               0x1
             (packet_size_t.IBV_MTU_1024,           _, packet_type_t.CONSUME0, _, _, _, _) :drop();
+            // // recirculate to see if we need to retransmit
+            // (packet_size_t.IBV_MTU_1024, 0x0 &&& 0xf, packet_type_t.CONSUME0, _, _, _, _) :recirculate_for_CONSUME1(128); // pipe 1
+            // (packet_size_t.IBV_MTU_1024, 0x1 &&& 0xf, packet_type_t.CONSUME0, _, _, _, _) :recirculate_for_CONSUME1(132);
+            // (packet_size_t.IBV_MTU_1024, 0x2 &&& 0xf, packet_type_t.CONSUME0, _, _, _, _) :recirculate_for_CONSUME1(136);
+            // (packet_size_t.IBV_MTU_1024, 0x3 &&& 0xf, packet_type_t.CONSUME0, _, _, _, _) :recirculate_for_CONSUME1(140);
+            // (packet_size_t.IBV_MTU_1024, 0x4 &&& 0xf, packet_type_t.CONSUME0, _, _, _, _) :recirculate_for_CONSUME1(144);
+            // (packet_size_t.IBV_MTU_1024, 0x5 &&& 0xf, packet_type_t.CONSUME0, _, _, _, _) :recirculate_for_CONSUME1(148);
+            // (packet_size_t.IBV_MTU_1024, 0x6 &&& 0xf, packet_type_t.CONSUME0, _, _, _, _) :recirculate_for_CONSUME1(152);
+            // (packet_size_t.IBV_MTU_1024, 0x7 &&& 0xf, packet_type_t.CONSUME0, _, _, _, _) :recirculate_for_CONSUME1(156);
+            // (packet_size_t.IBV_MTU_1024, 0x8 &&& 0xf, packet_type_t.CONSUME0, _, _, _, _) :recirculate_for_CONSUME1(160);
+            // (packet_size_t.IBV_MTU_1024, 0x9 &&& 0xf, packet_type_t.CONSUME0, _, _, _, _) :recirculate_for_CONSUME1(164);
+            // (packet_size_t.IBV_MTU_1024, 0xa &&& 0xf, packet_type_t.CONSUME0, _, _, _, _) :recirculate_for_CONSUME1(168);
+            // (packet_size_t.IBV_MTU_1024, 0xb &&& 0xf, packet_type_t.CONSUME0, _, _, _, _) :recirculate_for_CONSUME1(172);
+            // (packet_size_t.IBV_MTU_1024, 0xc &&& 0xf, packet_type_t.CONSUME0, _, _, _, _) :recirculate_for_CONSUME1(176);
+            // (packet_size_t.IBV_MTU_1024, 0xd &&& 0xf, packet_type_t.CONSUME0, _, _, _, _) :recirculate_for_CONSUME1(180);
+            // (packet_size_t.IBV_MTU_1024, 0xe &&& 0xf, packet_type_t.CONSUME0, _, _, _, _) :recirculate_for_CONSUME1(184);
+            // (packet_size_t.IBV_MTU_1024, 0xf &&& 0xf, packet_type_t.CONSUME0, _, _, _, _) :recirculate_for_CONSUME1(188);
 
             // Pipe 1: second pipe
             (packet_size_t.IBV_MTU_1024, _, packet_type_t.CONSUME1, _, _, _, _) :recirculate_for_CONSUME2_same_port_next_pipe();
