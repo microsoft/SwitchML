@@ -20,8 +20,12 @@ class RDMAReceiver(Table):
 
         self.logger = logging.getLogger('RDMAReceiver')
         self.logger.info("Setting up receive_roce table...")
-        
 
+        # offset in counter tables from configuration.p4
+        max_num_queue_pairs_per_worker = 512
+        max_num_workers = 32
+        self.worker_counter_offset = max_num_queue_pairs_per_worker
+        
         # get this table
         self.table = self.bfrt_info.table_get("pipe.Ingress.rdma_receiver.receive_roce")
         self.rdma_packet_counter = self.bfrt_info.table_get("pipe.Ingress.rdma_receiver.rdma_packet_counter")
@@ -40,6 +44,8 @@ class RDMAReceiver(Table):
         #self.add_default_entries()
 
     def clear(self):
+        self.worker_ids = []
+        
         if self.table is not None:
             self.table.entry_del(self.target)
             
@@ -103,6 +109,9 @@ class RDMAReceiver(Table):
         if num_workers > 0x8000:
             self.logger.error("Worker count {} too large; only 32K workers supported by this code.".format(num_workers))
 
+        # remember worker id
+        self.worker_ids.append(worker_rid)
+            
         # add entry for each opcode for each worker
         for opcode, action in [
                 # (rdma_opcode_s2n['UC_SEND_FIRST'],  'Ingress.rdma_receiver.first_packet'),
@@ -208,26 +217,35 @@ class RDMAReceiver(Table):
         self.rdma_sequence_violation_counter.operations_execute(self.target, 'Sync')
         self.simulated_drop_counter.operations_execute(self.target, 'Sync')
 
+        ids = [worker_id * self.worker_counter_offset + offset
+               for worker_id in self.worker_ids
+               for offset in range(start, start+count)]
+        ids.sort()
+
+        if len(ids) == 0:
+            print("No queue pairs currently in use.")
+            return
+        
         packets_resp = self.rdma_packet_counter.entry_get(
             self.target,
             [self.rdma_packet_counter.make_key([gc.KeyTuple('$COUNTER_INDEX', i)])
-             for i in range(start, start+count)],
-            flags={"from_hw": True})
+             for i in ids], #range(start, start+count)],
+            flags={"from_hw": False})
         messages_resp = self.rdma_message_counter.entry_get(
             self.target,
             [self.rdma_message_counter.make_key([gc.KeyTuple('$COUNTER_INDEX', i)])
-             for i in range(start, start+count)],
-            flags={"from_hw": True})
+             for i in ids], #range(start, start+count)],
+            flags={"from_hw": False})
         sequence_violations_resp = self.rdma_sequence_violation_counter.entry_get(
             self.target,
             [self.rdma_sequence_violation_counter.make_key([gc.KeyTuple('$COUNTER_INDEX', i)])
-             for i in range(start, start+count)],
-            flags={"from_hw": True})
+             for i in ids], #range(start, start+count)],
+            flags={"from_hw": False})
         drop_resp = self.simulated_drop_counter.entry_get(
             self.target,
             [self.simulated_drop_counter.make_key([gc.KeyTuple('$COUNTER_INDEX', i)])
-             for i in range(start, start+count)],
-            flags={"from_hw": True})
+             for i in ids], #range(start, start+count)],
+            flags={"from_hw": False})
         # else:
         #     r1 = self.rdma_message_counter.entry_get(
         #         self.target,
@@ -240,11 +258,15 @@ class RDMAReceiver(Table):
         messages = {}
         sequence_violations = {}
         drops = {}
+        worker_ids = {}
+        queue_pair_numbers = {}
         
         for v, k in packets_resp:
             v = v.to_dict()
             k = k.to_dict()
             packets[k['$COUNTER_INDEX']['value']] = v['$COUNTER_SPEC_PKTS']
+            worker_ids[k['$COUNTER_INDEX']['value']] = k['$COUNTER_INDEX']['value'] / self.worker_counter_offset
+            queue_pair_numbers[k['$COUNTER_INDEX']['value']] = k['$COUNTER_INDEX']['value'] % self.worker_counter_offset
 
         for v, k in messages_resp:
             v = v.to_dict()
@@ -262,9 +284,15 @@ class RDMAReceiver(Table):
             drops[k['$COUNTER_INDEX']['value']] = v['$COUNTER_SPEC_PKTS']
 
             
-        print("Queue Pair Number Packets     Messages   Sequence Violations Simulated Drops")
-        for i in messages:
-            print("{:>16} {:>10} {:>10} {:>20} {:>15}".format(i, packets[i], messages[i], sequence_violations[i], drops[i]))
+        print("Queue Pair Index   Worker ID  Worker Queue Pair Number     Packets    Messages  Sequence Violations  Simulated Drops")
+        for i in ids:
+            print("{:>16}  {:>10}  {:>24}  {:>10}  {:>10}  {:>19}  {:>15}".format(i,
+                                                                                  worker_ids[i],
+                                                                                  queue_pair_numbers[i],
+                                                                                  packets[i],
+                                                                                  messages[i],
+                                                                                  sequence_violations[i],
+                                                                                  drops[i]))
 
             
     def clear_counters(self):
