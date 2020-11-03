@@ -315,11 +315,15 @@ class Ports(object):
                 [self.pktgen_port_cfg_table.make_data([
                     gc.DataTuple('recirculation_enable', bool_val=True)])] * len(ports))
         except:
+            # print("""
+            # NOTE:
+            # You must "remove" the ports in the CLI before this code will work right now. For instance, for port 192:
+            # bf-sde.port_mgr> bf_port_rmv 0 1 64
+            # """)
             print("""
             NOTE:
             You must "remove" the ports in the CLI before this code will work right now.
             bf-sde.port_mgr> bf_port_rmv 0 1 64
-            bf-sde.port_mgr> bf_port_rmv 0 3 64
             """)
             raise
         

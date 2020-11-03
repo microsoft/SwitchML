@@ -265,6 +265,25 @@ void ClientThread::handle_recv_completion(const ibv_wc & wc, const uint64_t time
   // get QP index
   int qp_index = (wc.wr_id & 0xffff) % FLAGS_slots_per_core;
 
+#ifdef DEBUG_POOL_INDEX
+  // convert to host byte order
+  int32_t imm_data = ntohl(wc.imm_data);
+
+  // mask out pool index bits to match the first packet of the message
+  imm_data &= ~(((FLAGS_message_size / FLAGS_packet_size) - 1) * 2); // bitmask of pool index bits
+  
+  // check 
+  if (imm_data != send_wrs[qp_index].wr.rdma.rkey) {
+    std::cout << "Expected response for slot 0x" << std::dec << send_wrs[qp_index].wr.rdma.rkey << std::dec
+              << ", but got response for slot 0x" << std::hex << imm_data << std::dec
+              << " instead." << std::endl;
+  }
+  // else {
+  //   std::cout << "Got response for slot 0x" << std::hex << imm_data << std::dec
+  //             << " as expected." << std::endl;
+  // }
+#endif
+
   // repost recv wr
   reducer->connections.post_recv(queue_pairs[qp_index], &recv_wrs[qp_index]);
 

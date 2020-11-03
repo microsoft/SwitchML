@@ -11,6 +11,10 @@ control RDMASender(
     in egress_intrinsic_metadata_from_parser_t eg_intr_md_from_prsr,
     inout egress_intrinsic_metadata_for_deparser_t eg_intr_dprs_md) {
 
+    
+    Hash<bit<32>>(HashAlgorithm_t.IDENTITY) debug_hash;
+
+    
     // temporary variables
     addr_t rdma_base_addr;
     rkey_t rdma_rkey;
@@ -220,8 +224,23 @@ control RDMASender(
     action set_immediate() {
         hdr.ib_immediate.setValid();
         // TODO: put something here
+
+        // this fails to compile.
         //hdr.ib_immediate.immediate = 17w0 ++ eg_md.switchml_md.pool_index;
-        hdr.ib_immediate.immediate = 0x12345678;
+
+        // this fails to compile.        
+        //hdr.ib_immediate.immediate = 24w0 ++ eg_md.switchml_md.pool_index[7:0];
+
+        // this fails to compile.
+        //hdr.ib_immediate.immediate = (bit<32>) eg_md.switchml_md.pool_index[7:0];
+
+        // this works, but is not useful.
+        //hdr.ib_immediate.immediate = 0x12345678;
+
+        // this works, but is not useful.
+        hdr.ib_immediate.immediate = debug_hash.get({
+                17w0,
+                eg_md.switchml_md.pool_index});
     }
 
     action set_rdma() {
@@ -315,7 +334,12 @@ control RDMASender(
         // fill in opcode based on pool index
         set_opcodes.apply();
 
-        //hdr.ib_immediate.immediate = 17w0 ++ eg_md.switchml_md.pool_index;
+        // if (hdr.ib_immediate.isValid()) {
+        //     //hdr.ib_immediate.immediate = (bit<32>) eg_md.switchml_md.pool_index;
+        //     hdr.ib_immediate.immediate = debug_hash.get({
+        //             17w0,
+        //             eg_md.switchml_md.pool_index});
+        // }
 
     }
     

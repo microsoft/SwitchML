@@ -108,6 +108,9 @@ header ib_bth_h {
 // rdma_receiver_receive_roce could not fit within a single input
 // crossbar in an MAU stage
 @pa_container_size("ingress", "hdr.ib_bth.psn", 32)
+@pa_container_size("ingress", "hdr.ib_reth.r_key", 32)
+//@pa_container_size("ingress", "hdr.ib_bth.psn", 16,16)
+//@pa_container_size("ingress", "hdr.ib_reth.r_key", 16,16)
 
 // InfiniBand-RoCE RDMA Extended Transport Header
 header ib_reth_h {
@@ -117,6 +120,7 @@ header ib_reth_h {
 }
 
 // InfiniBand-RoCE Immediate Header
+//@pa_container_size("egress", "hdr.ib_immediate.immediate", 8, 8, 8, 8)
 header ib_immediate_h {
     bit<32> immediate;
 }

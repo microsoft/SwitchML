@@ -119,11 +119,6 @@ control NextStep(
         //next_step_counter.count();
     }
 
-    action recirculate_for_HARVEST7_alternate_port() {
-        hdr.d0.setInvalid();
-        recirculate_for_harvest(packet_type_t.HARVEST7, 2w3 ++ alternate_recirc_port[6:0]);
-    }
-
     action recirculate_for_HARVEST7_same_port() {
         hdr.d0.setInvalid();
         recirculate_for_harvest(packet_type_t.HARVEST7, ig_intr_md.ingress_port);
@@ -155,11 +150,6 @@ control NextStep(
         recirculate_for_harvest(packet_type_t.HARVEST7,recirc_port);
     }
 
-    action recirculate_for_HARVEST6_alternate_port() {
-        hdr.d1.setInvalid();
-        recirculate_for_harvest(packet_type_t.HARVEST6, 2w3 ++ alternate_recirc_port[6:0]);
-    }
-
     action recirculate_for_HARVEST6(PortId_t recirc_port) {
         hdr.d1.setInvalid();
         recirculate_for_harvest(packet_type_t.HARVEST6, recirc_port);
@@ -175,15 +165,13 @@ control NextStep(
         recirculate_for_harvest(packet_type_t.HARVEST5, ig_intr_md.ingress_port);
     }
 
-    action recirculate_for_HARVEST5_alternate_port() {
-        hdr.d0.setInvalid();
-        //recirculate_for_harvest(packet_type_t.HARVEST5, alternate_recirc_port);
-        recirculate_for_harvest(packet_type_t.HARVEST5, 2w1 ++ alternate_recirc_port[6:0]);
-    }
-
     action recirculate_for_HARVEST4(PortId_t recirc_port) {
         hdr.d1.setInvalid();
         recirculate_for_harvest(packet_type_t.HARVEST4, recirc_port);
+    }
+
+    action recirculate_for_HARVEST4_alternate_port() {
+        recirculate_for_HARVEST4(alternate_recirc_port);
     }
 
     action recirculate_for_HARVEST3_same_port() {
@@ -286,19 +274,17 @@ control NextStep(
         }
         actions = {
             recirculate_for_HARVEST7_256B;
-            recirculate_for_HARVEST6_alternate_port;
             recirculate_for_HARVEST6;
             recirculate_for_HARVEST4;
+            recirculate_for_HARVEST4_alternate_port;
             recirculate_for_HARVEST2;
             recirculate_for_CONSUME1;
             recirculate_for_CONSUME2_same_port_next_pipe;
             recirculate_for_CONSUME3_same_port_next_pipe;
             recirculate_for_HARVEST7;
             recirculate_for_HARVEST7_same_port;
-            recirculate_for_HARVEST7_alternate_port;
             recirculate_for_HARVEST5;
             recirculate_for_HARVEST5_same_port;
-            recirculate_for_HARVEST5_alternate_port;
             recirculate_for_HARVEST3_same_port;
             recirculate_for_HARVEST1_1024B;
             recirculate_for_HARVEST1_same_port_1024B;
@@ -519,7 +505,7 @@ control NextStep(
 
             // finish recirculation for 1024B in third pipe and continue in second pipe
             //(packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST3, _, _, _, true) :recirculate_for_HARVEST4(192);  // alternate port
-            (packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST3, _, _, _, true) :recirculate_for_HARVEST4(188);  // alternate port
+            (packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST3, _, _, _, true) :recirculate_for_HARVEST4_alternate_port();  // alternate port
             (packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST3, _, _, _,    _) :recirculate_for_HARVEST4(196);  // serialize harvest
             
             // // BUG: this causes some sort of weird CRC errors when using front-panel ports in loopback
@@ -553,8 +539,11 @@ control NextStep(
             //(packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST5, _, _, _, true) :recirculate_for_HARVEST6(448); // alternate port
             //(packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST5, _, _, _, true) :recirculate_for_HARVEST6(444); // alternate port
             //(packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST5, _, _, _,    _) :recirculate_for_HARVEST6(452); // serialize harvest
-            (packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST5, _, _, _, true) :recirculate_for_HARVEST6(64); // alternate port
-            (packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST5, _, _, _,    _) :recirculate_for_HARVEST6(68); // serialize harvest
+            //(packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST5, _, _, _, true) :recirculate_for_HARVEST6(64); // alternate port
+            //(packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST5, _, _, _,    _) :recirculate_for_HARVEST6(68); // serialize harvest
+
+            // Assume this port works for recirculation.
+            (packet_size_t.IBV_MTU_1024, _, packet_type_t.HARVEST5, _, _, _,    _) :recirculate_for_HARVEST6(64); // serialize harvest.
 // #ifdef LOOPBACK_DEBUG
 //             (packet_size_t.IBV_MTU_1024, 0 &&& 1, packet_type_t.HARVEST5, _, _, _, _) :recirculate_for_HARVEST6(452);
 // #else

@@ -364,14 +364,20 @@ class Job(Cmd, object):
     # TODO: replace this once BFRT-GRPC can properly enable the secondary recirc ports.
     #
     def do_alternate_recirc_port_enable(self, arg):
-        """Enable alternate recirc port in pipe 1 (dev port 192). 
+        """Enable alternate recirc port for HARVEST4 pass in pipe 1. Usage: do_alternate_recirc_port_enable [<optional port, default 192>]
 
            NOTE:
-           You must "remove" the ports in the CLI before this code will work right now.
+           For port 192, you must "remove" the ports in the CLI before this code will work right now.
            bf-sde.port_mgr> bf_port_rmv 0 1 64
         """
+
+        try:
+            alternate_recirc_port = int(arg)
+        except:
+            alternate_recirc_port = 192
+
         self.ports.enable_alternate_recirc_port()
-        self.next_step.enable_alternate_recirc_port()
+        self.next_step.enable_alternate_recirc_port(alternate_recirc_port)
 
     def do_alternate_recirc_port_disable(self, arg):
         'Disable alternate recirc port in pipe 1 (dev port 192).'

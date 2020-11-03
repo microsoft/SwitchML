@@ -135,10 +135,10 @@ class NextStep(Table):
         #     pprint((k, v))
 
     # enable secondary recirc port on pipe 1
-    def enable_alternate_recirc_port(self):
+    def enable_alternate_recirc_port(self, alternate_port = 192):
         self.recirc_port.default_entry_set(
             self.target,
-            self.recirc_port.make_data([gc.DataTuple('port', 192)],
+            self.recirc_port.make_data([gc.DataTuple('port', alternate_port)],
                                         'set_alternate_recirc_port'))
 
     def disable_alternate_recirc_port(self):
