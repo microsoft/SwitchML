@@ -197,6 +197,9 @@ header switchml_md_h {
     // what should we do with this packet?
     packet_type_t packet_type;
 
+    // This needs to be 0xFFFF
+    bit<16> ether_type_msb;
+
     // which pool element are we talking about?
     pool_index_t pool_index; // Index of pool elements, including both sets.
 
