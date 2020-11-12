@@ -112,8 +112,7 @@ control RDMAReceiver(
         worker_id_t worker_id, 
         num_workers_t num_workers,
         worker_bitmap_t worker_bitmap,
-        packet_size_t packet_size,
-        drop_probability_t drop_probability) {
+        packet_size_t packet_size) {
 
         // bitmap representation for this worker
         ig_md.worker_bitmap   = worker_bitmap;
@@ -126,13 +125,15 @@ control RDMAReceiver(
 
         ig_md.switchml_md.worker_type = worker_type;
         ig_md.switchml_md.worker_id = worker_id;     // Same as rid for worker; used when retransmitting RDMA packets
-        ig_md.switchml_md.dst_port = hdr.udp.src_port;
-
 
         //ig_md.switchml_rdma_md.setValid(); // should already be set in parser to get there
-        ig_md.switchml_rdma_md.rdma_addr = hdr.ib_reth.addr; // TODO: make this an index rather than an address
-        ig_md.switchml_md.tsi = hdr.ib_reth.len; // TODO: put this in a better place
+        ig_md.switchml_rdma_md.addr = hdr.ib_reth.addr; // TODO: make this an index rather than an address
+        ig_md.switchml_rdma_md.len = hdr.ib_reth.len[23:0]; // copy only as many bits as we care about
 
+        // record packet size for use in recirculation
+        ig_md.switchml_md.packet_size = packet_size;
+        ig_md.switchml_md.recirc_port_selector = (queue_pair_index_t) QP_INDEX;
+        
         // TODO: copy immediate to exponents
         // TODO: copy address
         
@@ -145,10 +146,6 @@ control RDMAReceiver(
         hdr.ib_immediate.setInvalid();
         //hdr.ib_icrc.setInvalid(); // this won't be set, since we leave it in the packet memory
 
-        // record packet size for use in recirculation
-        ig_md.switchml_md.packet_size = packet_size;
-        ig_md.switchml_md.recirc_port_selector = (queue_pair_index_t) QP_INDEX;
-        
         rdma_receive_counter.count();
     }
 
@@ -162,13 +159,14 @@ control RDMAReceiver(
         worker_id_t worker_id, 
         num_workers_t num_workers,
         worker_bitmap_t worker_bitmap,
-        packet_size_t packet_size,
-        drop_probability_t drop_probability) {
+        packet_size_t packet_size) {
 
         // set common fields
-        set_bitmap(mgid, worker_type, worker_id,  num_workers, worker_bitmap, packet_size, drop_probability);
+        set_bitmap(mgid, worker_type, worker_id,  num_workers, worker_bitmap, packet_size);
         ig_md.switchml_rdma_md.first_packet = false;
         ig_md.switchml_rdma_md.last_packet  = false;
+        //ig_md.switchml_md.first_packet = false;
+        //ig_md.switchml_md.last_packet  = false;
 
         // process sequence number
         return_t result = receiver_increment_action.execute(QP_INDEX);
@@ -189,13 +187,14 @@ control RDMAReceiver(
         worker_id_t worker_id, 
         num_workers_t num_workers,
         worker_bitmap_t worker_bitmap,
-        packet_size_t packet_size,
-        drop_probability_t drop_probability) {
+        packet_size_t packet_size) {
 
         // set common fields
-        set_bitmap(mgid, worker_type, worker_id,  num_workers, worker_bitmap, packet_size, drop_probability);
+        set_bitmap(mgid, worker_type, worker_id,  num_workers, worker_bitmap, packet_size);
         ig_md.switchml_rdma_md.first_packet = false;
         ig_md.switchml_rdma_md.last_packet  = true;
+        //ig_md.switchml_md.first_packet = false;
+        //ig_md.switchml_md.last_packet  = true;
 
         // process sequence number
         return_t result = receiver_increment_action.execute(QP_INDEX);
@@ -216,13 +215,14 @@ control RDMAReceiver(
         worker_id_t worker_id, 
         num_workers_t num_workers,
         worker_bitmap_t worker_bitmap,
-        packet_size_t packet_size,
-        drop_probability_t drop_probability) {
+        packet_size_t packet_size) {
 
         // set common fields
-        set_bitmap(mgid, worker_type, worker_id,  num_workers, worker_bitmap, packet_size, drop_probability);
+        set_bitmap(mgid, worker_type, worker_id,  num_workers, worker_bitmap, packet_size);
         ig_md.switchml_rdma_md.first_packet = true;
         ig_md.switchml_rdma_md.last_packet  = false;
+        //ig_md.switchml_md.first_packet = true;
+        //ig_md.switchml_md.last_packet  = false;
 
         // reset sequence number
         return_t result = receiver_reset_action.execute(QP_INDEX);
@@ -243,13 +243,14 @@ control RDMAReceiver(
         worker_id_t worker_id, 
         num_workers_t num_workers,
         worker_bitmap_t worker_bitmap,
-        packet_size_t packet_size,
-        drop_probability_t drop_probability) {
+        packet_size_t packet_size) {
 
         // set common fields
-        set_bitmap(mgid, worker_type, worker_id,  num_workers, worker_bitmap, packet_size, drop_probability);
+        set_bitmap(mgid, worker_type, worker_id,  num_workers, worker_bitmap, packet_size);
         ig_md.switchml_rdma_md.first_packet = true;
         ig_md.switchml_rdma_md.last_packet  = true;
+        //ig_md.switchml_md.first_packet = true;
+        //ig_md.switchml_md.last_packet  = true;
         
         // reset sequence number
         return_t result = receiver_reset_action.execute(QP_INDEX);

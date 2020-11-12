@@ -15,8 +15,7 @@ control ExponentMax(
     in exponent_t exponent1,
     out exponent_t max_exponent0,
     out exponent_t max_exponent1,
-    in header_t hdr,
-    inout ingress_metadata_t ig_md) {
+    in ingress_metadata_t ig_md) {
 
     Register<exponent_pair_t, pool_index_t>(register_size) exponents;
 
@@ -74,8 +73,8 @@ control ExponentMax(
     /* If type is HARVEST, read second value. */
     table exponent_max {
         key = {
-            ig_md.switchml_md.worker_bitmap_before : ternary;
-            ig_md.switchml_md.map_result : ternary;
+            ig_md.worker_bitmap_before : ternary;
+            ig_md.map_result : ternary;
             ig_md.switchml_md.packet_type: ternary;
         }
         actions = {

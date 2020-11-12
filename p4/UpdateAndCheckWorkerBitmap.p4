@@ -106,25 +106,24 @@ control UpdateAndCheckWorkerBitmap(
     
     action check_worker_bitmap_action() {
         // set map result to nonzero if this packet is a retransmission
-        ig_md.switchml_md.map_result = ig_md.switchml_md.worker_bitmap_before & ig_md.worker_bitmap;
+        ig_md.map_result = ig_md.worker_bitmap_before & ig_md.worker_bitmap;
         // compute same updated bitmap that was stored in the register
-        //ig_md.switchml_md.worker_bitmap_after = ig_md.switchml_md.worker_bitmap_before | ig_md.worker_bitmap;
+        //ig_md.worker_bitmap_after = ig_md.worker_bitmap_before | ig_md.worker_bitmap;
 
     }    
 
     action update_worker_bitmap_set0_action() {
-        ig_md.switchml_md.worker_bitmap_before = worker_bitmap_update_set0.execute(ig_md.switchml_md.pool_index[14:1]);
+        ig_md.worker_bitmap_before = worker_bitmap_update_set0.execute(ig_md.switchml_md.pool_index[14:1]);
         check_worker_bitmap_action();
     }
 
     action update_worker_bitmap_set1_action() {
-        ig_md.switchml_md.worker_bitmap_before = worker_bitmap_update_set1.execute(ig_md.switchml_md.pool_index[14:1]);
+        ig_md.worker_bitmap_before = worker_bitmap_update_set1.execute(ig_md.switchml_md.pool_index[14:1]);
         check_worker_bitmap_action();
     }
 
     table update_and_check_worker_bitmap {
         key = {
-            //ig_md.pool_set : ternary;
             ig_md.switchml_md.pool_index : ternary;
             ig_md.switchml_md.packet_type : ternary;  // only act on packets of type CONSUME0
             //ig_md.pool_remaining : ternary; // if sign bit is set, pool index was too large, so drop

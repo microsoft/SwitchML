@@ -18,7 +18,10 @@ control GetWorkerBitmap(
     inout ingress_intrinsic_metadata_for_tm_t ig_tm_md) {
     
     DirectCounter<counter_t>(CounterType_t.PACKETS_AND_BYTES) receive_counter;
-    
+
+    Hash<pool_index_t>(HashAlgorithm_t.IDENTITY) pool_index_hash;
+    Hash<bit<32>>(HashAlgorithm_t.IDENTITY) worker_bitmap_hash;
+
     // packet was received with errors; set drop bit in deparser metadata
     action drop() {
         // ignore this packet and drop when it leaves pipeline
@@ -39,6 +42,7 @@ control GetWorkerBitmap(
         worker_type_t worker_type,
         worker_id_t worker_id, 
         packet_type_t packet_type,
+        packet_size_t packet_size,
         num_workers_t num_workers,
         worker_bitmap_t worker_bitmap,
         worker_bitmap_t complete_bitmap,  // TODO: probably delete this
@@ -51,48 +55,33 @@ control GetWorkerBitmap(
         // bitmap representation for this worker
         ig_md.worker_bitmap           = worker_bitmap;
         ig_md.switchml_md.num_workers = num_workers;
-        //ig_md.complete_bitmap = complete_bitmap; // TODO: probably delete this
 
         // group ID for this job
         ig_md.switchml_md.mgid = mgid;
 
         ig_md.switchml_md.worker_type = worker_type;
         ig_md.switchml_md.worker_id = worker_id;     // Same as rid for worker; used when retransmitting RDMA packets
-        ig_md.switchml_md.dst_port = hdr.udp.src_port;
-        ig_md.switchml_md.src_port = hdr.udp.dst_port;
-        ig_md.switchml_md.tsi = hdr.switchml.tsi;
-        ig_md.switchml_md.unused = hdr.switchml.unused; // TODO: is this actually unused?
+
+        ig_md.switchml_md.packet_size = packet_size;
+        ig_md.switchml_md.recirc_port_selector = (queue_pair_index_t) hdr.switchml.pool_index;
+        //ig_md.switchml_md.recirc_port_selector = hdr.switchml.pool_index[12:0] ++ hdr.switchml.pool_index[15:15];
+        
+        // move the SwitchML set bit in the MSB to the LSB to match existing software
+        //ig_md.switchml_md.pool_index = hdr.switchml.pool_index[13:0] ++ hdr.switchml.pool_index[15:15]; // doesn't want to compile
+        ig_md.switchml_md.pool_index = pool_index_hash.get({hdr.switchml.pool_index[13:0], hdr.switchml.pool_index[15:15]});
+
+        ig_md.switchml_udp_md.setValid();
+        ig_md.switchml_udp_md.src_port = hdr.udp.src_port;
+        ig_md.switchml_udp_md.dst_port = hdr.udp.dst_port;
+        ig_md.switchml_udp_md.msg_type = hdr.switchml.msgType;
+        ig_md.switchml_udp_md.opcode = hdr.switchml.opcode;
+        ig_md.switchml_udp_md.tsi = hdr.switchml.tsi;
 
         // get rid of headers we don't want to recirculate
         hdr.ethernet.setInvalid();
         hdr.ipv4.setInvalid();
         hdr.udp.setInvalid();
         hdr.switchml.setInvalid();
-
-        //
-        // Pool parameters
-        //
-        
-        // packet index is 0-based; we add this to pool_offset to get the
-        // physical pool index that's correct for this job
-        // TODO: fix this so that container sizes match when we add the base to the index
-        //ig_md.switchml_md.pool_index = pool_base + (hdr.switchml.pool_index);
-        //ig_md.switchml_md.pool_index = hdr.switchml.pool_index[14:0];
-
-        // move the SwitchML set bit in the MSB to the LSB to match existing software
-        ig_md.switchml_md.pool_index = hdr.switchml.pool_index[13:0] ++ hdr.switchml.pool_index[15:15];
-        
-        // use LSB of pool index to determine which set this packet is targeting.
-        //ig_md.pool_set = hdr.switchml.pool_index[0:0];
-
-        // use the SwitchML set bit in the MSB to switch between sets
-        ig_md.pool_set = hdr.switchml.pool_index[15:15];
-        
-        // use this to check if pool index in packet is too large
-        // if it's negative, the index in the packet is too big, so drop
-        //ig_md.pool_remaining = pool_size_minus_1 - (1w0 ++ hdr.switchml.pool_index[14:0]);
-        //ig_md.pool_remaining = pool_size_minus_1 - (1w0 ++ ig_md.switchml_md.pool_index[14:0]);
-        ig_md.pool_remaining = 0; // disable for now
     }
     
     table get_worker_bitmap {
@@ -109,9 +98,9 @@ control GetWorkerBitmap(
             hdr.ipv4.src_addr         : ternary;
             hdr.ipv4.dst_addr         : ternary;
             hdr.udp.dst_port          : ternary;
-            hdr.ib_bth.partition_key  : ternary;
-            hdr.ib_bth.dst_qp         : ternary;
-            ig_prsr_md.parser_err     : ternary;
+            //hdr.ib_bth.partition_key  : ternary;
+            //hdr.ib_bth.dst_qp         : ternary;
+            //ig_prsr_md.parser_err     : ternary;
         }
         
         actions = {
@@ -121,8 +110,7 @@ control GetWorkerBitmap(
         }
         const default_action = forward;
         
-        // create some extra table space to support parser error entries
-        size = max_num_workers + 16;
+        size = max_num_workers;
 
         // count received packets
         counters = receive_counter;

@@ -248,9 +248,9 @@ control RDMASender(
         hdr.ib_reth.r_key = rdma_rkey;
         //hdr.ib_reth.len = 1w0 ++ rdma_message_length;
         //hdr.ib_reth.len = 10w0 ++ eg_md.switchml_rdma_md.message_len_by256 ++ 8w0;
-        hdr.ib_reth.len = eg_md.switchml_md.tsi;
+        hdr.ib_reth.len = (bit<32>) eg_md.switchml_rdma_md.len;
         //hdr.ib_reth.addr = rdma_base_addr + 0; //eg_md.switchml_md.rdma_addr; // TODO: ???
-        hdr.ib_reth.addr = eg_md.switchml_rdma_md.rdma_addr; // TODO: ???
+        hdr.ib_reth.addr = eg_md.switchml_rdma_md.addr; // TODO: ???
     }
     
     action set_opcode() {

@@ -26,19 +26,19 @@ control CountWorkers(
 
     action count_workers_action() {
         // 1 means last packet; 0 means first packet
-        ig_md.switchml_md.first_last_flag = worker_count_action.execute(ig_md.switchml_md.pool_index);
+        ig_md.first_last_flag = worker_count_action.execute(ig_md.switchml_md.pool_index);
     }
 
     action single_worker_count_action() {
         // execute register action even though it's irrelevant with a single worker
         worker_count_action.execute(ig_md.switchml_md.pool_index);
         // called for a new packet in a single worker job, so mark as last packet
-        ig_md.switchml_md.first_last_flag = 1;
+        ig_md.first_last_flag = 1;
     }
 
     action single_worker_read_action() {
         // called for a retransmitted packet in a single-worker job
-        ig_md.switchml_md.first_last_flag = 0;
+        ig_md.first_last_flag = 0;
     }
 
     RegisterAction<num_workers_pair_t, pool_index_t, num_workers_t>(worker_count) read_worker_count_action = {
@@ -49,7 +49,7 @@ control CountWorkers(
 
     action read_count_workers_action() {
         // 1 means last packet; 0 means first packet
-        ig_md.switchml_md.first_last_flag = read_worker_count_action.execute(ig_md.switchml_md.pool_index);
+        ig_md.first_last_flag = read_worker_count_action.execute(ig_md.switchml_md.pool_index);
     }
 
     // if no bits are set in the map result, this was the first time we
@@ -59,7 +59,7 @@ control CountWorkers(
     table count_workers {
         key = {
             ig_md.switchml_md.num_workers: ternary;
-            ig_md.switchml_md.map_result : ternary;
+            ig_md.map_result : ternary;
             ig_md.switchml_md.packet_type: ternary;
         }
         actions = {

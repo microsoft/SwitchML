@@ -34,6 +34,8 @@ control EgressDropSimulator(
     // used for drop probability
     inout port_metadata_t port_metadata,
     in queue_pair_index_t recirc_port_selector,
+    in PortId_t ig_intr_md_ingress_port,
+    out PortId_t ingress_port,
     // used to signal egress drop
     out bool simulate_egress_drop) {
 
@@ -50,10 +52,14 @@ control EgressDropSimulator(
             port_metadata.egress_drop_probability = rng.get() |+| port_metadata.egress_drop_probability; 
         }
         
+        // store original ingress port to be used in retransmissions (TODO: use worker ID instead?)
+        // do this here so the container can be shared with simulate_egress_drop
+        ingress_port = ig_intr_md_ingress_port;
+        
         simulate_egress_drop = false;
         if (port_metadata.egress_drop_probability == 0xffff) {
             simulate_egress_drop = true;
-        }
+        } 
 
         if (port_metadata.ingress_drop_probability == 0xffff ||
             port_metadata.egress_drop_probability  == 0xffff) {

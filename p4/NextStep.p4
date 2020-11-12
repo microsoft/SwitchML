@@ -138,7 +138,7 @@ control NextStep(
 
         // Just use existing ICRC we left in packet buffer!
         // // add empty ICRC header since this is the deepest we'll be in the packet
-        // // TODO: right now there's a bug aliasing this and g_md.switchml_md.first_last_flag, so don't set it
+        // // TODO: right now there's a bug aliasing this and ig_md.first_last_flag, so don't set it
         // hdr.ib_icrc.setValid();
         // //hdr.ib_icrc.icrc = 0xffffffff;
 
@@ -266,8 +266,8 @@ control NextStep(
             ig_md.switchml_md.worker_id : ternary; // leads to retransmissions
             
             ig_md.switchml_md.packet_type : ternary;
-            ig_md.switchml_md.first_last_flag : ternary; // 1: last 0: first
-            ig_md.switchml_md.map_result : ternary;
+            ig_md.first_last_flag : ternary; // 1: last 0: first
+            ig_md.map_result : ternary;
             ig_md.switchml_md.worker_type : ternary;
             //hdr.d1.d00 : ternary; // TODO: not used. dummy input to monitor this value in the model.
             use_alternate_recirc_port : ternary;

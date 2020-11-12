@@ -20,8 +20,8 @@ control SetDestinationAddress(
         hdr.ethernet.src_addr = switch_mac;
         hdr.ipv4.src_addr = switch_ip;
 
-        // TODO: should we do this swap here or elsewhere?
-        hdr.udp.src_port = eg_md.switchml_md.src_port;
+        // swap source and destination ports (dst assigned later)
+        hdr.udp.src_port = eg_md.switchml_udp_md.dst_port;
 
 
 
@@ -46,10 +46,9 @@ control SetDestinationAddress(
         hdr.udp.length = UDP_LENGTH;
 
         hdr.switchml.setValid();
-        hdr.switchml.msgType = 1;
-        hdr.switchml.unused = 1;
-        hdr.switchml.tsi = eg_md.switchml_md.tsi;
-        hdr.switchml.unused = eg_md.switchml_md.unused;
+        hdr.switchml.msgType = eg_md.switchml_udp_md.msg_type;
+        hdr.switchml.opcode = eg_md.switchml_udp_md.opcode;
+        hdr.switchml.tsi = eg_md.switchml_udp_md.tsi;
 
         // rearrange or in set bit later
         hdr.switchml.pool_index[13:0] = eg_md.switchml_md.pool_index[14:1];
@@ -72,7 +71,7 @@ control SetDestinationAddress(
         hdr.ipv4.dst_addr = ip_dst_addr;
 
         // send back to source port for software PS implementation
-        hdr.udp.dst_port = eg_md.switchml_md.dst_port;
+        hdr.udp.dst_port = eg_md.switchml_udp_md.src_port;
 
         // disable UDP checksum for now
         hdr.udp.checksum = 0;

@@ -104,18 +104,18 @@ control DebugLog(
 
     apply {
         // Convert various things to single bits for logging
-        if (ig_md.switchml_md.map_result           != 0) { map_result_nonzero = true; }
-        if (ig_md.switchml_md.worker_bitmap_before != 0) { bitmap_before_nonzero = true; }
-        if (ig_md.switchml_md.first_last_flag      == 0) { first_flag = true; }
-        if (ig_md.switchml_md.first_last_flag      == 1) { last_flag  = true; }
+        if (ig_md.map_result           != 0) { map_result_nonzero = true; }
+        if (ig_md.worker_bitmap_before != 0) { bitmap_before_nonzero = true; }
+        if (ig_md.first_last_flag      == 0) { first_flag = true; }
+        if (ig_md.first_last_flag      == 1) { last_flag  = true; }
         if (!ig_md.switchml_rdma_md.isValid() || ig_md.switchml_rdma_md.first_packet) { first_packet_of_message  = true; }
         if (!ig_md.switchml_rdma_md.isValid() || ig_md.switchml_rdma_md.last_packet) { last_packet_of_message  = true; }
 
         // copy lower 8 address/index bits 
         if (ig_md.switchml_rdma_md.isValid() && ig_md.switchml_md.packet_size == packet_size_t.IBV_MTU_1024) {
-            address_bits = ig_md.switchml_rdma_md.rdma_addr[17:10];
+            address_bits = ig_md.switchml_rdma_md.addr[17:10];
         } else if (ig_md.switchml_rdma_md.isValid() && ig_md.switchml_md.packet_size == packet_size_t.IBV_MTU_256) {
-            address_bits = ig_md.switchml_rdma_md.rdma_addr[15:8];
+            address_bits = ig_md.switchml_rdma_md.addr[15:8];
         }
         // // TODO: add support for SwitchML UDP
         // else { address_bits = ig_md.switchml_md.tsi[7:0]; }

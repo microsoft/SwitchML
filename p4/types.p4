@@ -110,11 +110,14 @@ struct exponent_pair_t {
 }
 
 // RDMA MTU (packet size). Matches ibv_mtu enum in verbs.h
-enum bit<3> packet_size_t {
-    IBV_MTU_128  = 0, // not actually defined in IB, but useful for no recirculation tests
+enum bit<2> packet_size_t { // ibv_mtu would be bit<3>, but the larger sizes are not supported in the switch
+    IBV_MTU_128  = 0, // not actually defined in IB, but maybe useful for no-recirculation tests
     IBV_MTU_256  = 1,
     IBV_MTU_512  = 2,
     IBV_MTU_1024 = 3
+    // IBV_MTU_2048 = 4, // not supported in switch
+    // IBV_MTU_4096 = 5  // not supported in switch
+    
 }
 
 // make drop random value small enough to be used with gateway
@@ -163,151 +166,128 @@ struct port_metadata_t {
 }
 
 
-// SwitchML metadata header; bridged for recirculation (and not exposed outside the switch)
-// We should keep this <= 28 bytes to avoid impacting non-SwitchML minimum size packets.
-//@pa_container_size("ingress", "ig_md.switchml_md.dst_port_qpn", 16, 16)
-//@pa_container_size("egress", "eg_md.switchml_md.dst_port_qpn", 16, 16)
-
-//@pa_container_size("egress", "eg_md.switchml_md.pool_index", 32)
-//@pa_container_size("ingress", "ig_md.switchml_md.pool_index", 16)
-//@pa_container_size("ingress", "ig_md.switchml_md.debug_packet_id", 8, 8, 8, 8)
-
-@flexible
+// SwitchML metadata header; bridged for recirculation (and not exposed outside the switch).
+// We should keep this + the RDMA or UDP metadata headers <= 28 bytes to avoid impacting non-SwitchML minimum size packets.
 header switchml_md_h {
+
+    // byte 0
+    
     MulticastGroupId_t mgid; // 16 bits
-
-    //bit<16> ingress_port;
-    //bit<16> recirc_port_selector;
-    queue_pair_index_t recirc_port_selector;
-    //bit<8> ingress_port; // GRR
-
-    // @padding
-    // bit<1> pad;
-
-    packet_size_t packet_size;
-
-    // is this RDMA or UDP?
-    worker_type_t worker_type;
-    worker_id_t worker_id;
-
-    // dest port or QPN to be used for responses
-    bit<16> src_port;
-    bit<16> dst_port;
-
-    // what should we do with this packet?
-    packet_type_t packet_type;
-
-    // This needs to be 0xFFFF
-    bit<16> ether_type_msb;
-
+    
+    // byte 2
+    
+    worker_id_t worker_id; // 16 bits
+    
+    // byte 4
+    
     // which pool element are we talking about?
-    pool_index_t pool_index; // Index of pool elements, including both sets.
+    @padding
+    bit<1> _pad7;
+    pool_index_t pool_index; // Index of pool elements, including both sets. 1 + 15 = 16 bits
 
-    // 0 if first packet, 1 if last packet
-    num_workers_t first_last_flag;
+    // byte 6
 
+    @padding
+    bit<2> _pad0;
+    queue_pair_index_t recirc_port_selector; // 2 + 9 + 5 = 16 bits
 
-    // // random number used to simulated packet drops
-    //drop_random_value_t drop_random_value;
+    // byte 8
+    
+    num_workers_t num_workers; // 8 bits
 
-    // 0 if packet is first packet; non-zero if retransmission
-    worker_bitmap_t map_result;
+    // byte 9
+    
+    packet_size_t packet_size;
+    worker_type_t worker_type; // is this RDMA or UDP?
+    packet_type_t packet_type; // 2 + 2 + 4 = 8 bits    
 
-    // bitmaps before and after the current worker is ORed in
-    worker_bitmap_t worker_bitmap_before;
-    //worker_bitmap_t worker_bitmap_after;
+    // byte 10
+    
+    bool simulate_egress_drop;
+    @padding
+    bit<6> _pad5;
+    PortId_t ingress_port; // 7 + 9 = 16 bits
 
-    // tsi used to fill in switchml header (or RoCE address later)
-    bit<32> tsi;
-    bit<12> unused;
+    // byte 12
+
+    bool eth_hdr_len_field_high_order_bit; // make sure this bit is set to 1 to avoid problems with MAC loopback
+    @padding
+    bit<4> _pad8;
+    debug_packet_id_t debug_packet_id; // 5 + 19 = 24 bits
+
+    // byte 15
 
     // @padding
-    // bit<5> pad2;
-
-    PortId_t ingress_port;
-    //bit<64> rdma_addr;
-
-    bool simulate_egress_drop;
-
-    num_workers_t num_workers; // 1 byte
-
-    //bit<16> debug_packet_id;
-    debug_packet_id_t debug_packet_id;
+    // bit<6> _pad6;
+    // bool first_packet;
+    // bool last_packet;
 }
 //switchml_md_h switchml_md_initializer = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
 
-//@pa_container_size("ingress", "ig_md.switchml_rdma_md.rdma_addr", 32, 8, 8, 16)
-@flexible
-header switchml_rdma_md_h {
-    //@padding
-    //bit<6> pad;
+// Header added to UDP packets. This padding seems necessary to get
+// the design to compile.
+header switchml_udp_md_h {
+    bit<16> src_port;
+    bit<16> dst_port;
+
+    bit<32> tsi;
     
+    bit<4> msg_type;
+    @padding
+    bit<4> _pad0;
+
+    @padding
+    bit<4> _pad1;
+    bit<12> opcode;
+}
+
+// Header added to RDMA packets.
+header switchml_rdma_md_h {
+    @padding
+    bit<6> _pad;
     bool first_packet; // set both for only packets
     bool last_packet;
+    
     // // min message len is 256 bytes
-    // // max is (22528/2)*256, or 11264*256 (all pool indices for one slot)
-    // bit<14> message_len_by256; // only store relevant bits
-    bit<64> rdma_addr; // TODO: make this an index rather than an address
+    // // max is 4*(22528/2)*256, or 4*11264*256 (all pipes and pool indices for one slot)
+    bit<24> len; // store only as many bits as we care about
+    bit<64> addr; // TODO: make this an index rather than an address
 }
 
 // header prepended to mirrored debug packets
-// must be 32 or fewer bytes 
 header switchml_debug_h {
     // ethernet header
     mac_addr_t dst_addr;    
     mac_addr_t src_addr;
     bit<16>    ether_type; // 14 bytes
-
-    
-    worker_id_t worker_id; // 2 bytes
-    bit<1> padding;
-    pool_index_t pool_index; // 2 bytes
-    
-    // 0 if first packet, 1 if last packet
-    num_workers_t first_last_flag; // 1 byte
-
-    //num_workers_t num_workers; // 1 byte (ingress only)
-
-    // // debug info
-    // bit<6> unused;
-    // packet_type_t packet_type; // 3 bits
 }
 
 // Metadata for ingress stage
+@pa_container_size("ingress", "ig_md.worker_bitmap", 32) // to deal with assignments in RDMAReceiver/GetWorkerBitmap
 @flexible
 struct ingress_metadata_t {
     switchml_md_h switchml_md;
     switchml_rdma_md_h switchml_rdma_md;
+    switchml_udp_md_h switchml_udp_md;
     
     // this bitmap has one bit set for the current packet's worker
-    // communication between get_worker_bitmap and update_and_check_worker_bitmap; not used in harvest
     worker_bitmap_t worker_bitmap;
 
-    // // this bitmap shows the way the bitmap should look when complete
-    // // communication between get_worker_bitmap and update_and_check_worker_bitmap; not used in harvest
-    // worker_bitmap_t complete_bitmap; // TODO: probably delete this
+    // bitmap before the current worker is ORed in
+    worker_bitmap_t worker_bitmap_before;
 
-    // how many workers in job?
-    // communication between get_worker_bitmap and count_workers; not used in harvest
-    //num_workers_t num_workers;
+    // 0 if first packet, 1 if last packet
+    num_workers_t first_last_flag;
+
+    // 0 if packet is first packet; non-zero if retransmission
+    worker_bitmap_t map_result;
 
     // check how many slots remain in this job's pool
     worker_pool_index_t pool_remaining;
 
-    // set if index is in set1
-    // communication between get_worker_bitmap and update_and_check_worker_bitmap; not used in harvest
-    bit<1> pool_set;
-
     // checksum stuff
     bool checksum_err_ipv4;
     bool update_ipv4_checksum;
-
-    MirrorId_t mirror_session;
-    bit<16> mirror_ether_type;
-
-    // switch MAC and IP
-    mac_addr_t switch_mac;
-    ipv4_addr_t switch_ip;
 
     port_metadata_t port_metadata;
 }
@@ -317,17 +297,12 @@ struct ingress_metadata_t {
 struct egress_metadata_t {
     switchml_md_h switchml_md;
     switchml_rdma_md_h switchml_rdma_md;
+    switchml_udp_md_h switchml_udp_md;
+    switchml_debug_h switchml_debug;
     
     // checksum stuff
     bool checksum_err_ipv4;
     bool update_ipv4_checksum;
-
-    // pool_index_t pool_index_mask;
-    // pool_index_t masked_pool_index;
-    
-    // // switch MAC and IP
-    // mac_addr_t switch_mac;
-    // ipv4_addr_t switch_ip;
 }
 //const egress_metadata_t egress_metadata_initializer = {{0, 0, true, 0, 0, packet_type_t.IGNORE, 0, 0, 0, 0, 0, 0}, false, false, 0, 0 };
 

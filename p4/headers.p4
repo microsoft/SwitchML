@@ -66,7 +66,7 @@ const udp_port_t UDP_PORT_SWITCHML_MASK = 0xfff0;
 // SwitchML header
 header switchml_h {
     bit<4> msgType;
-    bit<12> unused;
+    bit<12> opcode;
     bit<32> tsi;
     bit<16> pool_index;
 }
@@ -174,9 +174,6 @@ header data_h {
 
 // Full header stack
 struct header_t {
-    // used only for mirroring packets
-    switchml_debug_h switchml_debug;
-
     // normal headers
     ethernet_h     ethernet;
     arp_h          arp;
