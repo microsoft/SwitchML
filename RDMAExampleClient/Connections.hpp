@@ -45,9 +45,9 @@ public: // TODO: undo this as much as necessary
   GRPCClient grpc_client;
   
   /// constants for initializing queues
-  static const int completion_queue_depth       = 128;    // need to handle concurrent send and receive completions on each queue
-  static const int send_queue_depth             = 128;    // need to be able to post a send before we've processed the previous one's completion
-  static const int receive_queue_depth          = 1;    // only need 1 if we're just using non-immediate RDMA ops
+  static const int completion_queue_depth       = 256;  // need to handle concurrent send and receive completions on each queue
+  static const int send_queue_depth             = 128;  // need to be able to post a send before we've processed the previous one's completion
+  static const int receive_queue_depth          = 128;  // need to be able to receive immediate value notifications
   static const int scatter_gather_element_count = 1;    // how many SGE's do we allow per operation?
   static const int max_inline_data              = 16;   // how much inline data should we support?
   static const int max_dest_rd_atomic           = 0;    // how many outstanding reads/atomic ops are allowed? (remote end of qp, limited by card)

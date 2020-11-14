@@ -402,9 +402,9 @@ void ClientThread::compute_thread_pointers() {
   // compute pointers into buffer, ensuring that we don't run
   // off the end of the buffer with the last message
   base_pointer = reducer->src_buffer;
-  thread_start_pointer = reducer->src_buffer + (start_message_index * FLAGS_message_size / sizeof(float));
-  thread_end_pointer   = std::min(thread_start_pointer + (end_message_index * FLAGS_message_size / sizeof(float)),
-                                  reducer->src_buffer + reducer->length);
+  thread_start_pointer = base_pointer + (start_message_index * FLAGS_message_size / sizeof(float));
+  thread_end_pointer   = std::min(base_pointer + (end_message_index * FLAGS_message_size / sizeof(float)),
+                                  base_pointer + reducer->length);
 
   // initialize per-slot indices/pointers for this thread
   for (int i = 0; i < FLAGS_slots_per_core; ++i) {
