@@ -36,6 +36,15 @@ class Ports(object):
         # list of active ports
         self.active_ports = []
 
+        # loopback ports
+        self.loopback_ports = ([64] +                # Pipe 0 CPU ethernet port
+                               #[444] +                # Pipe 0 CPU ethernet port
+                               #range(  0,  0+64,4) + # Pipe 0: all 16 front-panel ports
+                               range(128,128+64,4) + # Pipe 1: all 16 front-panel ports
+                               range(256,256+64,4) + # Pipe 2: all 16 front-panel ports
+                               range(384,384+64,4))  # Pipe 3: all 16 front-panel ports
+            
+
         # pktget table to configure recirculation
         #pktgen_app_cfg_table = bfrt_info.table_get("$PKTGEN_APPLICATION_CFG")
         #pktgen_pkt_buffer_table = bfrt_info.table_get("$PKTGEN_PKT_BUFFER")
@@ -178,6 +187,13 @@ class Ports(object):
                 print("No ports active.")
                 return
             
+        self.list_ports_helper(dev_ports)
+
+    # print loopback ports
+    def list_loopback_ports(self):
+        self.list_ports_helper(self.loopback_ports)
+
+    def list_posrt_helper(self, dev_ports):
         # get port info
         result = self.port_table.entry_get(
             self.target,
@@ -265,24 +281,17 @@ class Ports(object):
 
     def enable_loopback_ports(self):
         # enable loopback on front panel ports
-        loopback_ports = ([64] +                # Pipe 0 CPU ethernet port
-                          #[444] +                # Pipe 0 CPU ethernet port
-                          #range(  0,  0+64,4) + # Pipe 0: all 16 front-panel ports
-                          range(128,128+64,4) + # Pipe 1: all 16 front-panel ports
-                          range(256,256+64,4) + # Pipe 2: all 16 front-panel ports
-                          range(384,384+64,4))  # Pipe 3: all 16 front-panel ports
-            
 
-        self.logger.info("Enabling loopback on {} front panel ports...".format(len(loopback_ports)))
+        self.logger.info("Enabling loopback on {} front panel ports...".format(len(self.loopback_ports)))
 
         self.port_table.entry_add(
             self.target,
             [self.port_table.make_key([gc.KeyTuple('$DEV_PORT', dev_port)])
-             for dev_port in loopback_ports],
+             for dev_port in self.loopback_ports],
             [self.port_table.make_data([gc.DataTuple('$SPEED', str_val='BF_SPEED_100G'),
                                         gc.DataTuple('$FEC', str_val='BF_FEC_TYP_NONE'),
                                         gc.DataTuple('$LOOPBACK_MODE', str_val="BF_LPBK_MAC_NEAR"),
-                                        gc.DataTuple('$PORT_ENABLE', bool_val=True)])] * len(loopback_ports))
+                                        gc.DataTuple('$PORT_ENABLE', bool_val=True)])] * len(self.loopback_ports))
 
 
         #self.enable_additional_loopback_ports()
@@ -291,8 +300,11 @@ class Ports(object):
         # pipes 0 and 1 (TODO: 0 doesn't work)
         #ports = [64, 192]
         
-        # pipes 1 and 3
-        ports = [192, 448]
+        # # pipes 1 and 3
+        # ports = [192, 448]
+        
+        # pipe 1
+        ports = [192]
         
         print("Checking port state before enabling recirculation mode:")
         resp = self.pktgen_port_cfg_table.entry_get(
