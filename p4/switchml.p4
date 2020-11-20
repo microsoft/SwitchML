@@ -121,7 +121,7 @@ control Ingress(
                 ig_md.switchml_md.ingress_port,                
                 ig_md.switchml_md.simulate_egress_drop);
         } else if ((packet_type_underlying_t) ig_md.switchml_md.packet_type >= (packet_type_underlying_t) packet_type_t.CONSUME1) {
-            // reconstruct worker bitmap for CONSUME1-3 and HARVEST*
+            // reconstruct worker bitmap and slot status for CONSUME1-3 and HARVEST*
             reconstruct_worker_bitmap.apply(ig_md);
         }
 

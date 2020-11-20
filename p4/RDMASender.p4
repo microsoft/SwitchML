@@ -286,8 +286,8 @@ control RDMASender(
     table set_opcodes {
         key = {
             //eg_md.switchml_md.pool_index : ternary;
-            eg_md.switchml_rdma_md.first_packet : exact;
-            eg_md.switchml_rdma_md.last_packet : exact;
+            eg_md.switchml_md.first_packet_of_message : exact;
+            eg_md.switchml_md.last_packet_of_message  : exact;
         }
         actions = {
             set_opcode;

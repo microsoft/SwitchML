@@ -163,10 +163,8 @@ control RDMAReceiver(
 
         // set common fields
         set_bitmap(mgid, worker_type, worker_id,  num_workers, worker_bitmap, packet_size);
-        ig_md.switchml_rdma_md.first_packet = false;
-        ig_md.switchml_rdma_md.last_packet  = false;
-        //ig_md.switchml_md.first_packet = false;
-        //ig_md.switchml_md.last_packet  = false;
+        ig_md.switchml_md.first_packet_of_message = false;
+        ig_md.switchml_md.last_packet_of_message  = false;
 
         // process sequence number
         return_t result = receiver_increment_action.execute(QP_INDEX);
@@ -191,10 +189,8 @@ control RDMAReceiver(
 
         // set common fields
         set_bitmap(mgid, worker_type, worker_id,  num_workers, worker_bitmap, packet_size);
-        ig_md.switchml_rdma_md.first_packet = false;
-        ig_md.switchml_rdma_md.last_packet  = true;
-        //ig_md.switchml_md.first_packet = false;
-        //ig_md.switchml_md.last_packet  = true;
+        ig_md.switchml_md.first_packet_of_message = false;
+        ig_md.switchml_md.last_packet_of_message  = true;
 
         // process sequence number
         return_t result = receiver_increment_action.execute(QP_INDEX);
@@ -219,10 +215,8 @@ control RDMAReceiver(
 
         // set common fields
         set_bitmap(mgid, worker_type, worker_id,  num_workers, worker_bitmap, packet_size);
-        ig_md.switchml_rdma_md.first_packet = true;
-        ig_md.switchml_rdma_md.last_packet  = false;
-        //ig_md.switchml_md.first_packet = true;
-        //ig_md.switchml_md.last_packet  = false;
+        ig_md.switchml_md.first_packet_of_message = true;
+        ig_md.switchml_md.last_packet_of_message  = false;
 
         // reset sequence number
         return_t result = receiver_reset_action.execute(QP_INDEX);
@@ -247,10 +241,8 @@ control RDMAReceiver(
 
         // set common fields
         set_bitmap(mgid, worker_type, worker_id,  num_workers, worker_bitmap, packet_size);
-        ig_md.switchml_rdma_md.first_packet = true;
-        ig_md.switchml_rdma_md.last_packet  = true;
-        //ig_md.switchml_md.first_packet = true;
-        //ig_md.switchml_md.last_packet  = true;
+        ig_md.switchml_md.first_packet_of_message = true;
+        ig_md.switchml_md.last_packet_of_message  = true;
         
         // reset sequence number
         return_t result = receiver_reset_action.execute(QP_INDEX);

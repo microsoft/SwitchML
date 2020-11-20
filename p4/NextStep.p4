@@ -207,9 +207,9 @@ control NextStep(
     action broadcast_eth() {
         hdr.d1.setInvalid();
 
-        // set the switch as the source MAC address
-        hdr.ethernet.src_addr = hdr.ethernet.dst_addr;
-        // destination address will be filled in egress pipe
+        // // set the switch as the source MAC address
+        // hdr.ethernet.src_addr = hdr.ethernet.dst_addr;
+        // // destination address will be filled in egress pipe
 
         // send to multicast group; egress will fill in destination IP and MAC address
         ig_tm_md.mcast_grp_a = ig_md.switchml_md.mgid;
@@ -582,15 +582,23 @@ control NextStep(
     }
     
     //Random<drop_probability_t>() rng;
+
+    // Actions to count packets. Do this in actions instead
+    // of inline to make debugging output more readable. 
+    action count_drop_action()        { drop_counter.count(ig_md.switchml_md.pool_index); }
+    action count_recirculate_action() { recirculate_counter.count(ig_md.switchml_md.pool_index); }
+    action count_broadcast_action()   { broadcast_counter.count(ig_md.switchml_md.pool_index); }
+    action count_retransmit_action()  { retransmit_counter.count(ig_md.switchml_md.pool_index); }
+
+    // Actions to set slot status flags for bitmaps to be used in harvest. Do
+    // this in actions instead of inline to make debugging output more
+    // readable. These depend on being initialized to false in the parser.
+    action set_map_result_nonzero()    { ig_md.switchml_md.map_result_nonzero = true; }    
+    action set_bitmap_before_nonzero() { ig_md.switchml_md.bitmap_before_nonzero = true; }
+    action set_first_flag()            { ig_md.switchml_md.first_flag = true; }
+    action set_last_flag()             { ig_md.switchml_md.last_flag = true;  }
     
     apply {
-        // ig_md.drop_calculation = ig_md.drop_calculation |-| rng.get();
-
-        // if (ig_md.drop_calculation != 0) {
-        //     next_step.apply();
-        // } else {
-        //     drop();
-        // }
         count_consume = false;
         count_harvest = false;
 
@@ -606,31 +614,27 @@ control NextStep(
 
 
         if (count_consume || count_drop) {
-            drop_counter.count(ig_md.switchml_md.pool_index);
+            count_drop_action();
         }
         
         if (count_recirculate) {
-            recirculate_counter.count(ig_md.switchml_md.pool_index);
+            count_recirculate_action();
         }
 
         if (count_broadcast) {
-            broadcast_counter.count(ig_md.switchml_md.pool_index);
+            count_broadcast_action();
         }
 
         if (count_retransmit) {
-            retransmit_counter.count(ig_md.switchml_md.pool_index);
+            count_retransmit_action();
         }
 
 
-
-        
-        // if (count_consume) {
-        //     consume_counter.count(ig_md.switchml_md.pool_index);
-        // }
-
-        // if (count_harvest) {
-        //     harvest_counter.count(ig_md.switchml_md.pool_index);
-        // } 
+        // set/overwrite slot status flags for harvest passes
+        if (ig_md.map_result           != 0) { set_map_result_nonzero(); }
+        if (ig_md.worker_bitmap_before != 0) { set_bitmap_before_nonzero(); }
+        if (ig_md.first_last_flag      == 0) { set_first_flag(); }
+        if (ig_md.first_last_flag      == 1) { set_last_flag(); }
     }
 }
 

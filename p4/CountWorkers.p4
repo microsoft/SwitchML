@@ -89,6 +89,7 @@ control CountWorkers(
             (_, 0, packet_type_t.CONSUME1) : count_workers_action();
             (_, 0, packet_type_t.CONSUME2) : count_workers_action();
             (_, 0, packet_type_t.CONSUME3) : count_workers_action();
+            
             // if map_result is not all 0's and type is CONSUME0, don't count, just read
             (_, _, packet_type_t.CONSUME0) : read_count_workers_action();
             (_, _, packet_type_t.CONSUME1) : read_count_workers_action();

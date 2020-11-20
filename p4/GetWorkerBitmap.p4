@@ -70,6 +70,10 @@ control GetWorkerBitmap(
         //ig_md.switchml_md.pool_index = hdr.switchml.pool_index[13:0] ++ hdr.switchml.pool_index[15:15]; // doesn't want to compile
         ig_md.switchml_md.pool_index = pool_index_hash.get({hdr.switchml.pool_index[13:0], hdr.switchml.pool_index[15:15]});
 
+        // mark packet as single-packet message since it's the UDP protocol
+        ig_md.switchml_md.first_packet_of_message = true;
+        ig_md.switchml_md.last_packet_of_message  = true;
+        
         ig_md.switchml_udp_md.setValid();
         ig_md.switchml_udp_md.src_port = hdr.udp.src_port;
         ig_md.switchml_udp_md.dst_port = hdr.udp.dst_port;

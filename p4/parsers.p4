@@ -14,12 +14,17 @@ parser IngressParser(
     out ingress_intrinsic_metadata_t ig_intr_md) {
 
     Checksum() ipv4_checksum;
-    //ParserCounter() counter;
-
 
     state start {
         pkt.extract(ig_intr_md);
-        //ig_md = ingress_metadata_initializer;
+        // initialize things that we expect to be initialized; skip things that will be initialized later in the parse. 
+        ig_md.worker_bitmap = 0;
+        ig_md.worker_bitmap_before = 0;
+        ig_md.first_last_flag = 0xff; // initialize first_last_flag to something other than 0 or 1
+        ig_md.map_result = 0;
+        ig_md.checksum_err_ipv4 = false;
+        ig_md.update_ipv4_checksum = false;
+
         transition select(ig_intr_md.resubmit_flag) {
             1 : parse_resubmit;
             default : parse_port_metadata;
@@ -42,7 +47,6 @@ parser IngressParser(
         ig_md.port_metadata = port_metadata_unpack<port_metadata_t>(pkt);
 
         // decide what to do with recirculated packets now
-        //counter.set(8w0);
         transition select(ig_intr_md.ingress_port) {
             64: parse_recirculate; // pipe 0 CPU port
             68: parse_recirculate; // pipe 0 recirc port
@@ -56,18 +60,6 @@ parser IngressParser(
             0x180 &&& 0x180: parse_recirculate; // all pipe 3 ports
             default:  parse_ethernet;
         }
-        // transition select(ig_intr_md.ingress_port) {
-        //     // not currently using PCIe CPU port for recirculation; just parse ethernet
-        //     320 &&& 0x1ff: parse_ethernet;
-
-        //     // Always parse ethernet on the pipe 0 front panel ports
-        //     0x0 &&& 0x1c0: parse_ethernet;
-            
-        //     // for everything else, treat as recirculated this
-        //     // includes ports 64 and 68 on pipe 0, and all other ports
-        //     // on all other pipes to support 1024B packets.
-        //     default:  parse_recirculate;
-        // }
     }
 
     state parse_recirculate {
@@ -220,10 +212,10 @@ parser IngressParser(
         pkt.extract(hdr.d1);
         //pkt.extract(hdr.ib_icrc); // do NOT extract ICRC, since this might be in the middle of a >256B packet. 
         ig_md.switchml_md.setValid();
-        ig_md.switchml_md.ether_type_msb = 16w0xffff;
+        ig_md.switchml_md = switchml_md_initializer;
         ig_md.switchml_md.packet_type = packet_type_t.CONSUME0;
-        ig_md.switchml_md.eth_hdr_len_field_high_order_bit = true;
         ig_md.switchml_rdma_md.setValid();
+        ig_md.switchml_rdma_md = switchml_rdma_md_initializer;
         transition accept;
     }
     
@@ -237,16 +229,16 @@ parser IngressParser(
         pkt.extract(hdr.exponents); // TODO: move exponents before data once daiet code supports it
         // at this point we know this is a SwitchML packet that wasn't recirculated, so mark it for consumption.
         ig_md.switchml_md.setValid();
+        ig_md.switchml_md = switchml_md_initializer;
         ig_md.switchml_md.packet_type = packet_type_t.CONSUME0;
-        ig_md.switchml_md.eth_hdr_len_field_high_order_bit = true;
         transition accept;
     }
 
 
     state accept_non_switchml {
         ig_md.switchml_md.setValid();
+        ig_md.switchml_md = switchml_md_initializer;
         ig_md.switchml_md.packet_type = packet_type_t.IGNORE; // assume non-SwitchML packet
-        ig_md.switchml_md.eth_hdr_len_field_high_order_bit = true;
         transition accept;
     }
     

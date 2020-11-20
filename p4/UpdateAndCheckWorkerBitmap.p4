@@ -56,6 +56,26 @@ control ReconstructWorkerBitmap(
 
     apply {
         reconstruct_worker_bitmap.apply();
+
+        //
+        // Reconstruct bitmaps from boolean values in switchml_md header.
+        // These depend on ig_md being initialized in the parser.
+        //
+        
+        if (ig_md.switchml_md.bitmap_before_nonzero) {
+            ig_md.worker_bitmap_before = 32w0xffffffff;
+        }
+
+        if (ig_md.switchml_md.map_result_nonzero) {
+            ig_md.map_result = 32w0xffffffff;
+        }
+
+        if (ig_md.switchml_md.first_flag) {
+            ig_md.first_last_flag = 0;
+        } else if (ig_md.switchml_md.last_flag) {
+            ig_md.first_last_flag = 1;
+        }
+        
     }
 }
 
@@ -70,27 +90,17 @@ control UpdateAndCheckWorkerBitmap(
 
     RegisterAction<worker_bitmap_pair_t, pool_index_by2_t, worker_bitmap_t>(worker_bitmap) worker_bitmap_update_set0 = {
         void apply(inout worker_bitmap_pair_t value, out worker_bitmap_t return_value) {
-            //if (ig_md.drop_calculation == 0) {
-                return_value = value.first; // return first set
-                value.first  = value.first  | ig_md.worker_bitmap;    // add bit to first set
-                // // TODO: BUG: this works around a compiler bug; remove outer ~ after it's fixed
-                // value.second = ~(value.second & (~ig_md.worker_bitmap)); // remove bit from second set
-                // This is the correct computation that works with SDE 9.1.0 and above
-                value.second = value.second & (~ig_md.worker_bitmap); // remove bit from second set
-            //}
+            return_value = value.first; // return first set
+            value.first  = value.first  | ig_md.worker_bitmap;    // add bit to first set
+            value.second = value.second & (~ig_md.worker_bitmap); // remove bit from second set
         }
     };
 
     RegisterAction<worker_bitmap_pair_t, pool_index_by2_t, worker_bitmap_t>(worker_bitmap) worker_bitmap_update_set1 = {
         void apply(inout worker_bitmap_pair_t value, out worker_bitmap_t return_value) {
-            //if (ig_md.drop_calculation == 0) {
-                return_value = value.second; // return second set
-                // // TODO: BUG: this works around a compiler bug; remove outer ~ after it's fixed
-                // value.first  = ~(value.first  & (~ig_md.worker_bitmap)); // remove bit from first set
-                // This is the correct computation that works with SDE 9.1.0 and above
-                value.first  = value.first & (~ig_md.worker_bitmap); // remove bit from first set
-                value.second = value.second | ig_md.worker_bitmap;    // add bit to second set
-            //}
+            return_value = value.second; // return second set
+            value.first  = value.first & (~ig_md.worker_bitmap); // remove bit from first set
+            value.second = value.second | ig_md.worker_bitmap;    // add bit to second set
         }
     };
 
@@ -107,9 +117,6 @@ control UpdateAndCheckWorkerBitmap(
     action check_worker_bitmap_action() {
         // set map result to nonzero if this packet is a retransmission
         ig_md.map_result = ig_md.worker_bitmap_before & ig_md.worker_bitmap;
-        // compute same updated bitmap that was stored in the register
-        //ig_md.worker_bitmap_after = ig_md.worker_bitmap_before | ig_md.worker_bitmap;
-
     }    
 
     action update_worker_bitmap_set0_action() {
@@ -121,17 +128,12 @@ control UpdateAndCheckWorkerBitmap(
         ig_md.worker_bitmap_before = worker_bitmap_update_set1.execute(ig_md.switchml_md.pool_index[14:1]);
         check_worker_bitmap_action();
     }
-
+    
     table update_and_check_worker_bitmap {
         key = {
             ig_md.switchml_md.pool_index : ternary;
             ig_md.switchml_md.packet_type : ternary;  // only act on packets of type CONSUME0
-            //ig_md.pool_remaining : ternary; // if sign bit is set, pool index was too large, so drop
             ig_md.port_metadata.ingress_drop_probability : ternary; // if nonzero, drop packet
-            //ig_md.drop_calculation : ternary; // if sign bit is set, pool index was too large, so drop
-            //drop_calculation : ternary; // if sign bit is set, pool index was too large, so drop
-            // TODO: disable for now
-            //ig_md.switchml_md.drop_random_value : range; // use to simulate drops
         }
         actions = {
             update_worker_bitmap_set0_action;
@@ -143,9 +145,6 @@ control UpdateAndCheckWorkerBitmap(
         const entries = {
             // drop packets indicated by the drop simulator
             (            _, packet_type_t.CONSUME0, 0xffff) : simulate_drop();
-            
-            // // drop packets that have indices that extend beyond what's allowed for this job
-            // (            _, packet_type_t.CONSUME0, 0x8000 &&& 0x8000) : drop();
             
             // direct updates to the correct set
             (15w0 &&& 15w1, packet_type_t.CONSUME0,      _) : update_worker_bitmap_set0_action();

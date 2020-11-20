@@ -64,8 +64,6 @@ control DebugLog(
     bool first_flag = false;
     bool last_flag = false;
     bool simulate_ingress_drop = false;
-    bool first_packet_of_message = false; // rdma first_packet or udp any packet
-    bool last_packet_of_message = false; // rdma first_packet or udp any packet
     bit<8> address_bits;
     
     // // BUG: Doesn't work. See below.
@@ -87,8 +85,8 @@ control DebugLog(
             value.data = (
                 ig_md.switchml_md.ingress_port[8:7] ++ // capture pipeline ID packet came in on
                 ig_md.switchml_md.worker_id[4:0] ++ // limit to 32 workers for now.
-                (bit<1>) first_packet_of_message ++
-                (bit<1>) last_packet_of_message ++
+                (bit<1>) ig_md.switchml_md.first_packet_of_message ++
+                (bit<1>) ig_md.switchml_md.last_packet_of_message ++
                 (bit<1>) bitmap_before_nonzero ++
                 (bit<1>) map_result_nonzero ++
                 (bit<1>) first_flag ++
@@ -103,13 +101,14 @@ control DebugLog(
     };
 
     apply {
-        // Convert various things to single bits for logging
+        // Convert various things to single bits for logging.
+        // TODO: it would be best to use the boolean values in the
+        // switchml_md header, but I have PHV allocation problems when
+        // I try to do that.
         if (ig_md.map_result           != 0) { map_result_nonzero = true; }
         if (ig_md.worker_bitmap_before != 0) { bitmap_before_nonzero = true; }
         if (ig_md.first_last_flag      == 0) { first_flag = true; }
         if (ig_md.first_last_flag      == 1) { last_flag  = true; }
-        if (!ig_md.switchml_rdma_md.isValid() || ig_md.switchml_rdma_md.first_packet) { first_packet_of_message  = true; }
-        if (!ig_md.switchml_rdma_md.isValid() || ig_md.switchml_rdma_md.last_packet) { last_packet_of_message  = true; }
 
         // copy lower 8 address/index bits 
         if (ig_md.switchml_rdma_md.isValid() && ig_md.switchml_md.packet_size == packet_size_t.IBV_MTU_1024) {
@@ -129,8 +128,8 @@ control DebugLog(
         //         ig_md.switchml_md.debug_packet_id,
         //         ig_md.switchml_md.ingress_port[8:7],
         //         ig_md.switchml_md.worker_id[4:0],
-        //         (bit<1>) first_packet_of_message,
-        //         (bit<1>) last_packet_of_message,
+        //         (bit<1>) ig_md.switchml_md.first_packet_of_message,
+        //         (bit<1>) ig_md.switchml_md.last_packet_of_message,
         //         (bit<1>) bitmap_before_nonzero,
         //         (bit<1>) map_result_nonzero,
         //         (bit<1>) first_flag,

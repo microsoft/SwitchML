@@ -164,7 +164,7 @@ struct port_metadata_t {
     drop_probability_t ingress_drop_probability;
     drop_probability_t egress_drop_probability;
 }
-
+const port_metadata_t port_metadata_initializer = {0, 0};
 
 // SwitchML metadata header; bridged for recirculation (and not exposed outside the switch).
 // We should keep this + the RDMA or UDP metadata headers <= 28 bytes to avoid impacting non-SwitchML minimum size packets.
@@ -210,9 +210,9 @@ header switchml_md_h {
 
     // byte 12
 
-    bool eth_hdr_len_field_high_order_bit; // make sure this bit is set to 1 to avoid problems with MAC loopback
+    bit<2> eth_hdr_len_field_high_order_bits; // make sure this is set to 0b01 to avoid problems with MAC loopback (avoids <=1500 and 0x8808)
     @padding
-    bit<4> _pad8;
+    bit<3> _pad8;
     debug_packet_id_t debug_packet_id; // 5 + 19 = 24 bits
 
     // byte 15
@@ -221,8 +221,27 @@ header switchml_md_h {
     // bit<6> _pad6;
     // bool first_packet;
     // bool last_packet;
+    @padding
+    bit<2> _pad6;
+    bool first_packet_of_message;
+    bool last_packet_of_message;
+    bool first_flag;
+    bool last_flag;
+    bool map_result_nonzero;
+    bool bitmap_before_nonzero;
 }
-//switchml_md_h switchml_md_initializer = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+const switchml_md_h switchml_md_initializer = {
+    0,
+    0,
+    0, 0,
+    0, 0,
+    0,
+    // these settings are all 0's; override after doing the default initializer.
+    packet_size_t.IBV_MTU_128, worker_type_t.FORWARD_ONLY, packet_type_t.MIRROR,
+    false, 0, 0,
+    // 0b01 sets high-order bits of byte 12 of this header to avoid MAC loopback problems
+    0b01, 0, 0,
+    0, false, false, false, false, false, false};
 
 // Header added to UDP packets. This padding seems necessary to get
 // the design to compile.
@@ -240,19 +259,21 @@ header switchml_udp_md_h {
     bit<4> _pad1;
     bit<12> opcode;
 }
+const switchml_udp_md_h switchml_udp_md_initializer = {0, 0, 0, 0, 0, 0, 0};
 
 // Header added to RDMA packets.
 header switchml_rdma_md_h {
-    @padding
-    bit<6> _pad;
-    bool first_packet; // set both for only packets
-    bool last_packet;
+    // @padding
+    // bit<6> _pad;
+    // bool first_packet; // set both for only packets
+    // bool last_packet;
     
     // // min message len is 256 bytes
     // // max is 4*(22528/2)*256, or 4*11264*256 (all pipes and pool indices for one slot)
     bit<24> len; // store only as many bits as we care about
     bit<64> addr; // TODO: make this an index rather than an address
 }
+const switchml_rdma_md_h switchml_rdma_md_initializer = {0, 0};
 
 // header prepended to mirrored debug packets
 header switchml_debug_h {
@@ -282,16 +303,24 @@ struct ingress_metadata_t {
     // 0 if packet is first packet; non-zero if retransmission
     worker_bitmap_t map_result;
 
-    // check how many slots remain in this job's pool
-    worker_pool_index_t pool_remaining;
-
     // checksum stuff
     bool checksum_err_ipv4;
     bool update_ipv4_checksum;
 
     port_metadata_t port_metadata;
 }
-//const ingress_metadata_t ingress_metadata_initializer = {{0, 0, true, 0, 0, packet_type_t.IGNORE, 0, 0, 0, 0, 0, 0}, 0, 0, 0, 0, 0, false, 0, 0};
+
+// const ingress_metadata_t ingress_metadata_initializer = {
+//     switchml_md_initializer,
+//     switchml_rdma_md_initializer
+//     switchml_udp_md_initializer,
+//     0,
+//     0,
+//     0,
+//     0,
+//     false,
+//     false,
+//     port_metadata_initializer};
 
 // Metadata for egress stage
 struct egress_metadata_t {
