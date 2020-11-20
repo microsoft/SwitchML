@@ -6,7 +6,8 @@ out
 *.pyc
 tofino*/*
 logs/*
-*.log
+*.log*
 *.pcap
 *.[0-9]
 *.bak
+*.pipedir
