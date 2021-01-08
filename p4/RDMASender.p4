@@ -12,9 +12,8 @@ control RDMASender(
     inout egress_intrinsic_metadata_for_deparser_t eg_intr_dprs_md) {
 
     
-    Hash<bit<32>>(HashAlgorithm_t.IDENTITY) debug_hash;
+    Hash<bit<32>>(HashAlgorithm_t.IDENTITY) immediate_hash;
 
-    
     // temporary variables
     addr_t rdma_base_addr;
     rkey_t rdma_rkey;
@@ -237,10 +236,29 @@ control RDMASender(
         // this works, but is not useful.
         //hdr.ib_immediate.immediate = 0x12345678;
 
-        // this works, but is not useful.
-        hdr.ib_immediate.immediate = debug_hash.get({
-                17w0,
-                eg_md.switchml_md.pool_index});
+        // this works.
+        // Use lower 16 bits to hold pool index. Use lower 16 bits for exponents.
+        hdr.ib_immediate.immediate = immediate_hash.get({
+                1w0,
+                eg_md.switchml_md.pool_index,
+                eg_md.switchml_exponents_md.e1,
+                eg_md.switchml_exponents_md.e0});
+        eg_md.switchml_exponents_md.setInvalid();
+        
+        // hdr.ib_immediate.immediate = immediate_hash.get({
+        //         12w0,
+        //         eg_md.switchml_md.packet_type,
+        //         1w0,
+        //         eg_md.switchml_md.pool_index});
+        
+                // imm_constant});
+                
+                // //17w0,
+                // 12w0,
+                // eg_md.switchml_md.packet_type,
+                // 1w0,
+                // //eg_md.switchml_md.packet_type == packet_type_t.RETRANSMIT,
+                // eg_md.switchml_md.pool_index});
     }
 
     action set_rdma() {
@@ -336,11 +354,10 @@ control RDMASender(
 
         // if (hdr.ib_immediate.isValid()) {
         //     //hdr.ib_immediate.immediate = (bit<32>) eg_md.switchml_md.pool_index;
-        //     hdr.ib_immediate.immediate = debug_hash.get({
+        //     hdr.ib_immediate.immediate = immediate_hash.get({
         //             17w0,
         //             eg_md.switchml_md.pool_index});
         // }
-
     }
     
 }

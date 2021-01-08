@@ -124,8 +124,8 @@ class RDMAReceiver(Table):
                 (rdma_opcode_s2n['UC_RDMA_WRITE_MIDDLE'], 'Ingress.rdma_receiver.middle_packet'),
                 (rdma_opcode_s2n['UC_RDMA_WRITE_LAST'],   'Ingress.rdma_receiver.last_packet'),
                 (rdma_opcode_s2n['UC_RDMA_WRITE_ONLY'],   'Ingress.rdma_receiver.only_packet'),
-                (rdma_opcode_s2n['UC_RDMA_WRITE_LAST_IMMEDIATE'],   'Ingress.rdma_receiver.last_packet'),
-                (rdma_opcode_s2n['UC_RDMA_WRITE_ONLY_IMMEDIATE'],   'Ingress.rdma_receiver.only_packet')]:
+                (rdma_opcode_s2n['UC_RDMA_WRITE_LAST_IMMEDIATE'],   'Ingress.rdma_receiver.last_packet_immediate'),
+                (rdma_opcode_s2n['UC_RDMA_WRITE_ONLY_IMMEDIATE'],   'Ingress.rdma_receiver.only_packet_immediate')]:
             qpn_top_bits = 0x800000 | ((worker_rid & 0xff) << 16)
             self.table.entry_add(
                 self.target,

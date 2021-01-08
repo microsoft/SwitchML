@@ -143,7 +143,7 @@ control RDMAReceiver(
         hdr.udp.setInvalid();
         hdr.ib_bth.setInvalid(); // TODO: copy qpn to a better place and re-eenable here
         hdr.ib_reth.setInvalid();
-        hdr.ib_immediate.setInvalid();
+        //hdr.ib_immediate.setInvalid();
         //hdr.ib_icrc.setInvalid(); // this won't be set, since we leave it in the packet memory
 
         rdma_receive_counter.count();
@@ -153,6 +153,13 @@ control RDMAReceiver(
         ig_md.switchml_md.pool_index = result[14:0];
     }
 
+    action copy_immediate_to_exponent() {
+        ig_md.switchml_exponents_md.setValid();
+        ig_md.switchml_exponents_md.e0 = hdr.ib_immediate.immediate[31:24];
+        ig_md.switchml_exponents_md.e1 = hdr.ib_immediate.immediate[23:16];
+        hdr.ib_immediate.setInvalid();
+    }
+    
     action middle_packet(
         MulticastGroupId_t mgid,
         worker_type_t worker_type,
@@ -205,6 +212,18 @@ control RDMAReceiver(
         sequence_violation = (bool) result[31:31];
     }
 
+    action last_packet_immediate(
+        MulticastGroupId_t mgid,
+        worker_type_t worker_type,
+        worker_id_t worker_id, 
+        num_workers_t num_workers,
+        worker_bitmap_t worker_bitmap,
+        packet_size_t packet_size) {
+        copy_immediate_to_exponent();
+        last_packet(mgid, worker_type, worker_id,  num_workers, worker_bitmap, packet_size);
+    }
+
+    
     action first_packet(
         MulticastGroupId_t mgid,
         worker_type_t worker_type,
@@ -257,6 +276,17 @@ control RDMAReceiver(
         sequence_violation = (bool) result[31:31];
     }
 
+    action only_packet_immediate(
+        MulticastGroupId_t mgid,
+        worker_type_t worker_type,
+        worker_id_t worker_id, 
+        num_workers_t num_workers,
+        worker_bitmap_t worker_bitmap,
+        packet_size_t packet_size) {
+        copy_immediate_to_exponent();
+        only_packet(mgid, worker_type, worker_id,  num_workers, worker_bitmap, packet_size);
+    }
+
     // packet is not a SwitchML packet; just foward
     action forward() {
         // forward this packet
@@ -296,9 +326,11 @@ control RDMAReceiver(
         }
         actions = {
             only_packet;
+            only_packet_immediate;
             first_packet;
             middle_packet;
             last_packet;
+            last_packet_immediate;
             @defaultonly forward;
         }
         const default_action = forward;

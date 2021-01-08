@@ -73,6 +73,12 @@ control GetWorkerBitmap(
         // mark packet as single-packet message since it's the UDP protocol
         ig_md.switchml_md.first_packet_of_message = true;
         ig_md.switchml_md.last_packet_of_message  = true;
+
+        // extract exponents
+        ig_md.switchml_exponents_md.setValid();
+        ig_md.switchml_exponents_md.e0 = hdr.exponents.e0[15:8];
+        ig_md.switchml_exponents_md.e1 = hdr.exponents.e0[7:0];
+        hdr.exponents.setInvalid();
         
         ig_md.switchml_udp_md.setValid();
         ig_md.switchml_udp_md.src_port = hdr.udp.src_port;

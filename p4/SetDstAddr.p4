@@ -11,6 +11,8 @@ control SetDestinationAddress(
 
     DirectCounter<counter_t>(CounterType_t.PACKETS_AND_BYTES) send_counter;
 
+    Hash<exponent16_t>(HashAlgorithm_t.IDENTITY) exponent_hash;
+
     //
     // read switch MAC and IP from table to form output packets
     //
@@ -85,6 +87,12 @@ control SetDestinationAddress(
         //hdr.switchml.pool_index[14:14] = 1w0;
         //hdr.switchml.pool_index = hdr.switchml.pool_index | (eg_md.switchml_md.pool_index[0:0] ++ 15w0);
         //hdr.switchml.pool_index[15:15] = hdr.switchml.pool_index | (eg_md.switchml_md.pool_index[0:0] ++ 15w0);
+
+        // set exponent header
+        hdr.exponents.setValid();
+        hdr.exponents.e0 = exponent_hash.get({
+                eg_md.switchml_exponents_md.e1,
+                eg_md.switchml_exponents_md.e0});
         
         // count send
         send_counter.count();

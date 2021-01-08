@@ -102,11 +102,11 @@ struct significand_pair_t {
     significand_t second;
 }
 
-//typedef bit<8> exponent_t;
-typedef bit<16> exponent_t;
-struct exponent_pair_t {
-    exponent_t first;
-    exponent_t second;
+typedef bit<8> exponent8_t;
+typedef bit<16> exponent16_t;
+struct exponent8_pair_t {
+    exponent8_t first;
+    exponent8_t second;
 }
 
 // RDMA MTU (packet size). Matches ibv_mtu enum in verbs.h
@@ -275,6 +275,13 @@ header switchml_rdma_md_h {
 }
 const switchml_rdma_md_h switchml_rdma_md_initializer = {0, 0};
 
+// Header containing two exponents
+header switchml_exponents_md_h {
+    exponent8_t e0;
+    exponent8_t e1;
+}
+const switchml_exponents_md_h switchml_exponents_md_initializer = {0, 0};
+
 // header prepended to mirrored debug packets
 header switchml_debug_h {
     // ethernet header
@@ -290,6 +297,7 @@ struct ingress_metadata_t {
     switchml_md_h switchml_md;
     switchml_rdma_md_h switchml_rdma_md;
     switchml_udp_md_h switchml_udp_md;
+    switchml_exponents_md_h switchml_exponents_md;
     
     // this bitmap has one bit set for the current packet's worker
     worker_bitmap_t worker_bitmap;
@@ -327,6 +335,7 @@ struct egress_metadata_t {
     switchml_md_h switchml_md;
     switchml_rdma_md_h switchml_rdma_md;
     switchml_udp_md_h switchml_udp_md;
+    switchml_exponents_md_h switchml_exponents_md;
     switchml_debug_h switchml_debug;
     
     // checksum stuff

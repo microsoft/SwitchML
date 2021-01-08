@@ -161,10 +161,13 @@ control Ingress(
                 // block leads to a too-large design.
                 debug_log.apply(hdr, ig_md, ig_intr_md, ig_prsr_md);
         
-                // update max exponents
-                // for now, we'll stick with the original SwitchML design and use 1 16-bit exponent
-                // (using just half of the register unit). 
-                exponent_max.apply(hdr.exponents.e0, hdr.exponents.e0, hdr.exponents.e0, _, ig_md);
+                // update/read max exponents if this is a packet with exponents
+                if (ig_md.switchml_md.last_packet_of_message) {
+                    exponent_max.apply(
+                        ig_md.switchml_exponents_md.e0, ig_md.switchml_exponents_md.e1,
+                        ig_md.switchml_exponents_md.e0, ig_md.switchml_exponents_md.e1,
+                        ig_md);
+                }
                 
                 // aggregate significands
                 sum00.apply(hdr.d0.d00, hdr.d1.d00, hdr.d0.d00, hdr.d1.d00, ig_md);

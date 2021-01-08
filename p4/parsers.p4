@@ -81,21 +81,25 @@ parser IngressParser(
     
     state parse_udp_consume {
         pkt.extract(ig_md.switchml_udp_md);
+        pkt.extract(ig_md.switchml_exponents_md);
         transition parse_consume;
     }
 
     state parse_udp_harvest {
         pkt.extract(ig_md.switchml_udp_md);
+        pkt.extract(ig_md.switchml_exponents_md);
         transition parse_harvest;
     }
 
     state parse_rdma_consume {
         pkt.extract(ig_md.switchml_rdma_md);
+        pkt.extract(ig_md.switchml_exponents_md);
         transition parse_consume;
     }
 
     state parse_rdma_harvest {
         pkt.extract(ig_md.switchml_rdma_md);
+        pkt.extract(ig_md.switchml_exponents_md);
         transition parse_harvest;
     }
 
@@ -171,6 +175,17 @@ parser IngressParser(
 
     state parse_ib_bth {
         pkt.extract(hdr.ib_bth);
+        ig_md.switchml_md.setValid();
+        ig_md.switchml_md = switchml_md_initializer;
+        ig_md.switchml_md.packet_type = packet_type_t.CONSUME0;
+        ig_md.switchml_rdma_md.setValid();
+        ig_md.switchml_rdma_md = switchml_rdma_md_initializer;
+
+        // for now, also extract empty exponent header
+        // TODO: deal with in CONSUME0 and HARVEST7 only, in pipline
+        ig_md.switchml_exponents_md.setValid();
+        ig_md.switchml_exponents_md = switchml_exponents_md_initializer;
+        
         transition select(hdr.ib_bth.opcode) {
             // include only UC operations here
             ib_opcode_t.UC_SEND_FIRST                : parse_ib_payload;
@@ -185,6 +200,7 @@ parser IngressParser(
             ib_opcode_t.UC_RDMA_WRITE_LAST_IMMEDIATE : parse_ib_immediate;
             ib_opcode_t.UC_RDMA_WRITE_ONLY           : parse_ib_reth;
             ib_opcode_t.UC_RDMA_WRITE_ONLY_IMMEDIATE : parse_ib_reth_immediate;
+            default : accept;
         }
     }
 
@@ -211,11 +227,6 @@ parser IngressParser(
         pkt.extract(hdr.d0);
         pkt.extract(hdr.d1);
         //pkt.extract(hdr.ib_icrc); // do NOT extract ICRC, since this might be in the middle of a >256B packet. 
-        ig_md.switchml_md.setValid();
-        ig_md.switchml_md = switchml_md_initializer;
-        ig_md.switchml_md.packet_type = packet_type_t.CONSUME0;
-        ig_md.switchml_rdma_md.setValid();
-        ig_md.switchml_rdma_md = switchml_rdma_md_initializer;
         transition accept;
     }
     
@@ -271,6 +282,7 @@ control IngressDeparser(
         pkt.emit(ig_md.switchml_md);
         pkt.emit(ig_md.switchml_rdma_md);
         pkt.emit(ig_md.switchml_udp_md);
+        pkt.emit(ig_md.switchml_exponents_md);
         pkt.emit(hdr);
     }
 }
@@ -305,11 +317,13 @@ parser EgressParser(
 
     state parse_switchml_udp_md {
         pkt.extract(eg_md.switchml_udp_md);
+        pkt.extract(eg_md.switchml_exponents_md);
         transition accept;
     }
 
     state parse_switchml_rdma_md {
         pkt.extract(eg_md.switchml_rdma_md);
+        pkt.extract(eg_md.switchml_exponents_md);
         transition accept;
     }
 }

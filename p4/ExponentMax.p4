@@ -11,17 +11,17 @@
 //
 // Each control handles two exponents.
 control ExponentMax(
-    in exponent_t exponent0,
-    in exponent_t exponent1,
-    out exponent_t max_exponent0,
-    out exponent_t max_exponent1,
+    in exponent8_t exponent0,
+    in exponent8_t exponent1,
+    out exponent8_t max_exponent0,
+    out exponent8_t max_exponent1,
     in ingress_metadata_t ig_md) {
 
-    Register<exponent_pair_t, pool_index_t>(register_size) exponents;
+    Register<exponent8_pair_t, pool_index_t>(register_size) exponents;
 
     // Write both exponents and read first one
-    RegisterAction<exponent_pair_t, pool_index_t, exponent_t>(exponents) exponent_write_read0_register_action = {
-        void apply(inout exponent_pair_t value, out exponent_t read_value) {
+    RegisterAction<exponent8_pair_t, pool_index_t, exponent8_t>(exponents) exponent_write_read0_register_action = {
+        void apply(inout exponent8_pair_t value, out exponent8_t read_value) {
             value.first = exponent0;
             value.second = exponent1;
             read_value = value.first;
@@ -33,8 +33,8 @@ control ExponentMax(
     }
 
     // compute max of both exponents and read first one
-    RegisterAction<exponent_pair_t, pool_index_t, exponent_t>(exponents) exponent_max_read0_register_action = {
-        void apply(inout exponent_pair_t value, out exponent_t read_value) {
+    RegisterAction<exponent8_pair_t, pool_index_t, exponent8_t>(exponents) exponent_max_read0_register_action = {
+        void apply(inout exponent8_pair_t value, out exponent8_t read_value) {
             value.first  = max(value.first,  exponent0);
             value.second = max(value.second, exponent1);
             read_value = value.first;
@@ -46,8 +46,8 @@ control ExponentMax(
     }
 
     // read first max register
-    RegisterAction<exponent_pair_t, pool_index_t, exponent_t>(exponents) exponent_read0_register_action = {
-        void apply(inout exponent_pair_t value, out exponent_t read_value) {
+    RegisterAction<exponent8_pair_t, pool_index_t, exponent8_t>(exponents) exponent_read0_register_action = {
+        void apply(inout exponent8_pair_t value, out exponent8_t read_value) {
             read_value = value.first;
         }
     };
@@ -57,8 +57,8 @@ control ExponentMax(
     }
 
     // read second max register
-    RegisterAction<exponent_pair_t, pool_index_t, exponent_t>(exponents) exponent_read1_register_action = {
-        void apply(inout exponent_pair_t value, out exponent_t read_value) {
+    RegisterAction<exponent8_pair_t, pool_index_t, exponent8_t>(exponents) exponent_read1_register_action = {
+        void apply(inout exponent8_pair_t value, out exponent8_t read_value) {
             read_value = value.second;
         }
     };
@@ -85,16 +85,16 @@ control ExponentMax(
             NoAction;
         }
         size = 4;
-        // const entries = {
-        //     // if bitmap_before is all 0's and type is CONSUME0, this is the first packet for slot, so just write values and read first value
-        //     (32w0,    _, packet_type_t.CONSUME0) : exponent_write_read0_action();
-        //     // if bitmap_before is nonzero, map_result is all 0's,  and type is CONSUME0, compute max of values and read first value
-        //     (   _, 32w0, packet_type_t.CONSUME0) : exponent_max_read0_action();
-        //     // if bitmap_before is nonzero, map_result is nonzero, and type is CONSUME0, this is a retransmission, so just read first value
-        //     (   _,    _, packet_type_t.CONSUME0) : exponent_read0_action();
-        //     // if type is HARVEST, read second value
-        //     (   _,    _, packet_type_t.HARVEST7) : exponent_read1_action();
-        // }
+        const entries = {
+            // if bitmap_before is all 0's and type is CONSUME0, this is the first packet for slot, so just write values and read first value
+            (32w0,    _, packet_type_t.CONSUME0) : exponent_write_read0_action();
+            // if bitmap_before is nonzero, map_result is all 0's,  and type is CONSUME0, compute max of values and read first value
+            (   _, 32w0, packet_type_t.CONSUME0) : exponent_max_read0_action();
+            // if bitmap_before is nonzero, map_result is nonzero, and type is CONSUME0, this is a retransmission, so just read first value
+            (   _,    _, packet_type_t.CONSUME0) : exponent_read0_action();
+            // if type is HARVEST, read second value
+            (   _,    _, packet_type_t.HARVEST7) : exponent_read1_action();
+        }
         // if none of the above are true, do nothing.
         const default_action = NoAction;
     }

@@ -132,7 +132,7 @@ header ib_icrc_h {
 
 // 2-byte exponent header (assuming exponent_t is bit<16>)
 header exponents_h {
-    exponent_t e0;
+    exponent16_t e0;
 }
 
 // 128-byte data header
