@@ -6,8 +6,11 @@
 #include <mutex>
 #include <algorithm>
 #include <sstream>
+#include <fstream>
+#include <iomanip>
 
 #include <x86intrin.h>
+#include <unistd.h>
 
 #include "Connections.hpp"
 #include "ClientThread.hpp"
@@ -15,6 +18,8 @@
 //#define DEBUG
 //const bool DEBUG = true;
 const bool DEBUG = false;
+
+const int num_receives = 8;
 
 DEFINE_bool(connect_to_server, false, "By default, format packets for switch; if set, format for server for debugging.");
 DEFINE_double(timeout, 0.001, "Retransmission timeout in seconds. Set to 0 to disable retransmission.");
@@ -27,7 +32,7 @@ ClientThread::ClientThread(Reducer * reducer, int64_t thread_id)
   , rkeys(FLAGS_slots_per_core, 0)
   , send_sges(FLAGS_slots_per_core)
   , send_wrs(FLAGS_slots_per_core)
-  , recv_wrs(FLAGS_slots_per_core * 2)
+  , recv_wrs(FLAGS_slots_per_core + num_receives * FLAGS_slots_per_core)
   , base_pool_index(thread_id * FLAGS_slots_per_core) // first slot this thread is responsible for
 #ifdef ENABLE_RETRANSMISSION
   , timeouts(FLAGS_slots_per_core)
@@ -42,9 +47,19 @@ ClientThread::ClientThread(Reducer * reducer, int64_t thread_id)
   , start_index(0)
   , end_index(0)
   , outstanding_operations(0)
+  , retransmissions(0)
+    // mask to compute base pool index for a message, while still including slot bit
+  , pool_index_message_mask(~((FLAGS_message_size / FLAGS_packet_size) - 1) << 1 | 1)
+#ifdef DEBUG_POOL_INDEX
+  , pool_index_log()
+#endif
 {
   std::cout << "Constructing thread " << thread_id << std::endl;
 
+#ifdef DEBUG_POOL_INDEX
+  pool_index_log.reserve(1024*1024*1024);
+#endif
+  
   // convert double timeout to timestamp count
   timeout_ticks = FLAGS_timeout * reducer->endpoint.ticks_per_sec;
   std::cout << "Timeout is " << FLAGS_timeout << " seconds, "
@@ -67,7 +82,7 @@ ClientThread::ClientThread(Reducer * reducer, int64_t thread_id)
 
   // initialize and post recv_wrs
   std::cout << "Posting initial receives..." << std::endl;
-  for (int i = 0; i < FLAGS_slots_per_core; i++) {
+  for (int i = 0; i < recv_wrs.size(); i++) {
     recv_wrs[i].wr_id = (thread_id << 16) | i;
     recv_wrs[i].next = nullptr;
     recv_wrs[i].sg_list = nullptr; // no receive data; just want completion
@@ -113,7 +128,14 @@ ClientThread::ClientThread(Reducer * reducer, int64_t thread_id)
     }
     
     // for debugging, write shifted pool index into immediate field.
-    send_wrs[i].imm_data = shifted_pool_index;
+    //send_wrs[i].imm_data = shifted_pool_index << 16;
+    //send_wrs[i].imm_data |= ((thread_id & 0xff) << 8) | ((thread_id & 0xff) << 0);
+    //send_wrs[i].imm_data |= 0x1234;
+    //send_wrs[i].imm_data = 0x12345678;
+    send_wrs[i].imm_data = ((((reducer->connections.rank + 3) & 0xff) << 24) |
+                            (((reducer->connections.rank + 2) & 0xff) << 16) |
+                            (((reducer->connections.rank + 1) & 0xff) << 8) |
+                            (((reducer->connections.rank + 0) & 0xff) << 0));
   }  
 }
 
@@ -125,7 +147,7 @@ void ClientThread::operator()() {
 
     // if a shutdown is signaled, halt
     if (reducer->shutdown) {
-      std::cout << "Thread " << thread_id << " shutting down." << std::endl;
+      //std::cout << "Thread " << thread_id << " shutting down." << std::endl;
       return;
     }
 
@@ -184,21 +206,26 @@ void ClientThread::post_next_send_wr(int i) {
       send_wrs[i].wr.rdma.rkey ^= 1; // flip slot bit in LSB
     } else {
       // use immediate instead for debugging
-      send_wrs[i].imm_data ^= 1; // flip slot bit in LSB
+      send_wrs[i].imm_data ^= 0x10000; // flip slot bit in LSB
     }
     
-    //set destination address
+    // set destination address
     // if we use buffers allocated at the same address on each node
     send_wrs[i].wr.rdma.remote_addr = (intptr_t) pointers[i];
-    // // if we use 0-indexed memory regions
-    // send_wrs[i].wr.remote_addr = (intptr_t) indices[i];
+    // // if we use 0-indexed memory regions (doesn't currently work)
+    // //send_wrs[i].wr.rdma.remote_addr = (intptr_t) indices[i];
+    // send_wrs[i].wr.rdma.remote_addr = (intptr_t) (pointers[i] - base_pointer) * 4;
+    // //send_wrs[i].wr.rdma.remote_addr = (intptr_t) 0;
 
 #ifdef ENABLE_RETRANSMISSION
     if (DEBUG) std::cout << "Removing " << i << " from timeout queue." << std::endl;
     // remove from timeout queue
     timeouts.remove(i);
 #endif
-    
+
+    // ensure solicited bit is cleared to indicate the client thinks this is not a retransmission
+    send_wrs[i].send_flags &= ~(IBV_SEND_SOLICITED);
+
     // post
     if (DEBUG) std::cout << ">>>>>>>>>>>>>>>>              Thread " << thread_id
                          << " QP " << queue_pairs[i]->qp_num
@@ -236,6 +263,9 @@ void ClientThread::repost_send_wr(int i) {
   if (DEBUG) std::cout << "Removing " << i << " from timeout queue before reposting." << std::endl;
   timeouts.remove(i);
 
+  // set solicited bit to indicate the client thinks is a retransmission request
+  send_wrs[i].send_flags |= IBV_SEND_SOLICITED;
+  
   // repost
   if (DEBUG) std::cout << ">>>>>>>>>>>>>>>>              Thread " << thread_id
                //std::cout << ">>>>>>>>>>>>>>>>              Thread " << thread_id
@@ -263,35 +293,68 @@ void ClientThread::handle_recv_completion(const ibv_wc & wc, const uint64_t time
                        << std::endl;
   
   // get QP index
-  int qp_index = (wc.wr_id & 0xffff) % FLAGS_slots_per_core;
+  const int qp_index = (wc.wr_id & 0xffff) % FLAGS_slots_per_core;
 
-#ifdef DEBUG_POOL_INDEX
-  // convert to host byte order
-  int32_t imm_data = ntohl(wc.imm_data);
+  // convert immediate value to host byte order
+  const uint32_t imm_data = ntohl(wc.imm_data);
 
-  // mask out pool index bits to match the first packet of the message
-  imm_data &= ~(((FLAGS_message_size / FLAGS_packet_size) - 1) * 2); // bitmask of pool index bits
+  // extract pool index from immediate value
+  //const uint32_t pool_index = imm_data & 0x7fff;
+  const uint32_t pool_index = (imm_data >> 16) & 0x7fff;
+  const uint32_t base_pool_index = pool_index & pool_index_message_mask;
+
+  uint32_t expected_pool_index = send_wrs[qp_index].wr.rdma.rkey;
   
-  // check 
-  if (imm_data != send_wrs[qp_index].wr.rdma.rkey) {
+#ifdef DEBUG_POOL_INDEX
+  // // mask out pool index bits to match the first packet of the message
+  // imm_data &= ~(((FLAGS_message_size / FLAGS_packet_size) - 1) * 2); 
+
+  const uint32_t packet_type = (imm_data >> 16) & 0xf;
+  
+  //if (true || base_pool_index != expected_pool_index) {
+  if (base_pool_index != expected_pool_index) {
+    expected_pool_index |= 0x8000;
     std::cout << "Expected response for slot 0x" << std::dec << send_wrs[qp_index].wr.rdma.rkey << std::dec
-              << ", but got response for slot 0x" << std::hex << imm_data << std::dec
+              << ", but got response for slot 0x" << std::hex << base_pool_index << std::dec
+              << " imm_data 0x" << std::hex << imm_data << std::dec
+              << " bytes " << wc.byte_len
+              << " mask 0x" << std::hex << pool_index_message_mask << std::dec
+              << " pool_index 0x" << std::hex << pool_index << std::dec
+              << " packet type 0x" << std::hex << packet_type << std::dec
               << " instead." << std::endl;
+
+    //exit(1);
   }
+
+  // record receive
+  pool_index_log.push_back(0x80000000 | (pool_index << 16) | expected_pool_index);
+  
   // else {
-  //   std::cout << "Got response for slot 0x" << std::hex << imm_data << std::dec
-  //             << " as expected." << std::endl;
+  //   // std::cout << "Got response for slot 0x" << std::hex << imm_data << std::dec
+  //   //           << " as expected." << std::endl;
+  //   std::cout << "Expected response for slot 0x" << std::dec << send_wrs[qp_index].wr.rdma.rkey << std::dec
+  //             << ", and got response for slot 0x" << std::hex << base_pool_index << std::dec
+  //             << " imm_data 0x" << std::hex << imm_data << std::dec
+  //             << " bytes " << wc.byte_len
+  //             << " mask 0x" << std::hex << pool_index_message_mask << std::dec
+  //             << " pool_index 0x" << std::hex << pool_index << std::dec
+  //             << " packet type 0x" << std::hex << packet_type << std::dec
+  //             << ". SUCCESS!" << std::endl;
   // }
 #endif
 
-  // repost recv wr
+  // repost recv wr, no matter whether we are keeping or discarding this message
   reducer->connections.post_recv(queue_pairs[qp_index], &recv_wrs[qp_index]);
 
-  // post next send wr for this slot
-  post_next_send_wr(qp_index);
+  if (base_pool_index == expected_pool_index) {
+    // post next send wr for this slot
+    post_next_send_wr(qp_index);
+    
+    // record that this receive completed
+    --outstanding_operations;
+  }
 
-  // record that this receive completed
-  --outstanding_operations;
+  
 }
 
 void ClientThread::handle_write_completion(const ibv_wc & wc, const uint64_t timestamp) {
@@ -303,6 +366,14 @@ void ClientThread::handle_write_completion(const ibv_wc & wc, const uint64_t tim
   // get QP index
   int qp_index = (wc.wr_id & 0xffff) % FLAGS_slots_per_core;
 
+#ifdef DEBUG_POOL_INDEX
+  const uint32_t pool_index = send_wrs[qp_index].wr.rdma.rkey & 0x7fff;
+
+  // record send
+  pool_index_log.push_back((pool_index << 16) | pool_index);
+  //std::cout << (void*) pool_index_log.back() << std::endl;
+#endif
+  
 #ifdef ENABLE_RETRANSMISSION
   if (DEBUG) std::cout << "Adding " << qp_index
                        << " to timeout queue at timestamp " << timestamp
@@ -341,6 +412,10 @@ void ClientThread::run() {
   const int max_entries = FLAGS_slots_per_core;
   std::vector<ibv_wc> completions(max_entries);
 
+#ifdef DEBUG_POOL_INDEX
+  pool_index_log.clear();
+#endif
+  
   while (outstanding_operations > 0) {
 #ifdef ENABLE_RETRANSMISSION
     // get current timestamp counter value
@@ -388,6 +463,39 @@ void ClientThread::run() {
     }
 #endif
   }
+
+  std::cout << " DONE thread_id: " << thread_id
+            << " outstanding_operations: " << outstanding_operations
+#ifdef ENABLE_RETRANSMISSION
+            << " retransmissions so far: " << retransmission_count
+#endif
+            << std::endl;
+  
+#ifdef DEBUG_POOL_INDEX
+  std::cout << pool_index_log.size() << std::endl;
+
+  {
+    std::ofstream log("log-job" + std::to_string(reducer->connections.job_id) +
+                      "-rank" + std::to_string(reducer->connections.rank) +
+                      "size" + std::to_string(reducer->connections.size) + "-" +
+                      std::to_string(getpid()) + "-" +
+                      std::to_string(thread_id) + ".log");
+    for (int i = 0; i < pool_index_log.size(); ++i) {
+      const auto index = pool_index_log[i];
+      bool is_recv = index >> 31;
+      int16_t actual_pool_index = (index >> 16) & 0x7fff;
+      bool is_mismatch = (index >> 15) & 0x1;
+      int16_t expected_pool_index = (index) & 0x7fff;
+      
+      log << std::setw(8) << std::setfill('0') << i << " "
+          << std::setw(3) << std::setfill('0') << reducer->connections.rank << " "
+          << is_recv << " "
+          << is_mismatch << " "
+          << std::setw(2) << std::setfill('0') << actual_pool_index << " "
+          << std::setw(2) << std::setfill('0')<< expected_pool_index << "\n";
+    }
+  }
+#endif
 }
 
 
@@ -421,10 +529,13 @@ void ClientThread::compute_thread_pointers() {
   // compute pointers into buffer, ensuring that we don't run
   // off the end of the buffer with the last message
   base_pointer = reducer->src_buffer;
-  thread_start_pointer = base_pointer + (start_message_index * FLAGS_message_size / sizeof(float));
-  thread_end_pointer   = std::min(base_pointer + (end_message_index * FLAGS_message_size / sizeof(float)),
-                                  base_pointer + reducer->length);
-
+  // thread_start_pointer = base_pointer + (start_message_index * FLAGS_message_size / sizeof(float));
+  // thread_end_pointer   = std::min(base_pointer + (end_message_index * FLAGS_message_size / sizeof(float)),
+  //                                 base_pointer + reducer->length);
+  thread_start_pointer = reducer->src_buffer + (start_message_index * FLAGS_message_size / sizeof(float));
+  thread_end_pointer   = std::min(thread_start_pointer + (end_message_index * FLAGS_message_size / sizeof(float)),
+                                  reducer->src_buffer + reducer->length);
+  
   // initialize per-slot indices/pointers for this thread
   for (int i = 0; i < FLAGS_slots_per_core; ++i) {
     indices[i] = start_message_index + i;

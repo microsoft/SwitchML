@@ -221,8 +221,9 @@ header switchml_md_h {
     // bit<6> _pad6;
     // bool first_packet;
     // bool last_packet;
+    bool ib_solicited;
     @padding
-    bit<2> _pad6;
+    bit<1> _pad6;
     bool first_packet_of_message;
     bool last_packet_of_message;
     bool first_flag;
@@ -241,7 +242,7 @@ const switchml_md_h switchml_md_initializer = {
     false, 0, 0,
     // 0b01 sets high-order bits of byte 12 of this header to avoid MAC loopback problems
     0b01, 0, 0,
-    0, false, false, false, false, false, false};
+    false, 0, false, false, false, false, false, false};
 
 // Header added to UDP packets. This padding seems necessary to get
 // the design to compile.
@@ -267,13 +268,15 @@ header switchml_rdma_md_h {
     // bit<6> _pad;
     // bool first_packet; // set both for only packets
     // bool last_packet;
-    
+
+    bit<24> psn;
+
     // // min message len is 256 bytes
     // // max is 4*(22528/2)*256, or 4*11264*256 (all pipes and pool indices for one slot)
     bit<24> len; // store only as many bits as we care about
     bit<64> addr; // TODO: make this an index rather than an address
 }
-const switchml_rdma_md_h switchml_rdma_md_initializer = {0, 0};
+const switchml_rdma_md_h switchml_rdma_md_initializer = {0, 0, 0};
 
 // Header containing two exponents
 header switchml_exponents_md_h {

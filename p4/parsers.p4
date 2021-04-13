@@ -177,6 +177,11 @@ parser IngressParser(
         pkt.extract(hdr.ib_bth);
         ig_md.switchml_md.setValid();
         ig_md.switchml_md = switchml_md_initializer;
+        // save solicited bit for debugging
+        // TODO: switchml_md not 
+        ig_md.switchml_md.ib_solicited = (bool) hdr.ib_bth.se;
+        // speculatively assume this is a SwitchML packet (will be
+        // canceled in RDMAReceiver if the queue pair doesn't match)
         ig_md.switchml_md.packet_type = packet_type_t.CONSUME0;
         ig_md.switchml_rdma_md.setValid();
         ig_md.switchml_rdma_md = switchml_rdma_md_initializer;

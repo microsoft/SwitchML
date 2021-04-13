@@ -760,6 +760,12 @@ class Job(Cmd, object):
         self.rdma_sender.clear_workers()
         self.drop_simulator.clear()
 
+        self.debug_log.clear_log()
+        #self.debug_log.clear_log()
+        #self.debug_log.clear_log()
+        #self.debug_log.clear_log()
+        #self.debug_log.clear_log()
+
     def worker_load_file(self, filename):
         # clear out previous job
         self.worker_clear_all()

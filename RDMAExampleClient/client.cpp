@@ -39,8 +39,8 @@ void initialize(int rank, int size, int * buf, size_t buffer_length) {
     // } else {
     //   buf[i] = -(i-1) / (FLAGS_packet_size / sizeof(int));
     // }
-    } else if (5 == (i % 64)) {
-      buf[i] = 0;
+    // } else if (5 == (i % 64)) {
+    //   buf[i] = 0;
     } else if (0 == (i % 2)) {
       buf[i] = -i; //-i;
     } else {
@@ -85,8 +85,8 @@ int check(int rank, int size, int iters, int * buf, size_t buffer_length) {
     // } else {
     //   original = -(i-1) / (FLAGS_packet_size / sizeof(int));
     // }
-    } else if (5 == (i % 64)) { // BUG: this element is corrupt in current design?
-      buf[i] = 0;
+    // } else if (5 == (i % 64)) { // BUG: this element is corrupt in current design?
+    //   buf[i] = 0;
     } else if (0 == (i % 2)) {
       original = -i; //-i;
     } else {
@@ -123,7 +123,7 @@ int check(int rank, int size, int iters, int * buf, size_t buffer_length) {
                   << ", got " << received << "/0x" << std::hex << received << std::dec
                   << " difference " << received - expected << "/0x" << std::hex << received - expected << std::dec
                   << std::endl;
-      } else if (error_count == FLAGS_max_errors) {
+      } else if ((FLAGS_max_errors > 0) && (error_count == FLAGS_max_errors)) {
         std::cout << "Stopping after printing " << FLAGS_max_errors << " errors." << std::endl;
       }
     }
@@ -171,8 +171,8 @@ int main(int argc, char * argv[]) {
   auto mr = e.allocate_at_address((void*) 0x0000100000000000,
                                   buffer_length);
 
-  // // allocate buffer using zero-based addressing
-  // auto mr = e.allocate_zero_based(1L << 28);
+  // // allocate buffer using zero-based addressing (doesn't work yet)
+  // auto mr = e.allocate_zero_based(buffer_length);
 
   // initialize vector with something easy to identify
   initialize(rank, size, (int*) mr->addr, buffer_length);
@@ -227,7 +227,7 @@ int main(int argc, char * argv[]) {
       std::cout << "No errors found in any iteration." << std::endl;
     }
   } else {
-    std::cout << "Checking for errors." << std::endl;
+    //std::cout << "Checking for errors." << std::endl;
     check(rank, size, FLAGS_iters, (int*) mr->addr, FLAGS_length);
   }
 
@@ -238,7 +238,7 @@ int main(int argc, char * argv[]) {
   MPI_CHECK(MPI_Barrier(MPI_COMM_WORLD));
   MPI_CHECK(MPI_Finalize());
     
-  std::cout << "Done.\n";
+  //std::cout << "Done.\n";
   e.free(mr);
   return 0;
 }

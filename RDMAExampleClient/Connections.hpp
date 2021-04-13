@@ -67,6 +67,7 @@ public: // TODO: undo this as much as necessary
   /// job geometry
   const int rank;
   const int size;
+  uint64_t job_id;
   
   /// completion queues
   std::vector<ibv_cq*> completion_queues;
@@ -111,6 +112,7 @@ public:
     , memory_region(mr)
     , rank(rank)
     , size(size)
+    , job_id(-1)
     , completion_queues(FLAGS_cores, nullptr) // one completion queue per core
     , queue_pairs(FLAGS_cores * FLAGS_slots_per_core, nullptr) // create one queue pair per slot
     , rkeys(queue_pairs.size(), 0) // one rkey per queue pair to support parameter servers

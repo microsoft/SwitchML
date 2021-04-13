@@ -142,4 +142,73 @@ control DebugLog(
     }
 }
 
+
+control EgressDebugLog(
+    in header_t hdr,
+    in egress_metadata_t eg_md,
+    in egress_intrinsic_metadata_t eg_intr_md) {
+
+    // temporary variables for constructing the log
+    bool bitmap_before_nonzero = false;
+    bool map_result_nonzero = false;
+    bool first_flag = false;
+    bool last_flag = false;
+    bit<8> address_bits;
+    
+    // // BUG: Doesn't work. See below.
+    // Hash<bit<51>>(HashAlgorithm_t.IDENTITY) data_hash;
+    // bit<51> data_hash_result;
+
+    // log seems limited to 2048 entries
+    //const log_index_t log_size = 2048;
+    //const log_index_t log_size = 4096;
+    const log_index_t log_size = 22528;
+    
+    Register<log_pair_t, log_index_t>(log_size) log;
+
+    RegisterAction<log_pair_t, log_index_t, log_data_t>(log) log_action = {
+        void apply(inout log_pair_t value) {
+            // This uses all 51 bits in the hash. More (with larger packet id) seems to be problematic.
+            //value.addr = (bit<32>) eg_md.switchml_md.debug_packet_id;
+            value.addr = (bit<32>) (address_bits ++ eg_md.switchml_md.debug_packet_id[10:0]);
+            value.data = (
+                eg_md.switchml_md.ingress_port[8:7] ++ // capture pipeline ID packet came in on
+                eg_md.switchml_md.worker_id[4:0] ++ // limit to 32 workers for now.
+                (bit<1>) eg_md.switchml_md.first_packet_of_message ++
+                (bit<1>) eg_md.switchml_md.last_packet_of_message ++
+                eg_intr_md.egress_port[5:2] ++
+                (packet_type_underlying_t) eg_md.switchml_md.packet_type ++
+                eg_md.switchml_md.pool_index[14:0]);
+
+            // Alternative implementation that doesn't work
+            //value.addr = (bit<32>) data_hash_result[50:32];
+            //value.data = data_hash_result[31:0];
+        }
+    };
+
+    apply {
+        // Convert various things to single bits for logging.
+        // TODO: it would be best to use the boolean values in the
+        // switchml_md header, but I have PHV allocation problems when
+        // I try to do that.
+        //if (eg_md.map_result           != 0) { map_result_nonzero = true; }
+        //if (eg_md.worker_bitmap_before != 0) { bitmap_before_nonzero = true; }
+        //if (eg_md.first_last_flag      == 0) { first_flag = true; }
+        //if (eg_md.first_last_flag      == 1) { last_flag  = true; }
+
+        // copy lower 8 address/index bits 
+        if (eg_md.switchml_rdma_md.isValid() && eg_md.switchml_md.packet_size == packet_size_t.IBV_MTU_1024) {
+            address_bits = eg_md.switchml_rdma_md.addr[17:10];
+        } else if (eg_md.switchml_rdma_md.isValid() && eg_md.switchml_md.packet_size == packet_size_t.IBV_MTU_256) {
+            address_bits = eg_md.switchml_rdma_md.addr[15:8];
+        }
+        // // TODO: add support for SwitchML UDP
+        // else { address_bits = eg_md.switchml_md.tsi[7:0]; }
+        
+        // Log this packet unconditionally
+        log_action.execute_log();        
+    }
+}
+
+
 #endif /* _DEBUG_LOG_ */

@@ -46,6 +46,7 @@ control Ingress(
     EgressDropSimulator() egress_drop_sim;
 
     ARPandICMP() arp_and_icmp;
+    
     GetWorkerBitmap() get_worker_bitmap;
 
     ReconstructWorkerBitmap() reconstruct_worker_bitmap;
@@ -96,6 +97,7 @@ control Ingress(
 
     RDMAReceiver() rdma_receiver;
 
+    RDMASequenceNumberAssignment() sequence_number_assignment;
     
     apply {
         // see if this is a SwitchML packet
@@ -104,7 +106,7 @@ control Ingress(
         // (do only on first pipeline pass, not on recirculated CONSUME passes)
         if (ig_md.switchml_md.packet_type == packet_type_t.CONSUME0) {
             debug_packet_id.apply(hdr, ig_md, ig_intr_md, ig_prsr_md);
-            
+
             if (hdr.ib_bth.isValid()) {
                 rdma_receiver.apply(hdr, ig_md, ig_intr_md, ig_prsr_md, ig_dprsr_md, ig_tm_md);
             } else {
@@ -120,6 +122,9 @@ control Ingress(
                 ig_intr_md.ingress_port,
                 ig_md.switchml_md.ingress_port,                
                 ig_md.switchml_md.simulate_egress_drop);
+
+            
+
         } else if ((packet_type_underlying_t) ig_md.switchml_md.packet_type >= (packet_type_underlying_t) packet_type_t.CONSUME1) {
             // reconstruct worker bitmap and slot status for CONSUME1-3 and HARVEST*
             reconstruct_worker_bitmap.apply(ig_md);
@@ -205,6 +210,21 @@ control Ingress(
                 
                 // decide what to do with this packet
                 next_step.apply(hdr, ig_md, ig_intr_md, ig_dprsr_md, ig_tm_md);
+
+                // if it's an RDMA packet we're starting to harvest, assign a sequence number
+                // (this lets us catch packet drops during recirculation for harvest)
+                // if (ig_md.switchml_md.worker_type == worker_type_t.ROCEv2 &&
+                //     (ig_md.switchml_md.packet_type == packet_type_t.RETRANSMIT)  ||
+                //     (ig_md.switchml_md.packet_type == packet_type_t.BROADCAST)) {
+                //     sequence_number_assignment.apply(hdr, ig_md);
+                // }
+                if (ig_md.switchml_md.worker_type == worker_type_t.ROCEv2 &&
+                    (ig_md.switchml_md.packet_size == packet_size_t.IBV_MTU_1024 &&
+                        ig_md.switchml_md.packet_type == packet_type_t.HARVEST1)  ||
+                    (ig_md.switchml_md.packet_size == packet_size_t.IBV_MTU_256 &&                        
+                        ig_md.switchml_md.packet_type == packet_type_t.HARVEST7)) {
+                    sequence_number_assignment.apply(hdr, ig_md);
+                }
             } else {
                 // handle ARP and ICMP requests
                 arp_and_icmp.apply(hdr, ig_md, ig_intr_md, ig_prsr_md, ig_dprsr_md, ig_tm_md);
@@ -227,6 +247,7 @@ control Egress(
 
     SetDestinationAddress() set_dst_addr;
     RDMASender() rdma_sender;
+    EgressDebugLog() debug_log;
     
     apply {
         if (eg_md.switchml_md.packet_type == packet_type_t.BROADCAST ||
@@ -243,6 +264,9 @@ control Egress(
             if (eg_md.switchml_md.packet_type == packet_type_t.BROADCAST) {
                 eg_md.switchml_md.worker_id = eg_intr_md.egress_rid;
             }
+            
+            // log packets
+            debug_log.apply(hdr, eg_md, eg_intr_md);
             
             if (eg_md.switchml_md.worker_type == worker_type_t.ROCEv2) {
                 rdma_sender.apply(hdr, eg_md, eg_intr_md, eg_intr_md_from_prsr, eg_intr_dprs_md);

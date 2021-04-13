@@ -133,8 +133,12 @@ control RDMAReceiver(
         // record packet size for use in recirculation
         ig_md.switchml_md.packet_size = packet_size;
         ig_md.switchml_md.recirc_port_selector = (queue_pair_index_t) QP_INDEX;
+
+        // // capture solicited bit for debugging
+        // ig_md.switchml_md.ib_solicited = (bool) hdr.ib_bth.se;
         
         // TODO: copy immediate to exponents
+        
         // TODO: copy address
         
         // get rid of headers we don't want to recirculate

@@ -197,6 +197,10 @@ void Connections::move_to_init(int i) {
   attributes.pkey_index = 0;
   attributes.qp_access_flags = (IBV_ACCESS_LOCAL_WRITE |
                                 IBV_ACCESS_REMOTE_WRITE);
+  // Use for zero-based indexing (although it doesn't work yet)
+  // attributes.qp_access_flags = (IBV_ACCESS_LOCAL_WRITE |
+  //                               IBV_ACCESS_REMOTE_WRITE |
+  //                               IBV_ACCESS_ZERO_BASED);
   std::cout << "Moving queue pair " << queue_pairs[i] << " to INIT...\n";
   int retval = ibv_modify_qp(queue_pairs[i], &attributes,
                              IBV_QP_STATE |
@@ -289,8 +293,6 @@ void Connections::exchange_connection_info() {
   std::cout << "Rank " << rank << " of size " << size << " requesting connection to switch.\n";
 
   // compute ID for this job
-  uint64_t job_id = 0;
-
   // combine timestamp + host GID
   if (0 == rank) {
     job_id = endpoint.gid.global.subnet_prefix;

@@ -4,6 +4,44 @@
 #ifndef _RDMASENDER_
 #define _RDMASENDER_
 
+
+// Ingress control to assign sequence numbers when starting a harvest
+// phase. Since we do this before broadcast, the same sequence numbers
+// will be used for all clients for the non-retransmit case. Since
+// we're using UC and there is no requirement that sequence numbers
+// are contiguous between messages, we will use the same sequence
+// number register for retransmissions as well.
+control RDMASequenceNumberAssignment(
+    inout header_t hdr,
+    inout ingress_metadata_t ig_md) {
+
+    // single PSN register for all queue pairs
+    Register<bit<32>, queue_pair_index_t>(max_num_queue_pairs) psn_register;
+
+    // will be initialized through control plane
+    RegisterAction<bit<32>, queue_pair_index_t, bit<32>>(psn_register) psn_action = {
+        void apply(inout bit<32> value, out bit<32> read_value) {
+            // emit 24-bit sequence number
+            bit<32> masked_sequence_number = value & 0x00ffffff;
+            read_value = masked_sequence_number;
+            
+            // increment sequence number
+            bit<32> incremented_value = value + 1;
+            value = incremented_value;
+        }
+    };
+    
+    action set_sequence_number() {
+        ig_md.switchml_rdma_md.setValid(); // may already be valid for a first packet
+        ig_md.switchml_rdma_md.psn = psn_action.execute(ig_md.switchml_md.recirc_port_selector)[23:0];
+    }
+    
+    apply {
+        set_sequence_number();
+    }
+}
+
+// Egress control to fill in rest of RDMA packet.
 control RDMASender(
     inout header_t hdr,
     inout egress_metadata_t eg_md,
@@ -13,6 +51,7 @@ control RDMASender(
 
     
     Hash<bit<32>>(HashAlgorithm_t.IDENTITY) immediate_hash;
+    Hash<bit<24>>(HashAlgorithm_t.IDENTITY) psn_hash;
 
     // temporary variables
     addr_t rdma_base_addr;
@@ -157,47 +196,54 @@ control RDMASender(
     // fill in destination queue pair number and sequence number
     //
     
-    DirectRegister<bit<32>>() psn_register;
+    // DirectRegister<bit<32>>() psn_register;
 
-    // will be initialized through control plane
-    DirectRegisterAction<bit<32>, bit<32>>(psn_register) psn_action = {
-        // TODO: BUG: ???
-        // // fails with /tmp/switchml/pipe/switchml.bfa:9985: error: No phv record mem_lo
-        // // switchml.bfa:
-        // //   stateful roce_sender_fill_in_qpn_and_psn$st0$salu.SwitchMLEgress.roce_sender.psn_register:
-        // //     p4: { name: SwitchMLEgress.roce_sender.psn_register }
-        // //     row: 15
-        // //     column: [ 0, 1, 2, 3 ]
-        // //     maprams: [ 0, 1, 2, 3 ]
-        // //     format: { lo: 32 }
-        // //     actions:
-        // //       roce_sender_psn_action:
-        // //       - and hi, 16777215, mem_lo
-        // //       - add lo, lo, 1
-        // //       - output alu_hi
-        // void apply(inout bit<32> value, out bit<32> read_value) {
-        //     read_value = 0x00ffffff & value;
-        //     value = value + 1;
-            // }
+    // // will be initialized through control plane
+    // DirectRegisterAction<bit<32>, bit<32>>(psn_register) psn_action = {
+    //     // TODO: BUG: ???
+    //     // // fails with /tmp/switchml/pipe/switchml.bfa:9985: error: No phv record mem_lo
+    //     // // switchml.bfa:
+    //     // //   stateful roce_sender_fill_in_qpn_and_psn$st0$salu.SwitchMLEgress.roce_sender.psn_register:
+    //     // //     p4: { name: SwitchMLEgress.roce_sender.psn_register }
+    //     // //     row: 15
+    //     // //     column: [ 0, 1, 2, 3 ]
+    //     // //     maprams: [ 0, 1, 2, 3 ]
+    //     // //     format: { lo: 32 }
+    //     // //     actions:
+    //     // //       roce_sender_psn_action:
+    //     // //       - and hi, 16777215, mem_lo
+    //     // //       - add lo, lo, 1
+    //     // //       - output alu_hi
+    //     // void apply(inout bit<32> value, out bit<32> read_value) {
+    //     //     read_value = 0x00ffffff & value;
+    //     //     value = value + 1;
+    //         // }
 
-        // This one works for now
-        void apply(inout bit<32> value, out bit<32> read_value) {
-            // emit 24-bit sequence number
-            bit<32> masked_sequence_number = value & 0x00ffffff;
-            read_value = masked_sequence_number;
+    //     // This one works for now
+    //     void apply(inout bit<32> value, out bit<32> read_value) {
+    //         // emit 24-bit sequence number
+    //         bit<32> masked_sequence_number = value & 0x00ffffff;
+    //         read_value = masked_sequence_number;
 
-            // increment sequence number
-            bit<32> incremented_value = value + 1;
-            value = incremented_value;
-        }
-    };
+    //         // increment sequence number
+    //         bit<32> incremented_value = value + 1;
+    //         value = incremented_value;
+    //     }
+    // };
 
     action add_qpn_and_psn(queue_pair_t qpn) {
         hdr.ib_bth.dst_qp = qpn;
         //hdr.ib_bth.psn = (sequence_number_t) psn_action.execute();
-        hdr.ib_bth.psn = psn_action.execute()[23:0];
+        //hdr.ib_bth.psn = psn_action.execute()[23:0];
         //bit<32> temp_psn = psn_action.execute();
         //hdr.ib_bth.psn = temp_psn[23:0];
+        //hdr.ib_bth.psn = (bit<24>) eg_md.switchml_md.pool_index[14:1];
+        
+        // hdr.ib_bth.psn = psn_hash.get({
+                //         10w0,
+                //         eg_md.switchml_md.pool_index[14:1]});
+        
+        hdr.ib_bth.psn = eg_md.switchml_rdma_md.psn;
     }
     
     table fill_in_qpn_and_psn {
@@ -209,7 +255,7 @@ control RDMASender(
             add_qpn_and_psn;
         }
         size = max_num_queue_pairs;
-        registers = psn_register;
+        //registers = psn_register;
     }
 
     //
@@ -267,8 +313,12 @@ control RDMASender(
         //hdr.ib_reth.len = 1w0 ++ rdma_message_length;
         //hdr.ib_reth.len = 10w0 ++ eg_md.switchml_rdma_md.message_len_by256 ++ 8w0;
         hdr.ib_reth.len = (bit<32>) eg_md.switchml_rdma_md.len;
-        //hdr.ib_reth.addr = rdma_base_addr + 0; //eg_md.switchml_md.rdma_addr; // TODO: ???
+
+        // this is what compiles today
         hdr.ib_reth.addr = eg_md.switchml_rdma_md.addr; // TODO: ???
+
+        // // this is what we really want to be able to do offset-based addressing
+        // hdr.ib_reth.addr = rdma_base_addr + eg_md.switchml_rdma_md.addr; // TODO: ???
     }
     
     action set_opcode() {
@@ -305,7 +355,7 @@ control RDMASender(
         key = {
             //eg_md.switchml_md.pool_index : ternary;
             eg_md.switchml_md.first_packet_of_message : exact;
-            eg_md.switchml_md.last_packet_of_message  : exact;
+            eg_md.switchml_md.last_packet_of_message : exact;
         }
         actions = {
             set_opcode;

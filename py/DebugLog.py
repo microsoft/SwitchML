@@ -11,6 +11,7 @@ from enum import IntEnum
 import os
 import yaml
 import ctypes
+from itertools import chain
 
 from Table import Table
 from Worker import Worker
@@ -50,8 +51,9 @@ class DebugLog(Table):
         
         # get this table
         #self.table = self.bfrt_info.table_get("pipe.Ingress.debug_log.debug_log")
-        self.packet_id = self.bfrt_info.table_get("pipe.Ingress.debug_packet_id.counter")
-        self.log       = self.bfrt_info.table_get("pipe.Ingress.debug_log.log")
+        self.packet_id  = self.bfrt_info.table_get("pipe.Ingress.debug_packet_id.counter")
+        self.log        = self.bfrt_info.table_get("pipe.Ingress.debug_log.log")
+        self.egress_log = self.bfrt_info.table_get("pipe.Egress.debug_log.log")
 
         # clear and add defaults
         self.clear()
@@ -68,6 +70,9 @@ class DebugLog(Table):
         pass
         
     def clear_log(self):
+        self.packet_id.operations_execute(self.target, 'Sync')
+        self.packet_id.entry_del(self.target) #, flags={'from_hw': True})
+        self.packet_id.operations_execute(self.target, 'Sync')
         self.packet_id.entry_del(self.target) #, flags={'from_hw': True})
         self.packet_id.operations_execute(self.target, 'Sync')
         
@@ -76,7 +81,17 @@ class DebugLog(Table):
         #     [self.packet_id.make_key([gc.KeyTuple('$REGISTER_INDEX', 0)])],
         #     [self.packet_id.make_data([gc.DataTuple("Ingress.debug_packet_id.counter.f1", 0)])])
         
+        self.log.operations_execute(self.target, 'Sync')
         self.log.entry_del(self.target)
+        self.log.operations_execute(self.target, 'Sync')
+        self.log.entry_del(self.target)
+        self.log.operations_execute(self.target, 'Sync')
+        
+        self.egress_log.operations_execute(self.target, 'Sync')
+        self.egress_log.entry_del(self.target)
+        self.egress_log.operations_execute(self.target, 'Sync')
+        self.egress_log.entry_del(self.target)
+        self.egress_log.operations_execute(self.target, 'Sync')
         
     def add_default_entries(self):
         # no defaults for now
@@ -155,14 +170,43 @@ class DebugLog(Table):
             value3 = addr3 << 32 | pipe3
             if value0 != 0 or value1 != 0 or value2 != 0 or value3 != 0:
                 values[index] = value0, value1, value2, value3
-        return values
+
+        # get all log entries
+        egress_resp = self.egress_log.entry_get(
+            self.target,
+            flags={"from_hw": True})
+
+        egress_values = {}
+        
+        for v, k in egress_resp:
+            v = v.to_dict()
+            k = k.to_dict()
+
+            ##pprint((k,v))
+            # format looks like this:
+            # ({u'$REGISTER_INDEX': {'value': 22521}},
+            #  {u'Ingress.debug_log.log.addr': [0, 0, 0, 0],
+            #   u'Ingress.debug_log.log.data': [0, 0, 0, 0],
+            #   'action_name': None,
+            #   'is_default_entry': False})
+            index = k['$REGISTER_INDEX']['value']
+            addr0, addr1, addr2, addr3 = tuple(v['Egress.debug_log.log.addr'])
+            pipe0, pipe1, pipe2, pipe3 = tuple(v['Egress.debug_log.log.data'])
+            value0 = addr0 << 32 | pipe0
+            value1 = addr1 << 32 | pipe1
+            value2 = addr2 << 32 | pipe2
+            value3 = addr3 << 32 | pipe3
+            if value0 != 0 or value1 != 0 or value2 != 0 or value3 != 0:
+                egress_values[index] = value0, value1, value2, value3
+                
+        return {"Ingress": values, "Egress": egress_values}
     
     def save_log(self, filename='log.yaml'):
         print("Saving packet log to {}".format(filename))
-        log = self.get_log()
-        print(len(log))
+        values = self.get_log()
+        print(len(values['Ingress']) + len(values['Egress']))
         with open(filename, 'w') as f:
-            yaml.dump(log, f)
+            yaml.dump(values, f)
         
     def print_log(self, start=0, end=0):
         values = self.get_log()
@@ -176,8 +220,20 @@ class DebugLog(Table):
         #                                          self.print_log_entry(),
         #                                          self.print_log_entry()))
         print(self.format_log_entry())
-        
-        for i, (p0, p1, p2, p3) in values.items():
+
+        print("Ingress:")        
+        for i, (p0, p1, p2, p3) in values['Ingress'].items():
+            if p0 != 0:
+                print(self.format_log_entry(i, 0, p0))
+            if p1 != 0:
+                print(self.format_log_entry(i, 1, p1))
+            if p2 != 0:
+                print(self.format_log_entry(i, 2, p2))
+            if p3 != 0:
+                print(self.format_log_entry(i, 3, p3))
+
+        print("Egress:")
+        for i, (p0, p1, p2, p3) in values['Egress'].items():
             if p0 != 0:
                 print(self.format_log_entry(i, 0, p0))
             if p1 != 0:

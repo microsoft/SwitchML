@@ -8,8 +8,11 @@
 #include "Reducer.hpp"
 #include "TimeoutQueue.hpp"
 
-// 
+// enable retransmission
 #define ENABLE_RETRANSMISSION
+
+// enable pool index debugging
+//#define DEBUG_POOL_INDEX
 
 DECLARE_int32(cores);
 DECLARE_int32(slots_per_core);
@@ -48,6 +51,12 @@ private:
 
   int64_t outstanding_operations;
   int64_t retransmissions;
+
+  const int32_t pool_index_message_mask;
+
+#ifdef DEBUG_POOL_INDEX
+  std::vector<int32_t> pool_index_log;
+#endif
   
   void post_initial_writes();
   void post_next_send_wr(const int i);

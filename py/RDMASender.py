@@ -192,7 +192,8 @@ class RDMASender(Table):
             [self.fill_in_qpn_and_psn.make_key([gc.KeyTuple('eg_md.switchml_md.worker_id', rid),
                                                 gc.KeyTuple('eg_md.switchml_md.pool_index', 0x00000, 0x00000)])],
             [self.fill_in_qpn_and_psn.make_data([gc.DataTuple('qpn', qpn),
-                                                 gc.DataTuple('Egress.rdma_sender.psn_register.f1', initial_psn)],
+                                                 #gc.DataTuple('Egress.rdma_sender.psn_register.f1', initial_psn)],
+                                                 ],
                                                 'Egress.rdma_sender.add_qpn_and_psn')])
 
 
@@ -258,7 +259,8 @@ class RDMASender(Table):
                                                                 shifted_index,
                                                                 mask)])],
                 [self.fill_in_qpn_and_psn.make_data([gc.DataTuple('qpn', qpn),
-                                                     gc.DataTuple('Egress.rdma_sender.psn_register.f1', initial_psn)],
+                                                     #gc.DataTuple('Egress.rdma_sender.psn_register.f1', initial_psn)],
+                                                     ],
                                                     'Egress.rdma_sender.add_qpn_and_psn')])
 
 
